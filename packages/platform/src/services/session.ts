@@ -35,6 +35,7 @@ import {
   enqueueSessionTriggerJob,
   getOrCreateChatId,
 } from "./session-agent-jobs";
+import { assertValidTransition, type AgentRunStatus } from "../state-machine";
 
 // ---------------------------------------------------------------------------
 // Re-exports from sub-modules (preserves the public API surface)
@@ -587,6 +588,12 @@ export class SessionService {
 
     await this.events.setKey(`run:${runId}:abort`, "1", 3600);
 
+    logger.warn("session.stop.signal_not_enforced", {
+      runId,
+      message:
+        "Abort signal written to Redis but agent worker does not yet consume it",
+    });
+
     return { runId };
   }
 
@@ -617,6 +624,22 @@ export class SessionService {
 
     // Signal the agent worker to pause after current step
     await this.events.setKey(`run:${runId}:pause`, "1", 3600);
+
+    logger.warn("session.pause.signal_not_enforced", {
+      runId,
+      message:
+        "Pause signal written to Redis but agent worker does not yet consume it",
+    });
+
+    const [currentRun] = await this.db
+      .select({ status: agentRuns.status })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, runId))
+      .limit(1);
+    if (!currentRun) {
+      throw new ValidationError("Active run record not found");
+    }
+    assertValidTransition(currentRun.status as AgentRunStatus, "paused");
 
     // Update run status
     await this.db
@@ -661,6 +684,16 @@ export class SessionService {
 
     // Clear the pause flag
     await this.events.setKey(`run:${runId}:pause`, "", 1);
+
+    const [currentRun] = await this.db
+      .select({ status: agentRuns.status })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, runId))
+      .limit(1);
+    if (!currentRun) {
+      throw new ValidationError("Active run record not found");
+    }
+    assertValidTransition(currentRun.status as AgentRunStatus, "running");
 
     // Update run status back to running
     await this.db
@@ -1003,7 +1036,7 @@ export class SessionService {
     const [latestSession] = await this.db
       .select()
       .from(sessions)
-      .where(eq(sessions.repoPath, resource.projectId))
+      .where(eq(sessions.projectId, resource.projectId))
       .orderBy(desc(sessions.lastActivityAt))
       .limit(1);
 

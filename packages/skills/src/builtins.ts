@@ -17,8 +17,17 @@ export function loadBuiltinFiles(): Array<{ slug: string; raw: string }> {
   }));
 }
 
+let _cachedBuiltins: Array<{ slug: string; raw: string }> | null = null;
+
+function getCachedBuiltins(): Array<{ slug: string; raw: string }> {
+  if (!_cachedBuiltins) {
+    _cachedBuiltins = loadBuiltinFiles();
+  }
+  return _cachedBuiltins;
+}
+
 export function listBuiltinSummaries(): SkillSummary[] {
-  return loadBuiltinFiles().map(({ slug, raw }) => {
+  return getCachedBuiltins().map(({ slug, raw }) => {
     const p = parseSkillMarkdown(raw);
     return {
       source: "builtin" as const,
@@ -31,7 +40,7 @@ export function listBuiltinSummaries(): SkillSummary[] {
 }
 
 export function getBuiltinRaw(slug: string): string | null {
-  const hit = loadBuiltinFiles().find((f) => f.slug === slug);
+  const hit = getCachedBuiltins().find((f) => f.slug === slug);
   return hit?.raw ?? null;
 }
 

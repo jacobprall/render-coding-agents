@@ -13,31 +13,38 @@ import { sessions } from "./session";
 // CI events (from forge webhooks)
 // ---------------------------------------------------------------------------
 
-export const ciEvents = pgTable("ci_events", {
-  id: text("id").primaryKey(),
-  sessionId: text("session_id")
-    .notNull()
-    .references(() => sessions.id, { onDelete: "cascade" }),
-  type: text("type", {
-    enum: [
-      "ci_running",
-      "ci_failure",
-      "ci_success",
-      "review_comment",
-      "pr_merged",
-      "pr_closed",
-    ],
-  }).notNull(),
-  workflowName: text("workflow_name"),
-  runId: text("run_id"),
-  status: text("status", {
-    enum: ["pending", "running", "success", "failure", "error"],
-  }),
-  logsUrl: text("logs_url"),
-  payload: jsonb("payload").notNull(),
-  processed: boolean("processed").notNull().default(false),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+export const ciEvents = pgTable(
+  "ci_events",
+  {
+    id: text("id").primaryKey(),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => sessions.id, { onDelete: "cascade" }),
+    type: text("type", {
+      enum: [
+        "ci_running",
+        "ci_failure",
+        "ci_success",
+        "review_comment",
+        "pr_merged",
+        "pr_closed",
+      ],
+    }).notNull(),
+    workflowName: text("workflow_name"),
+    runId: text("run_id"),
+    status: text("status", {
+      enum: ["pending", "running", "success", "failure", "error"],
+    }),
+    logsUrl: text("logs_url"),
+    payload: jsonb("payload").notNull(),
+    processed: boolean("processed").notNull().default(false),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("ci_events_session_id_idx").on(table.sessionId),
+    index("ci_events_run_id_idx").on(table.runId),
+  ],
+);
 
 // ---------------------------------------------------------------------------
 // PR events (lifecycle tracking — feeds global PR view & future inbox)

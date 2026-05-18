@@ -1,9 +1,35 @@
 import { existsSync, mkdirSync } from "node:fs";
 import type { Subprocess } from "bun";
 import type { ExecResult } from "../../types";
-import { ALLOWED_ENV_KEYS, DEFAULT_EXEC_TIMEOUT_MS } from "./constants";
+import { ALLOWED_ENV_KEYS, DEFAULT_EXEC_TIMEOUT_MS, MAX_OUTPUT_BYTES } from "./constants";
 
 const SETSID_BIN = "/usr/bin/setsid";
+
+async function readBounded(stream: ReadableStream<Uint8Array> | null | undefined, maxBytes: number): Promise<string> {
+  if (!stream) return "";
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalLen = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (totalLen < maxBytes) {
+        const remaining = maxBytes - totalLen;
+        if (value.length <= remaining) {
+          chunks.push(value);
+          totalLen += value.length;
+        } else {
+          chunks.push(value.subarray(0, remaining));
+          totalLen = maxBytes;
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(chunks).toString("utf-8");
+}
 
 export function killProcTree(proc: Subprocess): void {
   const pid = proc.pid;
@@ -97,8 +123,8 @@ export async function runArgv(
   }, timeoutMs);
 
   const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
+    readBounded(proc.stdout, MAX_OUTPUT_BYTES),
+    readBounded(proc.stderr, MAX_OUTPUT_BYTES),
     proc.exited,
   ]);
 
@@ -140,8 +166,8 @@ export async function runCommand(
   }, timeoutMs);
 
   const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
+    readBounded(proc.stdout, MAX_OUTPUT_BYTES),
+    readBounded(proc.stderr, MAX_OUTPUT_BYTES),
     proc.exited,
   ]);
 

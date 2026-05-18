@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useCallback, startTransition } from "react";
+import { useState, useCallback, useEffect, startTransition } from "react";
 import dynamic from "next/dynamic";
 import type { AssistantPart } from "@openforge/ui";
 import { ModelSelector } from "@/components/model-selector";
 import { DEFAULT_MODEL_ID } from "@/lib/model-defaults";
 import { PrSummaryPanel } from "./pr-summary-panel";
 import type { Message, LiveFileChange } from "./chat-panel";
+import type { SessionTab } from "@/components/layout/session-tabs";
 
 const ChatPanel = dynamic(
   () => import("./chat-panel").then((m) => ({ default: m.ChatPanel })),
@@ -79,6 +80,18 @@ export function SessionWorkspace({
   });
   const [liveFileChanges, setLiveFileChanges] = useState<LiveFileChange[]>([]);
 
+  useEffect(() => {
+    const tabs = (window as unknown as Record<string, { addTab?: (t: SessionTab) => void; updateTab?: (id: string, u: Partial<SessionTab>) => void }>).__sessionTabs;
+    if (tabs?.addTab) {
+      tabs.addTab({
+        id: session.id,
+        title: session.title,
+        status: session.status,
+        repoPath: session.repoPath,
+      });
+    }
+  }, [session.id, session.title, session.status, session.repoPath]);
+
   const handleFileChanges = useCallback((files: LiveFileChange[]) => {
     setLiveFileChanges(files);
   }, []);
@@ -86,7 +99,11 @@ export function SessionWorkspace({
   const handleTitleChange = useCallback((newTitle: string) => {
     setTitle(newTitle);
     document.title = `${newTitle} | OpenForge`;
-  }, []);
+    const tabs = (window as unknown as Record<string, { updateTab?: (id: string, u: Partial<SessionTab>) => void }>).__sessionTabs;
+    if (tabs?.updateTab) {
+      tabs.updateTab(session.id, { title: newTitle });
+    }
+  }, [session.id]);
 
   const handleViewFiles = useCallback(() => {
     startTransition(() => setActiveView("files"));

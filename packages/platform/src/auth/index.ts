@@ -2,6 +2,9 @@ export {
   isLlmKeyEncryptionConfigured,
   encryptLlmApiKey,
   decryptLlmApiKey,
+  encryptToken,
+  decryptToken,
+  decryptTokenSafe,
 } from "./encryption";
 
 export {

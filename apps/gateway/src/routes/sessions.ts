@@ -5,6 +5,7 @@ import { syncConnections } from "@openforge/db";
 import type { GatewayEnv } from "../middleware/auth";
 import { getPlatform } from "../platform";
 import { getForgeProviderForAuth, createForgeProvider, type ForgeProviderType } from "@openforge/platform/forge";
+import { decryptTokenSafe } from "@openforge/shared/lib/encryption";
 import { formatZodError } from "../middleware/validation";
 
 export const sessionRoutes = new Hono<GatewayEnv>();
@@ -24,7 +25,11 @@ async function resolveForgeForUser(auth: { userId: string; forgeToken: string; f
 
   if (conn?.accessToken) {
     const baseUrl = conn.provider === "github" ? "https://api.github.com" : "https://gitlab.com";
-    return createForgeProvider({ type: conn.provider as ForgeProviderType, baseUrl, token: conn.accessToken });
+    return createForgeProvider({
+      type: conn.provider as ForgeProviderType,
+      baseUrl,
+      token: decryptTokenSafe(conn.accessToken),
+    });
   }
 
   return getForgeProviderForAuth(auth);
@@ -95,7 +100,7 @@ sessionRoutes.get("/repos", async (c) => {
       const forge = createForgeProvider({
         type: conn.provider as ForgeProviderType,
         baseUrl,
-        token: conn.accessToken,
+        token: decryptTokenSafe(conn.accessToken),
       });
       const repos = await forge.repos.list();
       allRepos.push(...repos);

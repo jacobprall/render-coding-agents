@@ -57,13 +57,13 @@ export interface UserPreferencesData {
   defaultModelId?: string | null;
   defaultSubagentModelId?: string | null;
   defaultDiffMode?: "unified" | "split";
-  defaultWorkflowMode?: "full" | "standard" | "fast" | "yolo";
+  defaultWorkflowMode?: "full" | "standard" | "fast" | "yolo" | "autonomous";
   autoCommitPush?: boolean;
   autoCreatePr?: boolean;
   accentColor?: string | null;
   secondaryColor?: string | null;
   tertiaryColor?: string | null;
-  theme?: "default" | "terminal" | "warm-analog" | null;
+  theme?: "dark" | "light" | null;
 }
 
 export const userPreferences = pgTable("user_preferences", {
@@ -78,20 +78,27 @@ export const userPreferences = pgTable("user_preferences", {
 // Usage tracking
 // ---------------------------------------------------------------------------
 
-export const usageEvents = pgTable("usage_events", {
-  id: text("id").primaryKey(),
-  userId: text("user_id").notNull(),
-  agentType: text("agent_type", { enum: ["main", "subagent"] })
-    .notNull()
-    .default("main"),
-  provider: text("provider"),
-  modelId: text("model_id"),
-  inputTokens: integer("input_tokens").notNull().default(0),
-  cachedInputTokens: integer("cached_input_tokens").notNull().default(0),
-  outputTokens: integer("output_tokens").notNull().default(0),
-  toolCallCount: integer("tool_call_count").notNull().default(0),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+export const usageEvents = pgTable(
+  "usage_events",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    agentType: text("agent_type", { enum: ["main", "subagent"] })
+      .notNull()
+      .default("main"),
+    provider: text("provider"),
+    modelId: text("model_id"),
+    inputTokens: integer("input_tokens").notNull().default(0),
+    cachedInputTokens: integer("cached_input_tokens").notNull().default(0),
+    outputTokens: integer("output_tokens").notNull().default(0),
+    toolCallCount: integer("tool_call_count").notNull().default(0),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("usage_events_user_id_idx").on(table.userId),
+    index("usage_events_user_created_idx").on(table.userId, table.createdAt),
+  ],
+);
 
 // ---------------------------------------------------------------------------
 // Gateway API keys (hashed for auth)

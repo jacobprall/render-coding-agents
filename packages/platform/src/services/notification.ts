@@ -39,9 +39,6 @@ export interface ListNotificationsResult {
 // NotificationService
 // ---------------------------------------------------------------------------
 
-/** Cap per-source fetch so merged unread pagination stays bounded. */
-const NOTIFICATIONS_SOURCE_FETCH_CAP = 2000;
-
 export class NotificationService {
   constructor(private db: PlatformDb) {}
 
@@ -55,17 +52,31 @@ export class NotificationService {
   ): Promise<ListNotificationsResult> {
     const { limit, offset } = params;
     const userId = auth.userId;
+    const fetchLimit = offset + limit + 1;
 
-    const fetchSize = Math.min(NOTIFICATIONS_SOURCE_FETCH_CAP, offset + limit + 25);
+    const [failedCi, errorRuns] = await Promise.all([
+      this.db
+        .select()
+        .from(ciEvents)
+        .innerJoin(sessions, eq(ciEvents.sessionId, sessions.id))
+        .where(
+          and(
+            eq(sessions.userId, userId),
+            eq(ciEvents.type, "ci_failure"),
+            eq(ciEvents.processed, false),
+          ),
+        )
+        .orderBy(desc(ciEvents.createdAt))
+        .limit(fetchLimit),
+      this.db
+        .select()
+        .from(agentRuns)
+        .where(and(eq(agentRuns.userId, userId), eq(agentRuns.status, "error")))
+        .orderBy(desc(agentRuns.createdAt))
+        .limit(fetchLimit),
+    ]);
+
     const notifications: Notification[] = [];
-
-    const failedCi = await this.db
-      .select()
-      .from(ciEvents)
-      .innerJoin(sessions, eq(ciEvents.sessionId, sessions.id))
-      .where(and(eq(sessions.userId, userId), eq(ciEvents.type, "ci_failure")))
-      .orderBy(desc(ciEvents.createdAt))
-      .limit(fetchSize);
 
     for (const row of failedCi) {
       notifications.push({
@@ -75,17 +86,10 @@ export class NotificationService {
         title: "CI Failed",
         body: `Workflow "${row.ci_events.workflowName || "build"}" failed`,
         link: `/sessions/${row.ci_events.sessionId}`,
-        read: row.ci_events.processed,
+        read: false,
         createdAt: row.ci_events.createdAt,
       });
     }
-
-    const errorRuns = await this.db
-      .select()
-      .from(agentRuns)
-      .where(and(eq(agentRuns.userId, userId), eq(agentRuns.status, "error")))
-      .orderBy(desc(agentRuns.createdAt))
-      .limit(fetchSize);
 
     for (const run of errorRuns) {
       notifications.push({
@@ -101,9 +105,8 @@ export class NotificationService {
     }
 
     notifications.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-    const unread = notifications.filter((n) => !n.read);
-    const window = unread.slice(offset, offset + limit + 1);
 
+    const window = notifications.slice(offset, offset + limit + 1);
     const hasMore = window.length > limit;
     const pageData = hasMore ? window.slice(0, limit) : window;
 

@@ -10,6 +10,7 @@ import {
 import type { PlatformDb } from "../interfaces/database";
 import type { AuthContext } from "../interfaces/auth";
 import { getForgeProviderForAuth } from "../forge/factory";
+import { decryptTokenSafe } from "../auth/encryption";
 import type {
   ForgeRepo,
   ForgeFileContent,
@@ -89,7 +90,7 @@ export class RepoService {
         .from(syncConnections)
         .where(eq(syncConnections.id, params.syncConnectionId))
         .limit(1);
-      authToken = conn?.accessToken ?? undefined;
+      authToken = conn?.accessToken ? decryptTokenSafe(conn.accessToken) : undefined;
     }
 
     const repo = await forge.repos.migrate({

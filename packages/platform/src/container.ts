@@ -170,6 +170,7 @@ function buildContainer(
     db,
     queue,
     ciService: ci,
+    createFromDeployFailure: (params) => sessions.createFromDeployFailure(params),
   });
 
   return {

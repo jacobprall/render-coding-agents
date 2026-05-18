@@ -161,6 +161,7 @@ export {
 // Agent run state machine
 export {
   AgentRunStateMachine,
+  assertValidTransition,
   InvalidRunTransitionError,
   runStateMachine,
 } from "./state-machine";

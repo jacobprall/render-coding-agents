@@ -9,11 +9,11 @@ export default function GlobalError({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className="flex min-h-screen items-center justify-center bg-surface-0 text-text-primary">
+      <body className="flex min-h-screen items-center justify-center bg-background text-foreground">
         <div className="max-w-md text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-danger/10">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center bg-destructive/10">
             <svg
-              className="h-7 w-7 text-danger"
+              className="h-7 w-7 text-destructive"
               fill="none"
               viewBox="0 0 24 24"
               strokeWidth={1.5}
@@ -27,17 +27,17 @@ export default function GlobalError({
             </svg>
           </div>
           <h2 className="text-lg font-semibold">Something went wrong</h2>
-          <p className="mt-2 text-sm text-text-tertiary">
+          <p className="mt-2 text-sm text-muted-foreground">
             {error.message || "An unexpected error occurred."}
           </p>
           {error.digest && (
-            <p className="mt-1 font-mono text-xs text-text-tertiary">
+            <p className="mt-1 font-mono text-xs text-muted-foreground">
               Error ID: {error.digest}
             </p>
           )}
           <button
             onClick={reset}
-            className="mt-6 bg-accent px-4 py-2 text-sm font-medium text-white transition-colors duration-(--of-duration-instant) hover:bg-accent-hover"
+            className="mt-6 bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             Try again
           </button>

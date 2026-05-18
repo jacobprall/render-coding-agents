@@ -1,10 +1,33 @@
-import { asc, desc, eq } from "drizzle-orm";
-import { agentRuns, chatMessages, chats, sessions } from "@openforge/db";
+import { and, asc, desc, eq, lt, sql } from "drizzle-orm";
+import { agentRuns, chatMessages, chats, sessions, syncConnections } from "@openforge/db";
 import type { PlatformDb } from "../interfaces/database";
 import type { QueueAdapter } from "../interfaces/queue";
 import { getDefaultForgeProvider, getForgeProviderForAuth } from "../forge/factory";
-import type { ForgeProviderType } from "../forge/provider";
+import type { ForgeProvider, ForgeProviderType } from "../forge/provider";
 import { resolveSkillsForSession } from "./session-skills";
+import { decryptTokenSafe } from "../auth/encryption";
+
+/**
+ * Forge token / provider resolution for sessions (Forgejo mirror vs GitHub/GitLab OAuth).
+ */
+export async function getForgeProviderForSession(
+  db: PlatformDb,
+  session: { forgeType: string | null; userId: string },
+): Promise<ForgeProvider> {
+  const forgeType = (session.forgeType ?? "github") as ForgeProviderType;
+  if (forgeType === "forgejo") {
+    return getDefaultForgeProvider(process.env.FORGEJO_AGENT_TOKEN ?? "");
+  }
+  const [conn] = await db
+    .select({ accessToken: syncConnections.accessToken })
+    .from(syncConnections)
+    .where(and(eq(syncConnections.userId, session.userId), eq(syncConnections.provider, forgeType)))
+    .limit(1);
+  if (conn?.accessToken) {
+    return getForgeProviderForAuth({ forgeToken: decryptTokenSafe(conn.accessToken), forgeType });
+  }
+  return getDefaultForgeProvider(process.env.FORGEJO_AGENT_TOKEN ?? "");
+}
 
 // ---------------------------------------------------------------------------
 // Shared constants & types
@@ -191,13 +214,23 @@ export async function enqueueSessionTriggerJob(
   const { sessionRow, userId, trigger, fixContext, modelId } = params;
 
   if (trigger === "ci_failure") {
-    const attempts = sessionRow.ciFixAttempts ?? 0;
-    const max = sessionRow.maxCiFixAttempts ?? 3;
-    if (attempts >= max) return null;
-    await db
+    const [updated] = await db
       .update(sessions)
-      .set({ ciFixAttempts: attempts + 1, updatedAt: new Date() })
-      .where(eq(sessions.id, sessionRow.id));
+      .set({
+        ciFixAttempts: sql`${sessions.ciFixAttempts} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(sessions.id, sessionRow.id),
+          lt(sessions.ciFixAttempts, sessions.maxCiFixAttempts),
+        ),
+      )
+      .returning({ id: sessions.id });
+
+    if (!updated) {
+      return null;
+    }
   }
 
   const chatId = await getOrCreateChatId(
@@ -227,9 +260,7 @@ export async function enqueueSessionTriggerJob(
   const modelMsgs = collectModelMessages(rows);
   const runId = crypto.randomUUID();
 
-  const forge = getDefaultForgeProvider(
-    process.env.FORGEJO_AGENT_TOKEN ?? "",
-  );
+  const forge = await getForgeProviderForSession(db, sessionRow);
   const resolvedSkills = await resolveSkillsForSession(
     sessionRow,
     forge,

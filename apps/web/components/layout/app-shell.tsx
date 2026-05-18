@@ -1,13 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { Sidebar } from "./sidebar";
-import { TopBar } from "./top-bar";
-import type { BreadcrumbItem } from "./breadcrumbs";
+import { IconRail } from "./icon-rail";
+import { SessionTabs } from "./session-tabs";
+import { useSessionTabsSync } from "./use-session-tabs-sync";
 
 interface AppShellProps {
-  breadcrumbs: BreadcrumbItem[];
-  actions?: React.ReactNode;
   user: {
     username: string;
     avatarUrl: string;
@@ -15,26 +12,19 @@ interface AppShellProps {
   children: React.ReactNode;
 }
 
-export function AppShell({
-  breadcrumbs,
-  actions,
-  user,
-  children,
-}: AppShellProps) {
-  const [mobileOpen, setMobileOpen] = useState(false);
+export function AppShell({ user, children }: AppShellProps) {
+  useSessionTabsSync();
 
   return (
-    <div className="flex h-screen overflow-hidden bg-surface-0">
-      <Sidebar
-        user={user}
-        mobileOpen={mobileOpen}
-        onMobileClose={() => setMobileOpen(false)}
-      />
+    <div className="flex h-screen overflow-hidden bg-background">
+      <div className="hidden md:flex">
+        <IconRail user={user} />
+      </div>
       <div className="flex flex-1 flex-col overflow-hidden">
-        <TopBar breadcrumbs={breadcrumbs} onMenuClick={() => setMobileOpen(true)}>
-          {actions}
-        </TopBar>
-        <main className="relative min-h-0 flex-1 overflow-y-auto">{children}</main>
+        <SessionTabs />
+        <main className="relative min-h-0 flex-1 overflow-y-auto">
+          {children}
+        </main>
       </div>
     </div>
   );

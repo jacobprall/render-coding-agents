@@ -122,7 +122,7 @@ export class ProjectService {
   // get
   // -------------------------------------------------------------------------
 
-  async get(_auth: AuthContext, projectId: string): Promise<ProjectWithRepos | null> {
+  async get(auth: AuthContext, projectId: string): Promise<ProjectWithRepos | null> {
     const org = await this.resolveOrg();
     const [project] = await this.db
       .select()
@@ -155,6 +155,9 @@ export class ProjectService {
       .where(and(eq(projects.id, projectId), eq(projects.orgId, org.id)))
       .limit(1);
     if (!existing) throw new Error("Project not found");
+    if (existing.createdBy !== auth.userId && !auth.isAdmin) {
+      throw new Error("You don't have permission to modify this project");
+    }
 
     const [updated] = await this.db
       .update(projects)
@@ -165,12 +168,20 @@ export class ProjectService {
   }
 
   // -------------------------------------------------------------------------
-  // delete (admin only)
+  // delete
   // -------------------------------------------------------------------------
 
   async delete(auth: AuthContext, projectId: string): Promise<void> {
-    if (!auth.isAdmin) throw new Error("Only admins can delete projects");
     const org = await this.resolveOrg();
+    const [existing] = await this.db
+      .select()
+      .from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.orgId, org.id)))
+      .limit(1);
+    if (!existing) throw new Error("Project not found");
+    if (existing.createdBy !== auth.userId && !auth.isAdmin) {
+      throw new Error("You don't have permission to modify this project");
+    }
     await this.db
       .delete(projects)
       .where(and(eq(projects.id, projectId), eq(projects.orgId, org.id)));
@@ -181,11 +192,20 @@ export class ProjectService {
   // -------------------------------------------------------------------------
 
   async addRepo(
-    _auth: AuthContext,
+    auth: AuthContext,
     projectId: string,
     params: { repoPath: string; forgeType?: string; defaultBranch?: string },
   ): Promise<ProjectRepo> {
-    await this.verifyProjectInOrg(projectId);
+    const org = await this.resolveOrg();
+    const [project] = await this.db
+      .select()
+      .from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.orgId, org.id)))
+      .limit(1);
+    if (!project) throw new Error("Project not found");
+    if (project.createdBy !== auth.userId && !auth.isAdmin) {
+      throw new Error("You don't have permission to modify this project");
+    }
     const existing = await this.db
       .select()
       .from(projectRepos)
@@ -207,8 +227,17 @@ export class ProjectService {
     return row;
   }
 
-  async removeRepo(_auth: AuthContext, projectId: string, repoPath: string): Promise<void> {
-    await this.verifyProjectInOrg(projectId);
+  async removeRepo(auth: AuthContext, projectId: string, repoPath: string): Promise<void> {
+    const org = await this.resolveOrg();
+    const [existing] = await this.db
+      .select()
+      .from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.orgId, org.id)))
+      .limit(1);
+    if (!existing) throw new Error("Project not found");
+    if (existing.createdBy !== auth.userId && !auth.isAdmin) {
+      throw new Error("You don't have permission to modify this project");
+    }
     await this.db
       .delete(projectRepos)
       .where(and(eq(projectRepos.projectId, projectId), eq(projectRepos.repoPath, repoPath)));
@@ -293,16 +322,6 @@ export class ProjectService {
   // -------------------------------------------------------------------------
   // Helpers
   // -------------------------------------------------------------------------
-
-  private async verifyProjectInOrg(projectId: string) {
-    const org = await this.resolveOrg();
-    const [row] = await this.db
-      .select({ id: projects.id })
-      .from(projects)
-      .where(and(eq(projects.id, projectId), eq(projects.orgId, org.id)))
-      .limit(1);
-    if (!row) throw new Error("Project not found");
-  }
 
   private async resolveOrg() {
     const [org] = await this.db.select().from(orgs).limit(1);

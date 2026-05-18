@@ -82,6 +82,7 @@ export class SkillService {
     }
 
     const rawUrl = toRawUrl(url.trim());
+    validateExternalUrl(rawUrl);
 
     let markdown: string;
     const res = await fetch(rawUrl, { signal: AbortSignal.timeout(10_000) });
@@ -162,6 +163,48 @@ export class SkillService {
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
+
+function validateExternalUrl(urlStr: string): URL {
+  let url: URL;
+  try {
+    url = new URL(urlStr);
+  } catch {
+    throw new ValidationError(`Invalid URL: ${urlStr}`);
+  }
+
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new ValidationError(`URL must use http or https protocol`);
+  }
+
+  const hostname = url.hostname.toLowerCase();
+
+  if (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "::1" ||
+    hostname === "[::1]"
+  ) {
+    throw new ValidationError("URL must not point to localhost");
+  }
+
+  const parts = hostname.split(".");
+  if (parts.length === 4 && parts.every((p) => /^\d+$/.test(p))) {
+    const octets = parts.map(Number);
+    const [a, b] = octets;
+    if (
+      a === 10 ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 169 && b === 254) ||
+      a === 0 ||
+      a === 127
+    ) {
+      throw new ValidationError("URL must not point to private or reserved IP ranges");
+    }
+  }
+
+  return url;
+}
 
 function toRawUrl(url: string): string {
   const gh = url.match(

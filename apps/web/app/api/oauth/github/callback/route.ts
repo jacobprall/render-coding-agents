@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { eq, and } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { syncConnections } from "@openforge/db";
+import { encryptToken } from "@openforge/shared/lib/encryption";
 import { getSession } from "@/lib/auth/session";
 
 async function githubToken(code: string, redirect_uri: string) {
@@ -72,6 +73,7 @@ export async function GET(req: Request) {
   }
 
   const { token: accessToken, username: ghLogin } = oauthResult;
+  const storedAccessToken = encryptToken(accessToken);
 
   const db = getDb();
   const userId = String(session.userId);
@@ -85,7 +87,7 @@ export async function GET(req: Request) {
     await db
       .update(syncConnections)
       .set({
-        accessToken,
+        accessToken: storedAccessToken,
         remoteUsername: ghLogin || null,
       })
       .where(eq(syncConnections.id, existing.id));
@@ -94,7 +96,7 @@ export async function GET(req: Request) {
       id: crypto.randomUUID(),
       userId,
       provider: "github",
-      accessToken,
+      accessToken: storedAccessToken,
       refreshToken: null,
       expiresAt: null,
       remoteUsername: ghLogin || null,

@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { syncConnections } from "@openforge/db";
+import { encryptToken, decryptTokenSafe } from "@openforge/shared/lib/encryption";
 import type { ForgeDb } from "@/lib/db";
 
 export async function refreshGitHubToken(refreshToken: string): Promise<{
@@ -50,7 +51,7 @@ export async function getValidGitHubToken(
 
   const bufferMs = 5 * 60 * 1000;
   if (!conn.expiresAt || conn.expiresAt.getTime() > Date.now() + bufferMs) {
-    return conn.accessToken;
+    return decryptTokenSafe(conn.accessToken);
   }
 
   if (!conn.refreshToken) return null;
@@ -61,7 +62,7 @@ export async function getValidGitHubToken(
   await db
     .update(syncConnections)
     .set({
-      accessToken: refreshed.accessToken,
+      accessToken: encryptToken(refreshed.accessToken),
       refreshToken: refreshed.refreshToken,
       expiresAt: refreshed.expiresAt,
     })

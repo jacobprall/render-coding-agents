@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
+import { encryptToken } from "@openforge/shared/lib/encryption";
 import { getDb } from "@/lib/db";
 import { users, accounts, orgs, projects } from "@openforge/db/schema";
 
@@ -135,7 +136,7 @@ export async function bootstrapAdminIfNeeded(): Promise<void> {
     type: "oauth" as const,
     provider: "forgejo",
     providerAccountId: String(forgejoUser.id),
-    access_token: forgejoToken,
+    access_token: encryptToken(forgejoToken),
   });
 
   await db.insert(projects).values({

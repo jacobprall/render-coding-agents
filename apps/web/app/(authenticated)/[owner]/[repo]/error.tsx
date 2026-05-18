@@ -22,10 +22,10 @@ export default function RepoError({
           Try again
         </button>
         <Link
-          href="/repos"
+          href="/sessions"
           className="bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover"
         >
-          All repositories
+          Back to sessions
         </Link>
       </div>
     </div>

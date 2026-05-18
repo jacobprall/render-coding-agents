@@ -1,10 +1,11 @@
-import { createHmac, randomBytes } from "crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { accounts, invites, users, orgs, projects } from "@openforge/db/schema";
 import { ValidationError } from "@openforge/shared";
 import type { PlatformDb } from "../interfaces/database";
 import type { AuthContext } from "../interfaces/auth";
+import { encryptToken } from "../auth/encryption";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -114,7 +115,7 @@ export class InviteService {
         type: "oauth",
         provider: "forgejo",
         providerAccountId: String(profile.id),
-        access_token: forgejoToken,
+        access_token: encryptToken(forgejoToken),
       });
 
       await tx.insert(invites).values({
@@ -330,7 +331,9 @@ function verifyInviteToken(token: string): { inviteId: string; expiresEpoch: num
   const payload = `${inviteId}:${expiresStr}`;
   const expected = createHmac("sha256", getInviteSecret()).update(payload).digest("hex");
 
-  if (sig !== expected) return null;
+  const sigBuf = Buffer.from(sig, "hex");
+  const expectedBuf = Buffer.from(expected, "hex");
+  if (sigBuf.length !== expectedBuf.length || !timingSafeEqual(sigBuf, expectedBuf)) return null;
 
   return { inviteId, expiresEpoch };
 }

@@ -14,6 +14,7 @@ export const DEFAULT_GIT_USER_EMAIL =
   process.env.SANDBOX_GIT_USER_EMAIL ?? "agent@openforge.dev";
 
 export const MAX_READ_BYTES = 5 * 1024 * 1024;
+export const MAX_OUTPUT_BYTES = MAX_READ_BYTES;
 export const MAX_WRITE_BYTES = MAX_READ_BYTES;
 export const MAX_GLOB_RESULTS = 10_000;
 export const MAX_REQUEST_BODY_BYTES = 10 * 1024 * 1024;

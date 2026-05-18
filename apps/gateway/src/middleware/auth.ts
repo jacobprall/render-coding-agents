@@ -10,10 +10,11 @@
 
 import { createMiddleware } from "hono/factory";
 import type { Context } from "hono";
-import { createHash } from "node:crypto";
-import { eq, and } from "drizzle-orm";
+import { createHash, timingSafeEqual } from "node:crypto";
+import { eq } from "drizzle-orm";
 import { users, accounts, apiKeys, syncConnections } from "@openforge/db";
 import type { AuthContext } from "@openforge/platform";
+import { decryptTokenSafe } from "@openforge/shared/lib/encryption";
 import { getPlatform } from "../platform";
 
 export type GatewayEnv = {
@@ -38,6 +39,11 @@ function hashApiKey(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
+function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
+
 /**
  * Middleware: require a valid API key in the Authorization header.
  *
@@ -53,7 +59,7 @@ export const requireApiAuth = createMiddleware<GatewayEnv>(async (c, next) => {
 
   const gatewaySecret = process.env.GATEWAY_API_SECRET;
 
-  if (gatewaySecret && token === gatewaySecret) {
+  if (gatewaySecret && safeEqual(token, gatewaySecret)) {
     const impersonateUserId = c.req.header("X-OpenForge-User-Id");
     const auth = impersonateUserId
       ? await resolveUserAuth(impersonateUserId)
@@ -190,33 +196,26 @@ async function resolveForgeTokenInfo(
   db: ReturnType<typeof getPlatform>["db"],
   userId: string,
 ): Promise<ForgeTokenInfo | null> {
-  // Check GitHub/GitLab OAuth accounts first
-  for (const provider of ["github", "gitlab"] as const) {
-    const [row] = await db
-      .select({ accessToken: accounts.access_token })
+  const [accountRows, connRows] = await Promise.all([
+    db
+      .select({ provider: accounts.provider, accessToken: accounts.access_token })
       .from(accounts)
-      .where(and(eq(accounts.userId, userId), eq(accounts.provider, provider)))
-      .limit(1);
-    if (row?.accessToken) return { token: row.accessToken, forgeType: provider };
-  }
-
-  // Check sync connections (GitHub/GitLab tokens from connections page)
-  for (const provider of ["github", "gitlab"] as const) {
-    const [conn] = await db
-      .select({ accessToken: syncConnections.accessToken })
+      .where(eq(accounts.userId, userId)),
+    db
+      .select({ provider: syncConnections.provider, accessToken: syncConnections.accessToken })
       .from(syncConnections)
-      .where(and(eq(syncConnections.userId, userId), eq(syncConnections.provider, provider)))
-      .limit(1);
-    if (conn?.accessToken) return { token: conn.accessToken, forgeType: provider };
+      .where(eq(syncConnections.userId, userId)),
+  ]);
+
+  for (const provider of ["github", "gitlab"] as const) {
+    const acct = accountRows.find((r) => r.provider === provider);
+    if (acct?.accessToken) return { token: decryptTokenSafe(acct.accessToken), forgeType: provider };
   }
-
-  // Last resort: Forgejo
-  const [forgejoRow] = await db
-    .select({ accessToken: accounts.access_token })
-    .from(accounts)
-    .where(and(eq(accounts.userId, userId), eq(accounts.provider, "forgejo")))
-    .limit(1);
-  if (forgejoRow?.accessToken) return { token: forgejoRow.accessToken, forgeType: "forgejo" };
-
+  for (const provider of ["github", "gitlab"] as const) {
+    const conn = connRows.find((r) => r.provider === provider);
+    if (conn?.accessToken) return { token: decryptTokenSafe(conn.accessToken), forgeType: provider };
+  }
+  const forgejo = accountRows.find((r) => r.provider === "forgejo");
+  if (forgejo?.accessToken) return { token: decryptTokenSafe(forgejo.accessToken), forgeType: "forgejo" };
   return null;
 }

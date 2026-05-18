@@ -28,6 +28,8 @@ import type {
   GitOperations,
 } from "./provider";
 
+import { timingSafeEqual } from "node:crypto";
+
 function notImplemented(op: string): never {
   throw new Error(`GitLabProvider: ${op} not yet implemented`);
 }
@@ -38,6 +40,7 @@ export class GitLabProvider implements ForgeProvider {
   readonly baseUrl: string;
 
   private token: string;
+  private webhookSecret: string;
 
   repos: RepoOperations;
   files: FileOperations;
@@ -53,9 +56,10 @@ export class GitLabProvider implements ForgeProvider {
   webhooks: WebhookOperations;
   git: GitOperations;
 
-  constructor(baseUrl: string, token: string) {
+  constructor(baseUrl: string, token: string, webhookSecret?: string) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.token = token;
+    this.webhookSecret = webhookSecret ?? process.env.GITLAB_WEBHOOK_SECRET ?? "";
 
     this.repos = this.buildRepoOps();
     this.files = this.buildFileOps();
@@ -286,7 +290,7 @@ export class GitLabProvider implements ForgeProvider {
   }
 
   private buildWebhookOps(): WebhookOperations {
-    const secret = this.token;
+    const secret = this.webhookSecret;
     return {
       eventTypeHeader: "X-Gitlab-Event",
       signatureHeader: "X-Gitlab-Token",
@@ -294,7 +298,8 @@ export class GitLabProvider implements ForgeProvider {
       verifySignature(_payload: string | Buffer, signature: string | null): boolean {
         if (!secret) return true;
         if (!signature) return false;
-        return signature === secret;
+        if (secret.length !== signature.length) return false;
+        return timingSafeEqual(Buffer.from(secret), Buffer.from(signature));
       },
 
       parseEvent: () => notImplemented("webhooks.parseEvent"),

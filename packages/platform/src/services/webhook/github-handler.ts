@@ -18,14 +18,17 @@ export class GitHubWebhookHandler {
   async handleGithubWebhook(rawBody: string, signature: string | null): Promise<void> {
     const secret = process.env.GITHUB_WEBHOOK_SECRET;
 
-    // If no secret is configured, allow all webhooks (useful for local dev /
-    // open deployments). Log a warning so operators are aware.
     if (!secret) {
-      logger.warn(
-        "GITHUB_WEBHOOK_SECRET not configured — skipping signature verification",
-        {},
+      if (process.env.GITHUB_WEBHOOK_ALLOW_UNSIGNED === "true") {
+        logger.warn("github.webhook.unsigned_allowed", {
+          message:
+            "GITHUB_WEBHOOK_SECRET not configured and GITHUB_WEBHOOK_ALLOW_UNSIGNED=true",
+        });
+        return;
+      }
+      throw new Error(
+        "GITHUB_WEBHOOK_SECRET is required. Set GITHUB_WEBHOOK_ALLOW_UNSIGNED=true to allow unverified webhooks.",
       );
-      return;
     }
 
     const expected = `sha256=${crypto.createHmac("sha256", secret).update(rawBody).digest("hex")}`;

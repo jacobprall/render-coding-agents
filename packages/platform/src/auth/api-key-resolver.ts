@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import * as schema from "@openforge/db/schema";
 import { decryptLlmApiKey } from "./encryption";
@@ -26,46 +26,29 @@ export async function resolveLlmApiKeys(
   db: PostgresJsDatabase<typeof schema>,
   userId: string,
 ): Promise<ResolvedLlmKeys> {
-  const [userAnthropic] = await db
+  const allKeys = await db
     .select()
     .from(schema.llmApiKeys)
     .where(
       and(
-        eq(schema.llmApiKeys.scope, "user"),
-        eq(schema.llmApiKeys.userId, userId),
-        eq(schema.llmApiKeys.provider, "anthropic"),
+        eq(schema.llmApiKeys.isValid, true),
+        or(
+          eq(schema.llmApiKeys.scope, "platform"),
+          and(eq(schema.llmApiKeys.scope, "user"), eq(schema.llmApiKeys.userId, userId)),
+        ),
       ),
-    )
-    .limit(1);
+    );
 
-  const [userOpenai] = await db
-    .select()
-    .from(schema.llmApiKeys)
-    .where(
-      and(
-        eq(schema.llmApiKeys.scope, "user"),
-        eq(schema.llmApiKeys.userId, userId),
-        eq(schema.llmApiKeys.provider, "openai"),
-      ),
-    )
-    .limit(1);
-
-  const [platAnthropic] = await db
-    .select()
-    .from(schema.llmApiKeys)
-    .where(and(eq(schema.llmApiKeys.scope, "platform"), eq(schema.llmApiKeys.provider, "anthropic")))
-    .limit(1);
-
-  const [platOpenai] = await db
-    .select()
-    .from(schema.llmApiKeys)
-    .where(and(eq(schema.llmApiKeys.scope, "platform"), eq(schema.llmApiKeys.provider, "openai")))
-    .limit(1);
+  const tryDecryptForProvider = (provider: "anthropic" | "openai"): string | undefined => {
+    const userKey = allKeys.find((k) => k.provider === provider && k.scope === "user");
+    const platformKey = allKeys.find((k) => k.provider === provider && k.scope === "platform");
+    return tryDecryptRow(userKey) ?? tryDecryptRow(platformKey);
+  };
 
   const anthropic =
-    tryDecryptRow(userAnthropic) ?? tryDecryptRow(platAnthropic) ?? process.env.ANTHROPIC_API_KEY;
+    tryDecryptForProvider("anthropic") ?? process.env.ANTHROPIC_API_KEY;
 
-  const openai = tryDecryptRow(userOpenai) ?? tryDecryptRow(platOpenai) ?? process.env.OPENAI_API_KEY;
+  const openai = tryDecryptForProvider("openai") ?? process.env.OPENAI_API_KEY;
 
   const out: ResolvedLlmKeys = {};
   if (anthropic) out.anthropic = anthropic;

@@ -8,10 +8,10 @@ export default function RepoNotFound() {
         We could not load this repository. It may have been renamed, removed, or you may not have access.
       </p>
       <Link
-        href="/repos"
+        href="/sessions"
         className="mt-6 inline-block bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover"
       >
-        Back to repositories
+        Back to sessions
       </Link>
     </div>
   );

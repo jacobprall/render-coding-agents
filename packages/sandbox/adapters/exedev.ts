@@ -6,6 +6,8 @@
  * session getting its own subdirectory.
  */
 
+import path from "node:path";
+
 import type { SandboxAdapter } from "../interface";
 import type {
   ExecResult,
@@ -24,6 +26,10 @@ const DEFAULT_EXEC_TIMEOUT_MS = 5 * 60 * 1000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
 const MAX_READ_BYTES = 5 * 1024 * 1024;
 const MAX_GLOB_RESULTS = 10_000;
+
+function shellEscape(str: string): string {
+  return str.replace(/'/g, "'\\''");
+}
 
 export type SshExecFn = (
   vmHost: string,
@@ -73,9 +79,10 @@ export class ExeDevSandboxAdapter implements SandboxAdapter {
 
   async readFile(sessionId: string, path: string): Promise<FileReadResult> {
     const absPath = this.resolvePath(sessionId, path);
+    const escPath = shellEscape(absPath);
     const sizeCheck = await this.sshExecFn(
       this.vmHost,
-      `stat -c '%s' '${absPath}' 2>/dev/null || echo '-1'`,
+      `stat -c '%s' '${escPath}' 2>/dev/null || echo '-1'`,
       { sshKeyPath: this.sshKeyPath, timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS },
     );
 
@@ -89,7 +96,7 @@ export class ExeDevSandboxAdapter implements SandboxAdapter {
 
     const result = await this.sshExecFn(
       this.vmHost,
-      `cat '${absPath}'`,
+      `cat '${escPath}'`,
       { sshKeyPath: this.sshKeyPath, timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS },
     );
 
@@ -105,7 +112,7 @@ export class ExeDevSandboxAdapter implements SandboxAdapter {
 
     const result = await this.sshExecFn(
       this.vmHost,
-      `mkdir -p '${dir}' && cat > '${absPath}'`,
+      `mkdir -p '${shellEscape(dir)}' && cat > '${shellEscape(absPath)}'`,
       { sshKeyPath: this.sshKeyPath, stdin: content, timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS },
     );
 
@@ -115,8 +122,8 @@ export class ExeDevSandboxAdapter implements SandboxAdapter {
   }
 
   async glob(sessionId: string, pattern: string): Promise<GlobResult> {
-    const safePattern = pattern.replace(/'/g, "'\\''");
-    const cmd = `find . -path './${safePattern}' -o -name '${safePattern}' 2>/dev/null | head -n ${MAX_GLOB_RESULTS + 1}`;
+    const escPattern = shellEscape(pattern);
+    const cmd = `find . -path './${escPattern}' -o -name '${escPattern}' 2>/dev/null | head -n ${MAX_GLOB_RESULTS + 1}`;
 
     const result = await this.sshExecFn(this.vmHost, cmd, this.sshOpts(sessionId, DEFAULT_REQUEST_TIMEOUT_MS));
 
@@ -131,9 +138,8 @@ export class ExeDevSandboxAdapter implements SandboxAdapter {
   }
 
   async grep(sessionId: string, pattern: string, path?: string): Promise<GrepResult> {
-    const safePattern = pattern.replace(/'/g, "'\\''");
-    const target = path ?? ".";
-    const cmd = `rg --json -m 200 '${safePattern}' ${target} 2>/dev/null || true`;
+    const target = path === undefined ? "." : this.resolvePath(sessionId, path);
+    const cmd = `rg --json -m 200 '${shellEscape(pattern)}' '${shellEscape(target)}' 2>/dev/null || true`;
 
     const result = await this.sshExecFn(this.vmHost, cmd, this.sshOpts(sessionId, DEFAULT_REQUEST_TIMEOUT_MS));
 
@@ -158,7 +164,7 @@ export class ExeDevSandboxAdapter implements SandboxAdapter {
   }
 
   async git(sessionId: string, args: string[]): Promise<GitResult> {
-    const escaped = args.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(" ");
+    const escaped = args.map((a) => `'${shellEscape(a)}'`).join(" ");
     const result = await this.sshExecFn(
       this.vmHost,
       `git ${escaped}`,
@@ -172,14 +178,21 @@ export class ExeDevSandboxAdapter implements SandboxAdapter {
     };
   }
 
+  private validateSnapshotId(snapshotId: string): void {
+    if (!snapshotId || /[\/\\\0]/.test(snapshotId) || snapshotId === "." || snapshotId === "..") {
+      throw new Error("Invalid snapshot ID");
+    }
+  }
+
   async snapshot(sessionId: string, snapshotId: string): Promise<SnapshotResult> {
+    this.validateSnapshotId(snapshotId);
     const cwd = this.sessionCwd(sessionId);
     const snapshotDir = `${this.workspaceRoot}/.snapshots`;
     const tarPath = `${snapshotDir}/${snapshotId}.tar.gz`;
 
     const result = await this.sshExecFn(
       this.vmHost,
-      `mkdir -p '${snapshotDir}' && tar czf '${tarPath}' -C '${cwd}' . && stat -c '%s' '${tarPath}'`,
+      `mkdir -p '${shellEscape(snapshotDir)}' && tar czf '${shellEscape(tarPath)}' -C '${shellEscape(cwd)}' . && stat -c '%s' '${shellEscape(tarPath)}'`,
       { sshKeyPath: this.sshKeyPath, timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS },
     );
 
@@ -192,12 +205,13 @@ export class ExeDevSandboxAdapter implements SandboxAdapter {
   }
 
   async restore(sessionId: string, snapshotId: string): Promise<void> {
+    this.validateSnapshotId(snapshotId);
     const cwd = this.sessionCwd(sessionId);
     const tarPath = `${this.workspaceRoot}/.snapshots/${snapshotId}.tar.gz`;
 
     const result = await this.sshExecFn(
       this.vmHost,
-      `rm -rf '${cwd}' && mkdir -p '${cwd}' && tar xzf '${tarPath}' -C '${cwd}'`,
+      `rm -rf '${shellEscape(cwd)}' && mkdir -p '${shellEscape(cwd)}' && tar xzf '${shellEscape(tarPath)}' -C '${shellEscape(cwd)}'`,
       { sshKeyPath: this.sshKeyPath, timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS },
     );
 
@@ -212,7 +226,7 @@ export class ExeDevSandboxAdapter implements SandboxAdapter {
 
     const result = await this.sshExecFn(
       this.vmHost,
-      `rm -rf '${toDir}' && cp -a '${fromDir}' '${toDir}'`,
+      `rm -rf '${shellEscape(toDir)}' && cp -a '${shellEscape(fromDir)}' '${shellEscape(toDir)}'`,
       { sshKeyPath: this.sshKeyPath, timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS },
     );
 
@@ -249,8 +263,13 @@ export class ExeDevSandboxAdapter implements SandboxAdapter {
     return results;
   }
 
-  private resolvePath(sessionId: string, path: string): string {
-    if (path.startsWith("/")) return path;
-    return `${this.sessionCwd(sessionId)}/${path}`;
+  private resolvePath(sessionId: string, userPath: string): string {
+    const sessionRoot = path.posix.normalize(this.sessionCwd(sessionId));
+    const resolved = path.posix.resolve(sessionRoot, userPath);
+    const prefix = sessionRoot.endsWith("/") ? sessionRoot : `${sessionRoot}/`;
+    if (resolved !== sessionRoot && !resolved.startsWith(prefix)) {
+      throw new Error("Path escapes session workspace");
+    }
+    return resolved;
   }
 }

@@ -49,6 +49,15 @@ export type { ApiErrorResponse, ApiResponse, ApiSuccessResponse } from "./lib/ap
 export { isApiError } from "./lib/api-types";
 export { logger } from "./lib/logger";
 
+export {
+  isLlmKeyEncryptionConfigured,
+  encryptLlmApiKey,
+  decryptLlmApiKey,
+  encryptToken,
+  decryptToken,
+  decryptTokenSafe,
+} from "./lib/encryption";
+
 // Model catalog (OpenAI only — Anthropic is fetched live, see apps/agent/src/models.ts)
 export {
   MODEL_DEFS,

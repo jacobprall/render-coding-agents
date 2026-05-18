@@ -15,30 +15,24 @@ import { getPlatform } from "../platform";
 // Idempotency helper
 // ---------------------------------------------------------------------------
 
-/** Returns true if this delivery was already processed (duplicate). */
-async function isDuplicateDelivery(deliveryId: string | undefined): Promise<boolean> {
-  if (!deliveryId) return false;
-  const platform = getPlatform();
-  const [existing] = await platform.db
-    .select({ id: webhookDeliveries.id })
-    .from(webhookDeliveries)
-    .where(eq(webhookDeliveries.id, deliveryId))
-    .limit(1);
-  return !!existing;
-}
-
-/** Record a delivery as processed. */
-async function recordDelivery(
-  deliveryId: string | undefined,
+async function tryRecordDelivery(
+  deliveryId: string,
   source: string,
   kind: string,
-): Promise<void> {
-  if (!deliveryId) return;
-  const platform = getPlatform();
-  await platform.db
+): Promise<boolean> {
+  const db = getPlatform().db;
+  const result = await db
     .insert(webhookDeliveries)
-    .values({ id: deliveryId, source, kind, processed: true })
-    .onConflictDoNothing();
+    .values({
+      id: deliveryId,
+      source,
+      kind,
+      receivedAt: new Date(),
+    })
+    .onConflictDoNothing({ target: webhookDeliveries.id })
+    .returning({ id: webhookDeliveries.id });
+
+  return result.length > 0;
 }
 
 export const webhookRoutes = new Hono();
@@ -71,10 +65,12 @@ webhookRoutes.post("/forgejo", async (c) => {
   // Parse InboundEvent for traceability and routing
   const event_ = forgejoWebhookToInboundEvent(event, rawBody, deliveryId);
 
-  // Idempotency check
-  if (deliveryId && await isDuplicateDelivery(deliveryId)) {
-    logger.info("inbound.duplicate", { eventId: deliveryId, source: "forgejo" });
-    return c.json({ ok: true, duplicate: true });
+  if (deliveryId) {
+    const isNew = await tryRecordDelivery(deliveryId, "forgejo", event_.kind);
+    if (!isNew) {
+      logger.info("inbound.duplicate", { eventId: deliveryId, source: "forgejo" });
+      return c.json({ ok: true, duplicate: true });
+    }
   }
   logger.info("inbound.received", {
     eventId: event_.id,
@@ -99,7 +95,6 @@ webhookRoutes.post("/forgejo", async (c) => {
     return c.json({ error: "Event processing failed" }, 500);
   }
 
-  await recordDelivery(deliveryId, "forgejo", event_.kind);
   return c.json({ ok: true });
 });
 
@@ -115,7 +110,6 @@ webhookRoutes.post("/github", async (c) => {
 
   const platform = getPlatform();
 
-  // Signature verification (skips gracefully when no secret configured)
   try {
     await platform.webhooks.handleGithubWebhook(rawBody, signature);
   } catch (err) {
@@ -123,13 +117,14 @@ webhookRoutes.post("/github", async (c) => {
     throw err;
   }
 
-  // Parse InboundEvent for traceability and routing
   const event_ = githubWebhookToInboundEvent(event, rawBody, deliveryId);
 
-  // Idempotency check
-  if (deliveryId && await isDuplicateDelivery(deliveryId)) {
-    logger.info("inbound.duplicate", { eventId: deliveryId, source: "github" });
-    return c.json({ ok: true, duplicate: true });
+  if (deliveryId) {
+    const isNew = await tryRecordDelivery(deliveryId, "github", event_.kind);
+    if (!isNew) {
+      logger.info("inbound.duplicate", { eventId: deliveryId, source: "github" });
+      return c.json({ ok: true, duplicate: true });
+    }
   }
 
   logger.info("inbound.received", {
@@ -155,7 +150,6 @@ webhookRoutes.post("/github", async (c) => {
     return c.json({ error: "Event processing failed" }, 500);
   }
 
-  await recordDelivery(deliveryId, "github", event_.kind);
   return c.json({ ok: true });
 });
 
@@ -181,10 +175,12 @@ webhookRoutes.post("/gitlab", async (c) => {
   // Parse InboundEvent for traceability and routing
   const event_ = gitlabWebhookToInboundEvent(event, rawBody, deliveryId);
 
-  // Idempotency check
-  if (deliveryId && await isDuplicateDelivery(deliveryId)) {
-    logger.info("inbound.duplicate", { eventId: deliveryId, source: "gitlab" });
-    return c.json({ ok: true, duplicate: true });
+  if (deliveryId) {
+    const isNew = await tryRecordDelivery(deliveryId, "gitlab", event_.kind);
+    if (!isNew) {
+      logger.info("inbound.duplicate", { eventId: deliveryId, source: "gitlab" });
+      return c.json({ ok: true, duplicate: true });
+    }
   }
 
   logger.info("inbound.received", {
@@ -207,7 +203,6 @@ webhookRoutes.post("/gitlab", async (c) => {
     return c.json({ error: "Event processing failed" }, 500);
   }
 
-  await recordDelivery(deliveryId, "gitlab", event_.kind);
   return c.json({ ok: true });
 });
 
@@ -251,14 +246,6 @@ webhookRoutes.post("/render", async (c) => {
     return c.json({ error: "Invalid signature" }, 401);
   }
 
-  // Parse into InboundEvent for traceability
-  const event_ = renderWebhookToInboundEvent(rawBody);
-  logger.info("inbound.received", {
-    eventId: event_.id,
-    source: event_.source,
-    kind: event_.kind,
-  });
-
   let payload: {
     type?: string;
     data?: {
@@ -275,7 +262,24 @@ webhookRoutes.post("/render", async (c) => {
     return c.json({ error: "Invalid JSON" }, 400);
   }
 
+  const event_ = renderWebhookToInboundEvent(rawBody);
   const data = payload.data;
+  const deliveryId =
+    data?.serviceId && data?.id ? `${data.serviceId}:${data.id}` : undefined;
+
+  if (deliveryId) {
+    const isNew = await tryRecordDelivery(deliveryId, "render", event_.kind);
+    if (!isNew) {
+      logger.info("inbound.duplicate", { eventId: deliveryId, source: "render" });
+      return c.json({ ok: true, duplicate: true });
+    }
+  }
+
+  logger.info("inbound.received", {
+    eventId: event_.id,
+    source: event_.source,
+    kind: event_.kind,
+  });
   if (!data?.serviceId || !data?.status)
     return c.json({ received: true, action: "ignored" });
   if (!FAILURE_STATUSES.has(data.status))
@@ -378,7 +382,7 @@ webhookRoutes.post("/generic", async (c) => {
     const platform = getPlatform();
     // Check if it's the gateway secret for impersonation
     const gatewaySecret = process.env.GATEWAY_API_SECRET;
-    if (gatewaySecret && token === gatewaySecret) {
+    if (gatewaySecret && token.length === gatewaySecret.length && timingSafeEqual(Buffer.from(token), Buffer.from(gatewaySecret))) {
       callerUserId = c.req.header("X-OpenForge-User-Id") ?? undefined;
     } else {
       // Look up API key
@@ -415,10 +419,12 @@ webhookRoutes.post("/generic", async (c) => {
     c.req.header("x-webhook-delivery-id") ??
     (typeof payload.delivery_id === "string" ? payload.delivery_id : undefined);
 
-  // Idempotency check
-  if (deliveryId && await isDuplicateDelivery(deliveryId)) {
-    logger.info("inbound.duplicate", { eventId: deliveryId, source: "generic" });
-    return c.json({ ok: true, duplicate: true });
+  if (deliveryId) {
+    const isNew = await tryRecordDelivery(deliveryId, "generic", "webhook_trigger");
+    if (!isNew) {
+      logger.info("inbound.duplicate", { eventId: deliveryId, source: "generic" });
+      return c.json({ ok: true, duplicate: true });
+    }
   }
 
   const repoUrl = typeof payload.repo_url === "string" ? payload.repo_url : undefined;
@@ -443,8 +449,6 @@ webhookRoutes.post("/generic", async (c) => {
       model,
       metadata: payload,
     });
-
-    await recordDelivery(deliveryId, "generic", "webhook_trigger");
 
     return c.json({
       ok: true,

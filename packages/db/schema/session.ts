@@ -94,6 +94,8 @@ export const sessions = pgTable(
   (table) => [
     index("sessions_user_id_idx").on(table.userId),
     index("sessions_project_id_idx").on(table.projectId),
+    index("sessions_repo_path_idx").on(table.repoPath),
+    index("sessions_repo_branch_idx").on(table.repoPath, table.branch),
   ],
 );
 
@@ -167,6 +169,8 @@ export const agentRuns = pgTable(
   (table) => [
     index("agent_runs_chat_id_idx").on(table.chatId),
     index("agent_runs_session_id_idx").on(table.sessionId),
+    index("agent_runs_user_id_idx").on(table.userId),
+    index("agent_runs_session_status_idx").on(table.sessionId, table.status),
   ],
 );
 

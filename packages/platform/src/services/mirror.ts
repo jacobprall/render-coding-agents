@@ -3,6 +3,7 @@ import { mirrors, syncConnections } from "@openforge/db";
 import { ValidationError, logger } from "@openforge/shared";
 import type { PlatformDb } from "../interfaces/database";
 import type { AuthContext } from "../interfaces/auth";
+import { decryptTokenSafe } from "../auth/encryption";
 import { getDefaultForgeProvider } from "../forge/factory";
 
 // ---------------------------------------------------------------------------
@@ -98,7 +99,10 @@ export class MirrorService {
 
     const [owner, repo] = this.splitRepoPath(params.localRepoPath);
 
-    const token = params.remoteToken ?? (conn.accessToken ?? null);
+    let token = params.remoteToken ?? null;
+    if (!token && conn.accessToken) {
+      token = decryptTokenSafe(conn.accessToken);
+    }
     if (!token) {
       throw new ValidationError("Unable to resolve remote token for sync connection");
     }

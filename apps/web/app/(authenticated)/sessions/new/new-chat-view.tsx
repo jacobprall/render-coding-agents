@@ -9,6 +9,7 @@ import { RepoBranchPicker } from "@/components/session/repo-branch-picker";
 import { ModelSelector } from "@/components/model-selector";
 import { DEFAULT_MODEL_ID } from "@/lib/model-defaults";
 import { apiFetch } from "@/lib/api-fetch";
+import type { SessionTab } from "@/components/layout/session-tabs";
 
 interface RecentSession {
   id: string;
@@ -111,6 +112,16 @@ export function NewChatView({
       });
 
       window.history.replaceState(null, "", `/sessions/${data.id}`);
+
+      const tabs = (window as unknown as Record<string, { addTab?: (t: SessionTab) => void }>).__sessionTabs;
+      if (tabs?.addTab) {
+        tabs.addTab({
+          id: data.id,
+          title: text.slice(0, 50),
+          status: "running",
+          repoPath: repoBranch?.repo ?? null,
+        });
+      }
 
       apiFetch<{ ok?: boolean; title?: string }>(
         `/api/sessions/${data.id}/auto-title`,

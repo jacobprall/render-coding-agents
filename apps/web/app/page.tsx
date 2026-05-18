@@ -93,7 +93,7 @@ export default async function Home() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col">
+    <main data-theme="terminal" className="flex min-h-screen flex-col">
       <nav className="flex items-center justify-between border-b border-stroke-subtle px-6 py-4">
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center bg-accent-bg">

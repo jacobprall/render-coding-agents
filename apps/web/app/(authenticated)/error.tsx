@@ -43,10 +43,10 @@ export default function AuthenticatedError({
           Try again
         </button>
         <Link
-          href="/repos"
+          href="/sessions"
           className="border border-stroke-default px-4 py-2 text-sm font-medium text-text-secondary transition-colors duration-(--of-duration-instant) hover:bg-surface-2"
         >
-          Go to repos
+          Go to sessions
         </Link>
       </div>
     </div>

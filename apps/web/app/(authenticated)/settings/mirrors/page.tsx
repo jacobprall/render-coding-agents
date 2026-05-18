@@ -143,7 +143,7 @@ export default function MirrorsPage() {
           </p>
         </div>
         <Link
-          href="/repos/import"
+          href="/settings/connections"
           className="bg-accent px-4 py-2 text-sm font-medium text-white transition-colors duration-(--of-duration-instant) hover:bg-accent-hover"
         >
           New Mirror
@@ -202,10 +202,10 @@ export default function MirrorsPage() {
               connected accounts
             </Link>{" "}
             to set up mirrors, or{" "}
-            <Link href="/repos/import" className="text-accent-text hover:underline">
-              import repos
+            <Link href="/settings/connections" className="text-accent-text hover:underline">
+              manage connections
             </Link>{" "}
-            with mirroring enabled.
+            to set up mirroring.
           </p>
         </div>
       )}

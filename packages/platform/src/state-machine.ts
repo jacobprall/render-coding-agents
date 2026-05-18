@@ -55,6 +55,34 @@ const TRANSITIONS: Readonly<Record<AgentRunStatus, Readonly<Partial<Record<Agent
   error:     {},
 };
 
+/** Pairs inferred from TRANSITIONS for direct status→status validation at mutation sites */
+const ALLOWED_STATUS_EDGES = (() => {
+  const pairs = new Set<string>();
+  for (const [from, byEvent] of Object.entries(TRANSITIONS) as [
+    AgentRunStatus,
+    (typeof TRANSITIONS)[AgentRunStatus],
+  ][]) {
+    for (const to of Object.values(byEvent)) {
+      if (to !== undefined) pairs.add(`${from}\0${to}`);
+    }
+  }
+  return pairs;
+})();
+
+/**
+ * Validates a direct DB status mutation against the canonical transition graph.
+ * No-op if `from === to`.
+ */
+export function assertValidTransition(
+  from: AgentRunStatus,
+  to: AgentRunStatus,
+): void {
+  if (from === to) return;
+  if (!ALLOWED_STATUS_EDGES.has(`${from}\0${to}`)) {
+    throw new InvalidRunTransitionError(from, to, "direct");
+  }
+}
+
 // ---------------------------------------------------------------------------
 // StateMachine class
 // ---------------------------------------------------------------------------
@@ -92,13 +120,33 @@ export class AgentRunStateMachine {
 // ---------------------------------------------------------------------------
 
 export class InvalidRunTransitionError extends Error {
+  readonly event?: AgentRunEvent;
+  readonly targetStatus?: AgentRunStatus;
+
+  constructor(currentStatus: AgentRunStatus, event: AgentRunEvent);
+  constructor(
+    currentStatus: AgentRunStatus,
+    targetStatus: AgentRunStatus,
+    direct: "direct",
+  );
   constructor(
     public readonly currentStatus: AgentRunStatus,
-    public readonly event: AgentRunEvent,
+    second: AgentRunEvent | AgentRunStatus,
+    direct?: "direct",
   ) {
-    super(
-      `Invalid agent run transition: cannot apply "${event}" to status "${currentStatus}"`,
-    );
+    if (direct === "direct") {
+      const to = second as AgentRunStatus;
+      super(
+        `Invalid agent run transition: cannot transition from "${currentStatus}" to "${to}"`,
+      );
+      this.targetStatus = to;
+    } else {
+      const event = second as AgentRunEvent;
+      super(
+        `Invalid agent run transition: cannot apply "${event}" to status "${currentStatus}"`,
+      );
+      this.event = event;
+    }
     this.name = "InvalidRunTransitionError";
   }
 }

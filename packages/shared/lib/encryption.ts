@@ -18,16 +18,7 @@ function deriveKeyMaterial(): Buffer {
   return scryptSync(raw, salt, 32);
 }
 
-/** True when an encryption secret is present (hex 64 or any passphrase for scrypt fallback). */
-export function isLlmKeyEncryptionConfigured(): boolean {
-  return Boolean(process.env.ENCRYPTION_KEY?.trim());
-}
-
-/**
- * Encrypts a UTF-8 string for storage in `llm_api_keys.encrypted_key`.
- * Format: base64(iv || ciphertext || authTag)
- */
-export function encryptLlmApiKey(plaintext: string): string {
+function encryptUtf8(plaintext: string): string {
   const key = deriveKeyMaterial();
   const iv = randomBytes(IV_LENGTH);
   const cipher = createCipheriv(ALGORITHM, key, iv);
@@ -36,7 +27,7 @@ export function encryptLlmApiKey(plaintext: string): string {
   return Buffer.concat([iv, encrypted, tag]).toString("base64");
 }
 
-export function decryptLlmApiKey(stored: string): string {
+function decryptUtf8(stored: string): string {
   const key = deriveKeyMaterial();
   const buf = Buffer.from(stored, "base64");
   if (buf.length < IV_LENGTH + AUTH_TAG_LENGTH + 1) {
@@ -48,4 +39,37 @@ export function decryptLlmApiKey(stored: string): string {
   const decipher = createDecipheriv(ALGORITHM, key, iv);
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(enc), decipher.final()]).toString("utf8");
+}
+
+/** True when an encryption secret is present (hex 64 or any passphrase for scrypt fallback). */
+export function isLlmKeyEncryptionConfigured(): boolean {
+  return Boolean(process.env.ENCRYPTION_KEY?.trim());
+}
+
+/**
+ * Encrypts a UTF-8 string for storage in `llm_api_keys.encrypted_key`.
+ * Format: base64(iv || ciphertext || authTag)
+ */
+export function encryptLlmApiKey(plaintext: string): string {
+  return encryptUtf8(plaintext);
+}
+
+export function decryptLlmApiKey(stored: string): string {
+  return decryptUtf8(stored);
+}
+
+export function encryptToken(plaintext: string): string {
+  return encryptUtf8(plaintext);
+}
+
+export function decryptToken(stored: string): string {
+  return decryptUtf8(stored);
+}
+
+export function decryptTokenSafe(value: string): string {
+  try {
+    return decryptToken(value);
+  } catch {
+    return value;
+  }
 }

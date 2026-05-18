@@ -1,22 +1,14 @@
 import { timingSafeEqual } from "crypto";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { agentRuns, chatMessages, chats, ciEvents, sessions, syncConnections } from "@openforge/db";
+import { ciEvents, sessions } from "@openforge/db";
 import { logger, ValidationError } from "@openforge/shared";
-import {
-  ensureUserSkillsRepo,
-  getBuiltinRaw,
-  listMdSlugsInRepoPath,
-  normalizeActiveSkills,
-  resolveActiveSkills,
-  REPO_SKILLS_PATH,
-  skillMarkdownToResolved,
-} from "@openforge/skills";
-import type { ResolvedSkill } from "@openforge/skills";
 import type { PlatformDb } from "../interfaces/database";
 import type { QueueAdapter } from "../interfaces/queue";
-import { getDefaultForgeProvider, getForgeProviderForAuth } from "../forge/factory";
-import type { ForgeProvider, ForgeProviderType } from "../forge/provider";
+import {
+  enqueueSessionTriggerJob as enqueueSessionTriggerJobImpl,
+  getForgeProviderForSession,
+} from "./session-agent-jobs";
 
 // ---------------------------------------------------------------------------
 // CI Result Payload schema (Zod)
@@ -53,8 +45,6 @@ export const ciResultPayloadSchema = z.object({
 
 export type CIResultPayload = z.infer<typeof ciResultPayloadSchema>;
 
-const DEFAULT_MODEL_ID = "anthropic/claude-sonnet-4-5";
-
 // ---------------------------------------------------------------------------
 // CIService
 // ---------------------------------------------------------------------------
@@ -64,23 +54,6 @@ export class CIService {
     private db: PlatformDb,
     private queue: QueueAdapter,
   ) {}
-
-  /** Resolve a ForgeProvider for a session, respecting its forgeType. */
-  private async getForgeForSession(session: { forgeType: string | null; userId: string }): Promise<ForgeProvider> {
-    const forgeType = (session.forgeType ?? "github") as ForgeProviderType;
-    if (forgeType === "forgejo") {
-      return getDefaultForgeProvider(process.env.FORGEJO_AGENT_TOKEN ?? "");
-    }
-    const [conn] = await this.db
-      .select({ accessToken: syncConnections.accessToken })
-      .from(syncConnections)
-      .where(and(eq(syncConnections.userId, session.userId), eq(syncConnections.provider, forgeType)))
-      .limit(1);
-    if (conn?.accessToken) {
-      return getForgeProviderForAuth({ forgeToken: conn.accessToken, forgeType });
-    }
-    return getDefaultForgeProvider(process.env.FORGEJO_AGENT_TOKEN ?? "");
-  }
 
   // -------------------------------------------------------------------------
   // handleResult — POST /api/ci/results
@@ -154,7 +127,7 @@ export class CIService {
       typeof existingPayload.commitSha === "string" ? existingPayload.commitSha : undefined;
 
     try {
-      const forge = await this.getForgeForSession(session);
+      const forge = await getForgeProviderForSession(this.db, session);
 
       let sha = commitSha;
       if (!sha) {
@@ -216,7 +189,7 @@ export class CIService {
     ].join("\n\n");
 
     try {
-      await this.enqueueSessionTriggerJob({
+      await enqueueSessionTriggerJobImpl(this.db, this.queue, {
         sessionRow: session,
         userId: session.userId,
         trigger: "ci_failure",
@@ -229,152 +202,10 @@ export class CIService {
     }
   }
 
-  /**
-   * Enqueue an agent job triggered by a non-user-message event.
-   * Mirrors SessionService.enqueueSessionTriggerJob.
-   */
-  async enqueueSessionTriggerJob(params: {
-    sessionRow: typeof sessions.$inferSelect;
-    userId: string;
-    chatTitle?: string;
-    trigger: "ci_failure" | "review_comment" | "pr_opened" | "pr_merged" | "workflow_run";
-    fixContext: string;
-    modelId?: string;
-  }): Promise<{ runId: string; chatId: string } | null> {
-    const { sessionRow, userId, trigger, fixContext, modelId } = params;
-
-    if (trigger === "ci_failure") {
-      const attempts = sessionRow.ciFixAttempts ?? 0;
-      const max = sessionRow.maxCiFixAttempts ?? 3;
-      if (attempts >= max) return null;
-      await this.db
-        .update(sessions)
-        .set({ ciFixAttempts: attempts + 1, updatedAt: new Date() })
-        .where(eq(sessions.id, sessionRow.id));
-    }
-
-    const chatId = await this.getOrCreateChatId(
-      sessionRow.id,
-      params.chatTitle ?? sessionRow.title,
-    );
-
-    await this.db.insert(chatMessages).values({
-      id: crypto.randomUUID(),
-      chatId,
-      role: "user",
-      parts: [{ type: "text", text: fixContext }],
-    });
-
-    const rows = await this.db
-      .select()
-      .from(chatMessages)
-      .where(eq(chatMessages.chatId, chatId))
-      .orderBy(asc(chatMessages.createdAt));
-
-    const messages = rows.map((m) => ({
-      role: m.role as "user" | "assistant",
-      content: m.parts,
-    }));
-
-    const runId = crypto.randomUUID();
-    const effectiveModelId = modelId ?? DEFAULT_MODEL_ID;
-
-    const forge = await this.getForgeForSession(sessionRow);
-    const resolvedSkills = await this.resolveSkillsForSession(
-      sessionRow,
-      forge,
-      sessionRow.forgeUsername ?? "",
-    );
-
-    await this.db.insert(agentRuns).values({
-      id: runId,
-      chatId,
-      sessionId: sessionRow.id,
-      userId,
-      modelId: effectiveModelId,
-      status: "queued",
-      trigger,
-      createdAt: new Date(),
-    });
-
-    await this.db
-      .update(chats)
-      .set({ activeRunId: runId, updatedAt: new Date() })
-      .where(eq(chats.id, chatId));
-
-    await this.db
-      .update(sessions)
-      .set({ lastActivityAt: new Date(), updatedAt: new Date() })
-      .where(eq(sessions.id, sessionRow.id));
-
-    await this.queue.ensureGroup();
-    await this.queue.enqueue({
-      runId,
-      chatId,
-      sessionId: sessionRow.id,
-      userId,
-      messages,
-      resolvedSkills,
-      projectConfig: sessionRow.projectConfig,
-      projectContext: sessionRow.projectContext ?? undefined,
-      modelId: effectiveModelId,
-      fixContext,
-      trigger,
-      maxRetries: 3,
-    });
-
-    return { runId, chatId };
-  }
-
-  private async getOrCreateChatId(sessionId: string, title: string): Promise<string> {
-    const [existing] = await this.db
-      .select({ id: chats.id })
-      .from(chats)
-      .where(eq(chats.sessionId, sessionId))
-      .orderBy(desc(chats.createdAt))
-      .limit(1);
-    if (existing) return existing.id;
-    const id = crypto.randomUUID();
-    await this.db.insert(chats).values({ id, sessionId, title });
-    return id;
-  }
-
-  private async resolveSkillsForSession(
-    sessionRow: {
-      repoPath: string | null;
-      branch: string | null;
-      activeSkills: Array<{ source: "builtin" | "user" | "repo"; slug: string }> | null | undefined;
-    },
-    forge: ForgeProvider,
-    forgeUsername: string,
-  ): Promise<ResolvedSkill[]> {
-    if (forgeUsername) {
-      await ensureUserSkillsRepo(forge, forgeUsername);
-    }
-
-    const [owner, repo] = (sessionRow.repoPath ?? "").split("/");
-    const branch = sessionRow.branch ?? "main";
-    const repoSlugs =
-      owner && repo
-        ? await listMdSlugsInRepoPath(forge, owner, repo, REPO_SKILLS_PATH, branch)
-        : [];
-
-    const active = normalizeActiveSkills(sessionRow.activeSkills, repoSlugs);
-    const resolved = await resolveActiveSkills(forge, {
-      activeSkills: active,
-      forgeUsername,
-      projectRepoPath: sessionRow.repoPath ?? "",
-      ref: branch,
-    });
-
-    if (resolved.length === 0) {
-      const fallback = getBuiltinRaw("implementation");
-      if (fallback) {
-        return [skillMarkdownToResolved("builtin", "implementation", fallback)];
-      }
-    }
-
-    return resolved;
+  enqueueSessionTriggerJob(
+    params: Parameters<typeof enqueueSessionTriggerJobImpl>[2],
+  ): Promise<Awaited<ReturnType<typeof enqueueSessionTriggerJobImpl>>> {
+    return enqueueSessionTriggerJobImpl(this.db, this.queue, params);
   }
 }
 

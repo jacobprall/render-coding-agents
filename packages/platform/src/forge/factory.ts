@@ -31,7 +31,7 @@ export function createForgeProvider(config: ForgeProviderConfig): ForgeProvider 
       return new GitHubProvider(config.baseUrl, config.token, config.webhookSecret);
 
     case "gitlab":
-      return new GitLabProvider(config.baseUrl, config.token);
+      return new GitLabProvider(config.baseUrl, config.token, config.webhookSecret);
 
     default:
       throw new Error(`Unknown forge provider type: ${config.type}`);

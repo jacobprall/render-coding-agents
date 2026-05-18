@@ -235,7 +235,7 @@ export function gitlabWebhookToInboundEvent(
 
   if (event === "Note Hook") {
     const attrs = payload.object_attributes as Record<string, unknown> | undefined;
-    if (attrs?.noteable_type === "MergeRequest" || attrs?.noteable_type === "MergeRequest") {
+    if (attrs?.noteable_type === "MergeRequest") {
       kind = "review_comment";
       const mr = payload.merge_request as Record<string, unknown> | undefined;
       extraPayload.body = attrs?.note;

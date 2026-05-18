@@ -17,6 +17,7 @@ import postgres from "postgres";
 import bcrypt from "bcryptjs";
 import { eq } from "drizzle-orm";
 import * as schema from "@openforge/db/schema";
+import { encryptToken } from "@openforge/shared/lib/encryption";
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) { console.error("DATABASE_URL required"); process.exit(1); }
@@ -115,6 +116,7 @@ async function main() {
 
   const forgejoUser = await ensureForgejoUser();
   const forgejoToken = await createForgejoToken();
+  const encForgeToken = encryptToken(forgejoToken);
   console.log(`Forgejo API token created for ${forgejoUser.login}`);
 
   const passwordHash = await bcrypt.hash(password!, 12);
@@ -146,11 +148,11 @@ async function main() {
         type: "oauth",
         provider: "forgejo",
         providerAccountId: String(forgejoUser.id),
-        access_token: forgejoToken,
+        access_token: encForgeToken,
       })
       .onConflictDoUpdate({
         target: [schema.accounts.provider, schema.accounts.providerAccountId],
-        set: { access_token: forgejoToken },
+        set: { access_token: encForgeToken },
       });
 
     console.log(`\nUpdated existing user: ${existing.id} (${normalizedEmail})`);
@@ -170,7 +172,7 @@ async function main() {
       type: "oauth",
       provider: "forgejo",
       providerAccountId: String(forgejoUser.id),
-      access_token: forgejoToken,
+      access_token: encForgeToken,
     });
 
     console.log(`\nCreated admin user: ${userId} (${normalizedEmail})`);

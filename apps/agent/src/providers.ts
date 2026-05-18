@@ -9,6 +9,7 @@ import {
 } from "@openforge/sandbox";
 import { ExeDevSandboxProvider, exeDevProviderFromEnv } from "@openforge/sandbox/providers/exedev";
 import type { SandboxProvider } from "@openforge/sandbox/provider";
+import { decryptTokenSafe } from "@openforge/shared/lib/encryption";
 import type { UpstreamMirrorInfo } from "./context/agent-context";
 
 // ─── Forge providers ─────────────────────────────────────────────────────────
@@ -43,7 +44,7 @@ export async function getForgeProviderForSession(
   const envFallback = forgeType === "github"
     ? process.env.GITHUB_TOKEN
     : process.env.GITLAB_TOKEN;
-  const token = conn?.accessToken ?? envFallback;
+  const token = (conn?.accessToken ? decryptTokenSafe(conn.accessToken) : undefined) ?? envFallback;
   if (!token) {
     throw new Error(`No ${forgeType} token found for user ${session.userId} — check sync connections or env`);
   }
@@ -124,7 +125,11 @@ export async function resolveUpstreamMirror(
 
   const provider = conn.provider as ForgeProviderType;
   const baseUrl = providerBaseUrl(provider);
-  const forge = createForgeProvider({ type: provider, baseUrl, token: conn.accessToken });
+  const forge = createForgeProvider({
+    type: provider,
+    baseUrl,
+    token: decryptTokenSafe(conn.accessToken),
+  });
 
   return {
     provider,

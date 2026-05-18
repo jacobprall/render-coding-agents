@@ -3,6 +3,7 @@ import type { NextAuthConfig } from "next-auth";
 import GitHub from "next-auth/providers/github";
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import { and, eq } from "drizzle-orm";
+import { encryptToken, decryptTokenSafe } from "@openforge/shared/lib/encryption";
 import { getDb } from "@/lib/db";
 import {
   users,
@@ -13,6 +14,7 @@ import {
   projects,
 } from "@openforge/db/schema";
 import { credentialsProvider } from "./providers/credentials";
+import { drizzleAdapterWithEncryptedForgeTokens } from "./drizzle-adapter-with-encrypted-tokens";
 
 declare module "next-auth" {
   interface Session {
@@ -71,7 +73,11 @@ async function loadForgeAccessTokenForUser(
       .where(and(eq(accounts.userId, userId), eq(accounts.provider, provider)))
       .limit(1);
     if (row?.accessToken) {
-      return { token: row.accessToken, forgeType: provider, username: row.providerAccountId };
+      return {
+        token: decryptTokenSafe(row.accessToken),
+        forgeType: provider,
+        username: row.providerAccountId,
+      };
     }
   }
 
@@ -83,7 +89,11 @@ async function loadForgeAccessTokenForUser(
       .where(and(eq(syncConnections.userId, userId), eq(syncConnections.provider, provider)))
       .limit(1);
     if (conn?.accessToken) {
-      return { token: conn.accessToken, forgeType: provider, username: conn.remoteUsername ?? undefined };
+      return {
+        token: decryptTokenSafe(conn.accessToken),
+        forgeType: provider,
+        username: conn.remoteUsername ?? undefined,
+      };
     }
   }
 
@@ -94,7 +104,11 @@ async function loadForgeAccessTokenForUser(
     .where(and(eq(accounts.userId, userId), eq(accounts.provider, "forgejo")))
     .limit(1);
   if (forgejoRow?.accessToken) {
-    return { token: forgejoRow.accessToken, forgeType: "forgejo", username: forgejoRow.providerAccountId };
+    return {
+      token: decryptTokenSafe(forgejoRow.accessToken),
+      forgeType: "forgejo",
+      username: forgejoRow.providerAccountId,
+    };
   }
 
   return undefined;
@@ -117,17 +131,19 @@ async function ensureSyncConnection(
     .where(and(eq(syncConnections.userId, userId), eq(syncConnections.provider, provider)))
     .limit(1);
 
+  const encryptedAccess = encryptToken(accessToken);
+
   if (existing) {
     await db
       .update(syncConnections)
-      .set({ accessToken, remoteUsername: username || null })
+      .set({ accessToken: encryptedAccess, remoteUsername: username || null })
       .where(eq(syncConnections.id, existing.id));
   } else {
     await db.insert(syncConnections).values({
       id: crypto.randomUUID(),
       userId,
       provider,
-      accessToken,
+      accessToken: encryptedAccess,
       refreshToken: null,
       expiresAt: null,
       remoteUsername: username || null,
@@ -148,11 +164,13 @@ if (process.env.GITHUB_OAUTH_CLIENT_ID) {
 }
 
 const config: NextAuthConfig = {
-  adapter: DrizzleAdapter(getDb(), {
-    usersTable: users,
-    accountsTable: accounts,
-    verificationTokensTable: verificationTokens,
-  }),
+  adapter: drizzleAdapterWithEncryptedForgeTokens(
+    DrizzleAdapter(getDb(), {
+      usersTable: users,
+      accountsTable: accounts,
+      verificationTokensTable: verificationTokens,
+    }),
+  ),
 
   session: { strategy: "jwt" },
 

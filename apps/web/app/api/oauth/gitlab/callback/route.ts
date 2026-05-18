@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { eq, and } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { syncConnections } from "@openforge/db";
+import { encryptToken } from "@openforge/shared/lib/encryption";
 import { getSession } from "@/lib/auth/session";
 
 const gitlabUrl = (process.env.GITLAB_URL || "https://gitlab.com").replace(/\/$/, "");
@@ -80,6 +81,7 @@ export async function GET(req: Request) {
   }
 
   const { accessToken, refreshToken, expiresIn, username } = oauthResult;
+  const storedAccessToken = encryptToken(accessToken);
 
   const db = getDb();
   const userId = String(session.userId);
@@ -93,7 +95,7 @@ export async function GET(req: Request) {
     await db
       .update(syncConnections)
       .set({
-        accessToken,
+        accessToken: storedAccessToken,
         refreshToken,
         expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000) : null,
         remoteUsername: username || null,
@@ -104,7 +106,7 @@ export async function GET(req: Request) {
       id: crypto.randomUUID(),
       userId,
       provider: "gitlab",
-      accessToken,
+      accessToken: storedAccessToken,
       refreshToken,
       expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000) : null,
       remoteUsername: username || null,
