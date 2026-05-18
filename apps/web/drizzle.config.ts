@@ -34,5 +34,6 @@ export default defineConfig({
     "orgs",
     "projects",
     "project_repos",
+    "webhook_deliveries",
   ],
 });

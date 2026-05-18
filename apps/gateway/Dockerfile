@@ -14,6 +14,7 @@ COPY package.json bun.lock ./
 COPY apps/gateway/package.json apps/gateway/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY apps/agent/package.json apps/agent/package.json
+COPY apps/cli/package.json apps/cli/package.json
 COPY packages/platform/package.json packages/platform/package.json
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/db/package.json packages/db/package.json

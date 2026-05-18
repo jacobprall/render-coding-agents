@@ -45,6 +45,7 @@ COPY --chown=sandbox:sandbox package.json bun.lock ./
 COPY --chown=sandbox:sandbox apps/gateway/package.json apps/gateway/package.json
 COPY --chown=sandbox:sandbox apps/web/package.json apps/web/package.json
 COPY --chown=sandbox:sandbox apps/agent/package.json apps/agent/package.json
+COPY --chown=sandbox:sandbox apps/cli/package.json apps/cli/package.json
 COPY --chown=sandbox:sandbox packages/platform/package.json packages/platform/package.json
 COPY --chown=sandbox:sandbox packages/shared/package.json packages/shared/package.json
 COPY --chown=sandbox:sandbox packages/db/package.json packages/db/package.json
