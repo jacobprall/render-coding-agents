@@ -48,7 +48,7 @@ export function Dropdown({
 
   return (
     <div ref={containerRef} className={cn("relative inline-block", className)}>
-      <div onClick={() => setOpen((prev) => !prev)}>{trigger}</div>
+      <div onClick={() => setOpen((prev) => !prev)} className="cursor-pointer">{trigger}</div>
       {open && (
         <div
           className={cn(
