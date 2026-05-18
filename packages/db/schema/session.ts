@@ -151,7 +151,7 @@ export const agentRuns = pgTable(
       enum: ["understand", "spec", "execute", "verify", "deliver", "complete", "failed"],
     }),
     status: text("status", {
-      enum: ["queued", "running", "completed", "aborted", "failed", "error"],
+      enum: ["queued", "running", "paused", "completed", "aborted", "failed", "error"],
     }).notNull().default("queued"),
     trigger: text("trigger", {
       enum: ["user_message", "ci_failure", "review_comment", "pr_opened", "pr_merged", "workflow_run", "deploy_failure"],
@@ -161,6 +161,7 @@ export const agentRuns = pgTable(
     totalDurationMs: integer("total_duration_ms"),
     promptTokens: integer("prompt_tokens"),
     completionTokens: integer("completion_tokens"),
+    costUsd: text("cost_usd"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [

@@ -4,7 +4,16 @@
 
 OpenForge is a four-tier system: clients → application services → a shared platform layer → infrastructure.
 
-All three application processes (web, gateway, agent) create one `PlatformContainer` at startup and call the same typed domain services. No app contains business logic directly; route handlers and job processors are thin adapters that resolve auth and delegate to services.
+All four application processes (web, gateway, agent, CLI) interact with the same typed domain services via the platform layer. No app contains business logic directly; route handlers and job processors are thin adapters that resolve auth and delegate to services.
+
+**Apps:**
+
+| App | Path | Role |
+|-----|------|------|
+| **Web** | `apps/web` | Next.js dashboard: auth, sessions/chat, repo browser, settings |
+| **Gateway** | `apps/gateway` | Hono: REST, SSE streams, webhooks, CI callback, MCP server |
+| **Agent** | `apps/agent` | Bun worker: Redis Streams consumer, LLM loop, tools, sandbox |
+| **CLI** | `apps/cli` | `forge` commands: chat, list, send, stop, pause, resume, stream, config |
 
 ## Authentication
 
@@ -84,7 +93,77 @@ const platform = createPlatform({
 | **InviteService** | User invitation lifecycle | `listInvites`, `createInvite`, `acceptInvite` |
 | **MirrorService** | GitHub/GitLab repo mirroring | `list`, `create`, `sync`, `delete`, `resolveConflict` |
 | **CIService** | CI result ingestion, webhook-driven CI updates, auto-fix | `handleResult`, `dispatchForEvent`, `enqueueSessionTriggerJob` |
-| **WebhookService** | Forgejo/GitHub/GitLab webhook routing | `handleForgejoWebhook`, `handleGithubWebhook`, `handleGitlabWebhook` |
+| **WebhookService** | Forgejo/GitHub/GitLab webhook routing + side effects | `handleForgejoWebhook`, `handleGithubWebhook`, `handleGitlabWebhook` |
+
+### Inbound event layer (`packages/platform/src/inbound`)
+
+All external signals (webhooks, CI callbacks, Render deploys) are normalised into a canonical `InboundEvent` shape before any routing or dispatch logic runs.
+
+```
+Incoming webhook
+  → Signature verification (provider-specific)
+  → Adapter: parse raw body → InboundEvent { id, source, kind, repo, pr, payload }
+  → InboundRouter: first-match-wins → RouteAction
+  → InboundDispatcher: execute RouteAction (enqueue trigger / create session / ignore)
+```
+
+**Components:**
+
+| File | Purpose |
+|---|---|
+| `inbound/types.ts` | `InboundEvent`, `RouteAction`, `SessionMatcher`, `InboundRoute` types |
+| `inbound/adapters.ts` | `githubWebhookToInboundEvent`, `forgejoWebhookToInboundEvent`, `gitlabWebhookToInboundEvent`, `renderWebhookToInboundEvent` |
+| `inbound/router.ts` | `InboundRouter` — evaluates the route table, emits `inbound.routed` / `inbound.ignored` logs |
+| `inbound/default-routes.ts` | Default route table: coalesce PR sync, review comment, PR opened/merged, CI failure, deploy failure |
+| `inbound/dispatcher.ts` | `InboundDispatcher` — executes `RouteAction`s, bridges to `ciService.enqueueSessionTriggerJob` |
+
+**Route actions:**
+
+| Action | When | Effect |
+|---|---|---|
+| `trigger_session` | review comment, PR event, CI failure | Calls `enqueueSessionTriggerJob` on matched sessions |
+| `create_diagnostic_session` | Deploy failure | Calls `sessions.createFromDeployFailure` |
+| `coalesce` | PR synchronize | Cancels `queued`/`running` agent runs for the PR, then executes inner action |
+| `ignore` | Unknown / uninteresting events | No-op, logged |
+
+**Idempotency:** Every processed delivery ID is stored in the `webhook_deliveries` table. Gateway routes check this table before processing — replayed or retried deliveries are safely no-op'd.
+
+### Agent run state machine (`packages/platform/src/state-machine.ts`)
+
+`AgentRunStateMachine` enforces valid `agent_runs.status` transitions. Prevents scattered ad-hoc status mutations.
+
+```
+queued  →  running  →  completed
+            ↓            (terminal)
+          aborted  ←  queued (cancel before pickup)
+            ↓
+          failed
+            ↓
+          error
+```
+
+| Status | Meaning |
+|---|---|
+| `queued` | Enqueued, waiting for a worker |
+| `running` | Picked up by a worker |
+| `completed` | Finished successfully |
+| `aborted` | Cancelled (user request or coalesce) |
+| `failed` | Unrecoverable runtime error |
+| `error` | Infrastructure error (dead-letter, timeout) |
+
+Use `runStateMachine.transition(current, event)` in services instead of direct status string assignments.
+
+### Permissions layer (`packages/platform/src/permissions`)
+
+Policy-based guardrails applied before/during agent runs. Three independent, composable guards:
+
+| Guard | File | Purpose |
+|---|---|---|
+| **CostGuard** | `cost-guard.ts` | Per-task and per-turn USD spend limits + warning threshold |
+| **ToolFilter** | `tool-filter.ts` | Allow/deny list for agent tool names |
+| **CredentialRedactor** | `credential-redactor.ts` | Regex-based secret redaction from tool outputs and messages |
+
+`resolvePolicy(overrides?)` merges caller config on top of `DEFAULT_POLICY`. The default policy has no cost limits, no tool restrictions, and a set of common credential patterns (OpenAI keys, GitHub PATs, Slack tokens, `password=` / `secret=` pairs).
 
 ### Pluggable adapters
 
@@ -209,3 +288,4 @@ All application state lives in Postgres. Schema is defined in `packages/db/schem
 | `api_keys` | Gateway API keys (hashed) |
 | `invites` | Invite flow + redemption |
 | `verification_tokens` | Email/magic-link tokens |
+| `webhook_deliveries` | Processed delivery IDs for inbound idempotency |

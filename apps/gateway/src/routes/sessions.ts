@@ -211,6 +211,20 @@ sessionRoutes.post("/:id/stop", async (c) => {
   return c.json(result);
 });
 
+sessionRoutes.post("/:id/pause", async (c) => {
+  const auth = c.get("auth");
+  const sessionId = c.req.param("id");
+  const result = await getPlatform().sessions.pause(auth, sessionId);
+  return c.json(result);
+});
+
+sessionRoutes.post("/:id/resume", async (c) => {
+  const auth = c.get("auth");
+  const sessionId = c.req.param("id");
+  const result = await getPlatform().sessions.resume(auth, sessionId);
+  return c.json(result);
+});
+
 const UpdatePhaseSchema = z.object({ phase: z.string() });
 
 sessionRoutes.post("/:id/phase", async (c) => {

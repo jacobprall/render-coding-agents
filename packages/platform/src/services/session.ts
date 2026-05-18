@@ -591,6 +591,94 @@ export class SessionService {
   }
 
   // -------------------------------------------------------------------------
+  // pause — POST /api/sessions/[id]/pause
+  // -------------------------------------------------------------------------
+
+  async pause(auth: AuthContext, sessionId: string): Promise<{ runId: string }> {
+    const [sessionRow] = await this.db
+      .select()
+      .from(sessions)
+      .where(and(eq(sessions.id, sessionId), eq(sessions.userId, auth.userId)))
+      .limit(1);
+
+    if (!sessionRow) throw new SessionNotFoundError();
+
+    const [chatRow] = await this.db
+      .select()
+      .from(chats)
+      .where(eq(chats.sessionId, sessionId))
+      .orderBy(desc(chats.createdAt))
+      .limit(1);
+
+    const runId = chatRow?.activeRunId;
+    if (!runId) {
+      throw new ValidationError("No active run to pause");
+    }
+
+    // Signal the agent worker to pause after current step
+    await this.events.setKey(`run:${runId}:pause`, "1", 3600);
+
+    // Update run status
+    await this.db
+      .update(agentRuns)
+      .set({ status: "paused" })
+      .where(eq(agentRuns.id, runId));
+
+    // Publish pause event on the run stream
+    await this.events.publish(`run:${runId}`, JSON.stringify({
+      type: "paused",
+      runId,
+      timestamp: new Date().toISOString(),
+    }));
+
+    return { runId };
+  }
+
+  // -------------------------------------------------------------------------
+  // resume — POST /api/sessions/[id]/resume
+  // -------------------------------------------------------------------------
+
+  async resume(auth: AuthContext, sessionId: string): Promise<{ runId: string }> {
+    const [sessionRow] = await this.db
+      .select()
+      .from(sessions)
+      .where(and(eq(sessions.id, sessionId), eq(sessions.userId, auth.userId)))
+      .limit(1);
+
+    if (!sessionRow) throw new SessionNotFoundError();
+
+    const [chatRow] = await this.db
+      .select()
+      .from(chats)
+      .where(eq(chats.sessionId, sessionId))
+      .orderBy(desc(chats.createdAt))
+      .limit(1);
+
+    const runId = chatRow?.activeRunId;
+    if (!runId) {
+      throw new ValidationError("No active run to resume");
+    }
+
+    // Clear the pause flag
+    await this.events.setKey(`run:${runId}:pause`, "", 1);
+
+    // Update run status back to running
+    await this.db
+      .update(agentRuns)
+      .set({ status: "running" })
+      .where(eq(agentRuns.id, runId));
+
+    // Publish resume event on the run stream
+    await this.events.publish(`run:${runId}`, JSON.stringify({
+      type: "resumed",
+      runId,
+      timestamp: new Date().toISOString(),
+    }));
+
+    return { runId };
+  }
+
+  // -------------------------------------------------------------------------
   // updatePhase — POST /api/sessions/[id]/phase
   // -------------------------------------------------------------------------
 
@@ -1004,6 +1092,75 @@ export class SessionService {
       },
     });
 
+    return { sessionId, runId: result.runId };
+  }
+
+  // -------------------------------------------------------------------------
+  // createFromWebhook — generic webhook triggers a new session + agent run
+  // -------------------------------------------------------------------------
+
+  async createFromWebhook(params: {
+    userId?: string;
+    description: string;
+    repoUrl?: string;
+    branch?: string;
+    model?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<{ sessionId: string; runId: string } | null> {
+    const { description, repoUrl, branch, model, metadata } = params;
+
+    // Resolve user — use provided userId or fall back to system user
+    const userId = params.userId ?? process.env.OPENFORGE_SYSTEM_USER_ID;
+    if (!userId) {
+      logger.warn("generic webhook: no userId and no OPENFORGE_SYSTEM_USER_ID", {});
+      return null;
+    }
+
+    // Derive repoPath from URL if provided (e.g. "https://github.com/owner/repo.git" → "owner/repo")
+    let repoPath: string | null = null;
+    if (repoUrl) {
+      const match = repoUrl.match(/[/:]([^/]+\/[^/.]+?)(?:\.git)?$/);
+      if (match) repoPath = match[1]!;
+    }
+
+    const sessionId = crypto.randomUUID();
+    const chatId = crypto.randomUUID();
+    const title = description.slice(0, 100);
+
+    await this.db.insert(sessions).values({
+      id: sessionId,
+      userId,
+      title,
+      status: "running",
+      repoPath,
+      branch: branch ?? "main",
+      baseBranch: "main",
+      phase: "execute",
+      workflowMode: "standard",
+      forgeType: "github",
+      projectContext: metadata ? JSON.stringify(metadata) : null,
+    });
+
+    await this.db.insert(chats).values({ id: chatId, sessionId, title });
+
+    const [sessionRow] = await this.db
+      .select()
+      .from(sessions)
+      .where(eq(sessions.id, sessionId))
+      .limit(1);
+
+    if (!sessionRow) return null;
+
+    const result = await enqueueSessionTriggerJob(this.db, this.queue, {
+      sessionRow,
+      userId,
+      chatTitle: title,
+      trigger: "workflow_run",
+      fixContext: description,
+      modelId: model,
+    });
+
+    if (!result) return null;
     return { sessionId, runId: result.runId };
   }
 

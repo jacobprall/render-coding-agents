@@ -33,6 +33,9 @@ import { ProjectService } from "./services/project";
 import { MirrorService } from "./services/mirror";
 import { CIService } from "./services/ci";
 import { WebhookService } from "./services/webhook";
+import { InboundRouter } from "./inbound/router";
+import { InboundDispatcher } from "./inbound/dispatcher";
+import { DEFAULT_ROUTES } from "./inbound/default-routes";
 
 // ---------------------------------------------------------------------------
 // Container config
@@ -81,6 +84,8 @@ export interface PlatformContainer {
   mirrors: MirrorService;
   ci: CIService;
   webhooks: WebhookService;
+  inboundRouter: InboundRouter;
+  inboundDispatcher: InboundDispatcher;
 }
 
 /**
@@ -160,6 +165,12 @@ function buildContainer(
   const mirrors = new MirrorService(db);
   const ci = new CIService(db, queue);
   const webhooks = new WebhookService(db, queue, events, ci);
+  const inboundRouter = new InboundRouter(DEFAULT_ROUTES);
+  const inboundDispatcher = new InboundDispatcher({
+    db,
+    queue,
+    ciService: ci,
+  });
 
   return {
     db,
@@ -183,5 +194,7 @@ function buildContainer(
     mirrors,
     ci,
     webhooks,
+    inboundRouter,
+    inboundDispatcher,
   };
 }

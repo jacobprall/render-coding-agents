@@ -137,6 +137,60 @@ export { ConsoleSink, WebhookSink, CompositeSink, NoopSink } from "./interfaces/
 export type { AuthProvider } from "./interfaces/auth-provider";
 export { StaticTokenAuthProvider, CompositeAuthProvider } from "./interfaces/auth-provider";
 
+// Permissions layer — cost guard, tool filter, credential redactor
+export type {
+  PermissionPolicy,
+  ToolPermissions,
+  CostPermissions,
+  CredentialPermissions,
+  SandboxPermissions,
+  CostGuardState,
+  CostGuardDecision,
+  ToolFilterDecision,
+} from "./permissions";
+export {
+  DEFAULT_POLICY,
+  resolvePolicy,
+  evaluateCost,
+  evaluateTool,
+  filterTools,
+  redactCredentials,
+  containsCredentials,
+} from "./permissions";
+
+// Agent run state machine
+export {
+  AgentRunStateMachine,
+  InvalidRunTransitionError,
+  runStateMachine,
+} from "./state-machine";
+export type { AgentRunStatus, AgentRunEvent } from "./state-machine";
+
 // Composition root
 export { createPlatform, createPlatformFromInstances } from "./container";
 export type { PlatformConfig, PlatformInstances, PlatformContainer } from "./container";
+
+// Inbound event layer — InboundEvent, Router, Dispatcher, adapters
+export type {
+  InboundEvent,
+  InboundSource,
+  InboundKind,
+  InboundActor,
+  InboundRepo,
+  InboundPR,
+  RouteAction,
+  TriggerSessionAction,
+  CreateDiagnosticSessionAction,
+  CoalesceAction,
+  IgnoreAction,
+  SessionMatcher,
+  InboundRoute,
+  AgentTriggerKind,
+} from "./inbound";
+export { InboundRouter, InboundDispatcher, DEFAULT_ROUTES } from "./inbound";
+export {
+  githubWebhookToInboundEvent,
+  forgejoWebhookToInboundEvent,
+  gitlabWebhookToInboundEvent,
+  renderWebhookToInboundEvent,
+} from "./inbound";

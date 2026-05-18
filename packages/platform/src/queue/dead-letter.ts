@@ -1,4 +1,5 @@
 import type Redis from "ioredis";
+import { AGENT_JOBS_STREAM } from "./job-queue";
 
 export const DEAD_LETTER_KEY = "agent:dead-letter";
 
@@ -33,7 +34,8 @@ export async function retryDeadLetterJob(
     const parsed = JSON.parse(entries[i]!);
     if (parsed.id === jobId) {
       await redis.lrem(DEAD_LETTER_KEY, 1, entries[i]!);
-      await redis.rpush("agent:jobs", JSON.stringify(parsed.job));
+      // Re-enqueue onto the Streams queue (not the legacy list)
+      await redis.xadd(AGENT_JOBS_STREAM, "*", "payload", JSON.stringify(parsed.job));
       return true;
     }
   }
