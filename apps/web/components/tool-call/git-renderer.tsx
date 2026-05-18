@@ -42,18 +42,18 @@ export function GitRenderer({ args, result, status = "idle" }: Props) {
       status={derivedStatus}
     >
       {cmd && (
-        <pre className="text-xs text-text-secondary whitespace-pre-wrap mb-2">
-          <span className="text-text-tertiary select-none">git </span>
+        <pre className="text-xs text-foreground whitespace-pre-wrap mb-2">
+          <span className="text-muted-foreground select-none">git </span>
           {cmd}
         </pre>
       )}
       {output && (
-        <pre className="text-xs whitespace-pre-wrap text-text-primary">
+        <pre className="text-xs whitespace-pre-wrap text-foreground">
           {output.length > 2000 ? output.slice(0, 2000) + "\n…" : output}
         </pre>
       )}
       {stderr && (
-        <pre className="text-xs whitespace-pre-wrap text-text-tertiary mt-1">
+        <pre className="text-xs whitespace-pre-wrap text-muted-foreground mt-1">
           {stderr}
         </pre>
       )}

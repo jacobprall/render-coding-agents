@@ -60,7 +60,7 @@ export function GlobRenderer({
             {files.length} file{files.length !== 1 ? "s" : ""}
           </div>
           {files.slice(0, 50).map((f, i) => (
-            <div key={i} className="text-text-secondary text-xs">
+            <div key={i} className="text-foreground text-xs">
               {f}
             </div>
           ))}
@@ -103,17 +103,17 @@ export function GrepRenderer({
       {result?.error ? (
         <span className="text-danger">{result.error}</span>
       ) : output ? (
-        <pre className="text-xs whitespace-pre-wrap text-text-secondary">
+        <pre className="text-xs whitespace-pre-wrap text-foreground">
           {output.length > 2000 ? output.slice(0, 2000) + "\n…" : output}
         </pre>
       ) : matches.length > 0 ? (
         <div className="space-y-0.5">
           {matches.slice(0, 30).map((m, i) => (
             <div key={i} className="text-xs">
-              <span className="text-text-tertiary">
+              <span className="text-muted-foreground">
                 {m.file}:{m.line}
               </span>
-              <span className="text-text-secondary ml-1">{m.text}</span>
+              <span className="text-foreground ml-1">{m.text}</span>
             </div>
           ))}
           {matches.length > 30 && (

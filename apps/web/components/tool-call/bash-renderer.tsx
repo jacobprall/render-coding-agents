@@ -57,13 +57,13 @@ export function BashRenderer({ args, result, status = "idle" }: Props) {
       preview={preview}
     >
       {cmd && (
-        <pre className="text-xs text-text-secondary whitespace-pre-wrap mb-2">
-          <span className="text-text-tertiary select-none">$ </span>
+        <pre className="text-xs text-foreground whitespace-pre-wrap mb-2">
+          <span className="text-muted-foreground select-none">$ </span>
           {cmd}
         </pre>
       )}
       {output && (
-        <pre className="text-xs whitespace-pre-wrap text-text-primary">{output}</pre>
+        <pre className="text-xs whitespace-pre-wrap text-foreground">{output}</pre>
       )}
       {stderr && (
         <pre className="text-xs whitespace-pre-wrap text-danger mt-1">

@@ -75,7 +75,7 @@ export function ToolLayout({
         {statusIcon && <span className="shrink-0">{statusIcon}</span>}
       </button>
       {!open && preview && (
-        <div className="min-w-0 border-t border-stroke-subtle bg-surface-0 px-(--of-space-md) py-(--of-space-xs) font-mono text-text-tertiary overflow-x-auto overflow-y-hidden">
+        <div className="min-w-0 border-t border-stroke-subtle bg-surface-0 px-(--of-space-md) py-(--of-space-xs) font-mono text-foreground/70 overflow-x-auto overflow-y-hidden">
           {preview}
         </div>
       )}
@@ -85,7 +85,7 @@ export function ToolLayout({
       >
         <div className="overflow-hidden">
           {children && (
-            <div className="border-t border-stroke-subtle bg-surface-0 px-(--of-space-md) py-(--of-space-sm) font-mono overflow-auto max-h-128">
+            <div className="border-t border-stroke-subtle bg-surface-0 px-(--of-space-md) py-(--of-space-sm) font-mono text-foreground overflow-auto max-h-128">
               {children}
             </div>
           )}

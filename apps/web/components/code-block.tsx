@@ -115,7 +115,7 @@ export function CodeBlock({
             dangerouslySetInnerHTML={{ __html: html }}
           />
         ) : (
-          <pre className="p-(--of-space-md) text-[13px] leading-[1.6] text-text-secondary font-mono whitespace-pre-wrap">
+          <pre className="p-(--of-space-md) text-[13px] leading-[1.6] text-foreground font-mono whitespace-pre-wrap">
             {code}
           </pre>
         )}

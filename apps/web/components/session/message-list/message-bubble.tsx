@@ -15,7 +15,7 @@ export function MessageBubble({ message }: { message: Message }) {
   if (isUser) {
     return (
       <div className="flex flex-col items-end gap-1 [content-visibility:auto]">
-        <div className="max-w-[80%] bg-accent px-(--of-space-md) py-(--of-space-sm) text-[15px] leading-relaxed text-white">
+        <div className="max-w-[80%] bg-primary px-(--of-space-md) py-(--of-space-sm) text-[15px] leading-relaxed text-primary-foreground">
           {message.parts
             .filter((p) => p.type === "text")
             .map((p, i) => (
