@@ -43,7 +43,7 @@ v1 added the ability to **create** services and databases, plus ambient awarenes
 - Cost confirmation guidance added to `# Guidance` section
 
 **Config:**
-- `render.yaml` — `RENDER_OWNER_ID` (sync: false) added to openforge-agent
+- `render.yaml` — `RENDER_OWNER_ID` (sync: false) added to agent
 - `.env` — `RENDER_OWNER_ID=` placeholder added
 
 ### v1 Total: 13 Render tools
@@ -66,9 +66,9 @@ v1 added the ability to **create** services and databases, plus ambient awarenes
 ### Deploy checklist
 
 - [ ] Commit and push v1 changes to GitHub
-- [ ] Set `RENDER_API_KEY` on openforge-agent in Render dashboard
-- [ ] Set `RENDER_OWNER_ID` on openforge-agent in Render dashboard
-- [ ] Redeploy openforge-agent
+- [ ] Set `RENDER_API_KEY` on agent in Render dashboard
+- [ ] Set `RENDER_OWNER_ID` on agent in Render dashboard
+- [ ] Redeploy agent
 
 ---
 
@@ -264,8 +264,8 @@ If any exist, append a `# Recent Observations` block to the system prompt:
 
 ```
 # Recent Observations
-- [critical] Deploy failed for openforge-agent: OOM killed (2min ago)
-- [info] Deploy succeeded for openforge-web (15min ago)
+- [critical] Deploy failed for agent: OOM killed (2min ago)
+- [info] Deploy succeeded for web (15min ago)
 ```
 
 After `generateText` returns, mark them acknowledged:

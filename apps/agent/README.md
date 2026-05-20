@@ -1,4 +1,4 @@
-# openforge-agent
+# agent
 
 Persistent Bun worker that consumes agent jobs from Redis Streams, runs multi-step LLM execution (Anthropic / OpenAI via Vercel AI SDK), and streams results back to the web app.
 

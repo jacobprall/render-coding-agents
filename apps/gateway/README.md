@@ -26,7 +26,7 @@ The server starts on port `4100` by default (override with `GATEWAY_PORT`).
 | `DATABASE_URL` | Yes | Postgres connection string |
 | `REDIS_URL` | Yes | Redis connection string (used for streaming / pub-sub) |
 | `GATEWAY_API_SECRET` | Yes | Shared secret for admin-level bearer authentication |
-| `FORGEJO_INTERNAL_URL` | Yes | Internal URL of the Forgejo instance (e.g. `http://openforge-forgejo:3000`) |
+| `FORGEJO_INTERNAL_URL` | Yes | Internal URL of the Forgejo instance (e.g. `http://forgejo:3000`) |
 | `FORGEJO_AGENT_TOKEN` | Yes | Forgejo API token used by the platform for automated git operations |
 | `FORGEJO_WEBHOOK_SECRET` | No | HMAC secret used to verify incoming Forgejo webhooks |
 | `CI_RUNNER_SECRET` | No | Shared secret for authenticating `POST /api/ci/results` callbacks (e.g. from GitHub Actions) |

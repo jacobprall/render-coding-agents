@@ -236,7 +236,7 @@ Skills are markdown files with YAML frontmatter (`name`, `description`, `default
 | Source | Location | Scope |
 |---|---|---|
 | **Built-in** | `packages/skills/builtins/*.md` | Ship with the platform |
-| **User** | `{username}/openforge-skills/skills/*.md` on Forgejo | Per-user, across all repos |
+| **User** | `{username}/skills/skills/*.md` on Forgejo | Per-user, across all repos |
 | **Repo** | `.forge/skills/*.md` in the project repo | Per-project |
 
 Default active skills: Implementation, Verification, PR Delivery, Code Quality, React Best Practices, Next.js Best Practices. Users toggle skills per-session in the UI; repo-level skills auto-activate.

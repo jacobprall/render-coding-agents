@@ -36,12 +36,12 @@ Set these immediately via the Render Dashboard (or API). You have these values a
 
 | Variable | Service(s) | Source |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | openforge-web, openforge-agent | Anthropic account |
-| `RENDER_API_KEY` | openforge-web | Render Dashboard → Account → API Keys |
-| `AUTH_URL` | openforge-web | The web app's own public URL (e.g. `https://openforge-web-xxxx.onrender.com`). Required or NextAuth redirects to `localhost` |
-| `NEXT_PUBLIC_APP_URL` | openforge-web | Same URL as `AUTH_URL`. Used for OAuth redirect URIs, invite links, CI callbacks |
-| `ADMIN_EMAIL` | openforge-web | Email for the auto-bootstrapped admin account |
-| `ADMIN_PASSWORD` | openforge-web | Password for signing in to the web app |
+| `ANTHROPIC_API_KEY` | web, agent | Anthropic account |
+| `RENDER_API_KEY` | web | Render Dashboard → Account → API Keys |
+| `AUTH_URL` | web | The web app's own public URL (e.g. `https://web-xxxx.onrender.com`). Required or NextAuth redirects to `localhost` |
+| `NEXT_PUBLIC_APP_URL` | web | Same URL as `AUTH_URL`. Used for OAuth redirect URIs, invite links, CI callbacks |
+| `ADMIN_EMAIL` | web | Email for the auto-bootstrapped admin account |
+| `ADMIN_PASSWORD` | web | Password for signing in to the web app |
 
 **Via CLI:**
 
@@ -61,20 +61,20 @@ curl -X PUT -H "Authorization: Bearer $RENDER_API_KEY" \
 
 Forgejo takes ~10–15s to initialize. It may restart once or twice before the health check at `/api/v1/version` passes. This is normal.
 
-Once healthy, note the public URL: `https://openforge-forgejo-xxxx.onrender.com`
+Once healthy, note the public URL: `https://forgejo-xxxx.onrender.com`
 
 ### Step 4: Set Forgejo URLs
 
 | Variable | Service | Value |
 |---|---|---|
-| `FORGEJO__server__ROOT_URL` | openforge-forgejo | Forgejo's public URL |
-| `FORGEJO_EXTERNAL_URL` | openforge-web | Same Forgejo URL |
+| `FORGEJO__server__ROOT_URL` | forgejo | Forgejo's public URL |
+| `FORGEJO_EXTERNAL_URL` | web | Same Forgejo URL |
 
-Redeploy `openforge-forgejo` after setting `ROOT_URL`.
+Redeploy `forgejo` after setting `ROOT_URL`.
 
 ### Step 5: Create Forgejo Admin User
 
-Open a **Shell** on the `openforge-forgejo` service in the Render Dashboard:
+Open a **Shell** on the `forgejo` service in the Render Dashboard:
 
 ```bash
 su -c 'forgejo admin user create --admin --username forge-admin --password <password> --email <email>' git
@@ -87,10 +87,10 @@ su -c 'forgejo admin user create --admin --username forge-admin --password <pass
 Run **locally** from the project root:
 
 ```bash
-FORGEJO_INTERNAL_URL=https://openforge-forgejo-xxxx.onrender.com \
+FORGEJO_INTERNAL_URL=https://forgejo-xxxx.onrender.com \
 FORGEJO_ADMIN_USER=forge-admin \
 FORGEJO_ADMIN_PASSWORD=<password> \
-FORGEJO_EXTERNAL_URL=https://openforge-web-xxxx.onrender.com \
+FORGEJO_EXTERNAL_URL=https://web-xxxx.onrender.com \
 bun run setup
 ```
 
@@ -103,14 +103,14 @@ The script outputs three values — capture them:
 
 | Variable | Service(s) |
 |---|---|
-| `FORGEJO_AGENT_TOKEN` | openforge-web, openforge-agent, openforge-gateway |
-| `FORGEJO_OAUTH_CLIENT_ID` | openforge-web |
-| `FORGEJO_OAUTH_CLIENT_SECRET` | openforge-web |
-| `FORGEJO_WEBHOOK_SECRET` | openforge-gateway (random string, e.g. `openssl rand -hex 32`) |
+| `FORGEJO_AGENT_TOKEN` | web, agent, gateway |
+| `FORGEJO_OAUTH_CLIENT_ID` | web |
+| `FORGEJO_OAUTH_CLIENT_SECRET` | web |
+| `FORGEJO_WEBHOOK_SECRET` | gateway (random string, e.g. `openssl rand -hex 32`) |
 
 ### Step 8: GitHub Actions CI (optional)
 
-Use **GitHub Actions** on your repositories for CI. OpenForge reacts via GitHub webhooks and can ingest detailed payloads when a workflow **POST**s to **`/api/ci/results`** on your web app URL with the **`x-ci-secret`** header set to the same **`CI_RUNNER_SECRET`** as on `openforge-web`.
+Use **GitHub Actions** on your repositories for CI. OpenForge reacts via GitHub webhooks and can ingest detailed payloads when a workflow **POST**s to **`/api/ci/results`** on your web app URL with the **`x-ci-secret`** header set to the same **`CI_RUNNER_SECRET`** as on `web`.
 
 ### Step 9: Push Database Schema
 
@@ -122,7 +122,7 @@ DATABASE_URL="<external-connection-string>?sslmode=require" npx drizzle-kit gene
 DATABASE_URL="<external-connection-string>?sslmode=require" npx drizzle-kit migrate
 ```
 
-Get the external connection string from `openforge-db` in the Render Dashboard. If prompted about renaming vs creating, always choose **"create table"**.
+Get the external connection string from `db` in the Render Dashboard. If prompted about renaming vs creating, always choose **"create table"**.
 
 ### Step 10: Bootstrap the Admin User
 
@@ -130,7 +130,7 @@ Seeds the first admin user into Postgres and links it to the Forgejo admin accou
 
 ```bash
 DATABASE_URL="<external-connection-string>?sslmode=require" \
-FORGEJO_INTERNAL_URL=https://openforge-forgejo-xxxx.onrender.com \
+FORGEJO_INTERNAL_URL=https://forgejo-xxxx.onrender.com \
 FORGEJO_AGENT_TOKEN=<agent-token> \
 ADMIN_EMAIL=<email> \
 ADMIN_PASSWORD=<web-login-password> \
@@ -145,10 +145,10 @@ bun run apps/web/scripts/bootstrap-admin.ts
 Redeploy all services to pick up new env vars, then check:
 
 ```bash
-curl https://openforge-web-xxxx.onrender.com/api/health
+curl https://web-xxxx.onrender.com/api/health
 # → {"status":"healthy","checks":{"postgres":{"status":"ok"},"redis":{"status":"ok"},"forgejo":{"status":"ok"}}}
 
-curl https://openforge-web-xxxx.onrender.com/api/health/workers
+curl https://web-xxxx.onrender.com/api/health/workers
 # → {"hasActiveWorkers": true}
 ```
 
@@ -160,7 +160,7 @@ curl https://openforge-web-xxxx.onrender.com/api/health/workers
 | `bun install --frozen-lockfile` fails in Docker | Bun version mismatch. Pin the exact version in the Dockerfile (e.g. `oven/bun:1.2.19`). |
 | Turbo `--filter` can't find package | Use the full scoped name: `--filter=@openforge/web` not `--filter=web` |
 | `Forgejo is not supposed to be run as root` | Run CLI commands as the `git` user: `su -c '...' git` |
-| Redirects to `localhost:4000` after login | `AUTH_URL` is not set on `openforge-web`. Set it to the web app's public URL |
+| Redirects to `localhost:4000` after login | `AUTH_URL` is not set on `web`. Set it to the web app's public URL |
 | `Sandbox request failed (401): Unauthorized` | `SANDBOX_SHARED_SECRET` mismatch between agent and sandbox. Agent must pull from sandbox via `fromService`. If already deployed, manually copy the value from sandbox to agent in the Render Dashboard |
 | `drizzle-kit push` fails with "Interactive prompts" | Forgejo tables are in the shared DB. Use `drizzle-kit generate` + `drizzle-kit migrate` instead (the `tablesFilter` in `drizzle.config.ts` excludes Forgejo tables) |
 | `NEXT_PUBLIC_APP_URL` not set | OAuth callbacks and invite links will fail. Set it to the same value as `AUTH_URL` |
@@ -169,11 +169,11 @@ curl https://openforge-web-xxxx.onrender.com/api/health/workers
 
 These are wired automatically by the Blueprint:
 
-- `DATABASE_URL` — from `openforge-db`
-- `REDIS_URL` — from `openforge-redis`
-- `AUTH_SECRET`, `CSRF_SECRET`, `ENCRYPTION_KEY`, `CI_RUNNER_SECRET` — `generateValue` on openforge-web
-- `GATEWAY_API_SECRET` — `generateValue` on openforge-gateway
+- `DATABASE_URL` — from `db`
+- `REDIS_URL` — from `redis`
+- `AUTH_SECRET`, `CSRF_SECRET`, `ENCRYPTION_KEY`, `CI_RUNNER_SECRET` — `generateValue` on web
+- `GATEWAY_API_SECRET` — `generateValue` on gateway
 - `SANDBOX_SHARED_SECRET`, `SANDBOX_SESSION_SECRET` — `generateValue` on sandbox, shared with agent via `fromService`
 - `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD` — `generateValue` on MinIO, shared with Forgejo via `fromService`
 - `ENCRYPTION_KEY` on agent/gateway — pulled from web via `fromService`
-- `FORGEJO_SANDBOX_URL` — hardcoded internal URL on agent (`http://openforge-forgejo:3000`)
+- `FORGEJO_SANDBOX_URL` — hardcoded internal URL on agent (`http://forgejo:3000`)

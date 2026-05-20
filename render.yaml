@@ -1,7 +1,7 @@
 services:
   # Web Application (Next.js)
   - type: web
-    name: openforge-web
+    name: web
     runtime: node
     plan: starter
     autoDeploy: true
@@ -11,11 +11,11 @@ services:
     envVars:
       - key: DATABASE_URL
         fromDatabase:
-          name: openforge-db
+          name: db
           property: connectionString
       - key: REDIS_URL
         fromService:
-          name: openforge-redis
+          name: redis
           type: keyvalue
           property: connectionString
       # GitHub OAuth (primary forge provider)
@@ -42,10 +42,10 @@ services:
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: GATEWAY_INTERNAL_URL
-        value: http://openforge-gateway:4100
+        value: http://gateway:4100
       - key: GATEWAY_API_SECRET
         fromService:
-          name: openforge-gateway
+          name: gateway
           type: web
           envVarKey: GATEWAY_API_SECRET
       - key: ENCRYPTION_KEY
@@ -63,7 +63,7 @@ services:
 
   # Agent Worker
   - type: worker
-    name: openforge-agent
+    name: agent
     runtime: node
     plan: starter
     autoDeploy: false
@@ -72,11 +72,11 @@ services:
     envVars:
       - key: DATABASE_URL
         fromDatabase:
-          name: openforge-db
+          name: db
           property: connectionString
       - key: REDIS_URL
         fromService:
-          name: openforge-redis
+          name: redis
           type: keyvalue
           property: connectionString
       # GitHub
@@ -86,25 +86,25 @@ services:
         sync: false
       - key: ENCRYPTION_KEY
         fromService:
-          name: openforge-web
+          name: web
           type: web
           envVarKey: ENCRYPTION_KEY
       - key: SANDBOX_SERVICE_HOST
-        value: openforge-sandbox:3001
+        value: sandbox:3001
       - key: SANDBOX_SHARED_SECRET
         fromService:
-          name: openforge-sandbox
+          name: sandbox
           type: web
           envVarKey: SANDBOX_SHARED_SECRET
       - key: SANDBOX_SESSION_SECRET
         fromService:
-          name: openforge-sandbox
+          name: sandbox
           type: web
           envVarKey: SANDBOX_SESSION_SECRET
 
   # Sandbox (isolated execution environment)
   - type: web
-    name: openforge-sandbox
+    name: sandbox
     runtime: docker
     plan: standard
     autoDeploy: false
@@ -127,7 +127,7 @@ services:
 
   # Gateway (headless REST + MCP API)
   - type: web
-    name: openforge-gateway
+    name: gateway
     runtime: docker
     plan: starter
     autoDeploy: false
@@ -137,11 +137,11 @@ services:
     envVars:
       - key: DATABASE_URL
         fromDatabase:
-          name: openforge-db
+          name: db
           property: connectionString
       - key: REDIS_URL
         fromService:
-          name: openforge-redis
+          name: redis
           type: keyvalue
           property: connectionString
       - key: GATEWAY_API_SECRET
@@ -160,12 +160,12 @@ services:
         sync: false
       - key: CI_RUNNER_SECRET
         fromService:
-          name: openforge-web
+          name: web
           type: web
           envVarKey: CI_RUNNER_SECRET
       - key: ENCRYPTION_KEY
         fromService:
-          name: openforge-web
+          name: web
           type: web
           envVarKey: ENCRYPTION_KEY
       - key: ANTHROPIC_API_KEY
@@ -177,12 +177,12 @@ services:
 
   # Redis (job queue + streaming)
   - type: keyvalue
-    name: openforge-redis
+    name: redis
     plan: starter
     ipAllowList: []
     maxmemoryPolicy: allkeys-lru
 
 databases:
-  - name: openforge-db
+  - name: db
     plan: basic-256mb
     postgresMajorVersion: "16"

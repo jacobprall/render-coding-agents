@@ -24,9 +24,9 @@ graph LR
 
     subgraph Application
         direction TB
-        Web["openforge-web · Next.js"]
-        Gateway["openforge-gateway · Hono"]
-        Agent["openforge-agent · Bun worker"]
+        Web["web · Next.js"]
+        Gateway["gateway · Hono"]
+        Agent["agent · Bun worker"]
     end
 
     subgraph Platform["packages/platform"]
@@ -37,7 +37,7 @@ graph LR
 
     subgraph Infrastructure
         direction TB
-        Sandbox["openforge-sandbox"]
+        Sandbox["sandbox"]
         Redis[("Redis")]
         Postgres[("Postgres")]
     end
@@ -53,10 +53,10 @@ graph LR
 
 | Component | What it does |
 |---|---|
-| **openforge-web** | Next.js 15 app: auth, sessions, chat UI, repo browser, PR review, streaming |
-| **openforge-gateway** | Hono REST/SSE/MCP API — connect Claude Desktop, Cursor, or any MCP client |
-| **openforge-agent** | Bun worker reading jobs from Redis Streams, driving multi-step LLM execution |
-| **openforge-sandbox** | Isolated Docker environment for git operations and code execution |
+| **web** | Next.js 15 app: auth, sessions, chat UI, repo browser, PR review, streaming |
+| **gateway** | Hono REST/SSE/MCP API — connect Claude Desktop, Cursor, or any MCP client |
+| **agent** | Bun worker reading jobs from Redis Streams, driving multi-step LLM execution |
+| **sandbox** | Isolated Docker environment for git operations and code execution |
 
 **CI:** GitHub Actions on your repositories; OpenForge reacts via GitHub webhooks and accepts detailed payloads on `POST /api/ci/results` (shared secret).
 
@@ -149,7 +149,7 @@ Go to [render.com/deploy](https://render.com/deploy?repo=https://github.com/rend
 
 ### 3. Set environment variables
 
-After provisioning, set these on `openforge-web`:
+After provisioning, set these on `web`:
 
 | Variable | Value |
 |---|---|
@@ -162,7 +162,7 @@ After provisioning, set these on `openforge-web`:
 | `ANTHROPIC_API_KEY` | Your Anthropic key |
 | `RENDER_API_KEY` | Render Dashboard > Account Settings > API Keys |
 
-Set `ANTHROPIC_API_KEY` on `openforge-agent` as well.
+Set `ANTHROPIC_API_KEY` on `agent` as well.
 
 ### 4. Push the database schema
 
@@ -170,7 +170,7 @@ Set `ANTHROPIC_API_KEY` on `openforge-agent` as well.
 DATABASE_URL="<external-connection-string>?sslmode=require" bun run db:push
 ```
 
-Get the external connection string from the `openforge-db` database page in the Render Dashboard.
+Get the external connection string from the `db` database page in the Render Dashboard.
 
 ### 5. Redeploy and verify
 

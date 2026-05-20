@@ -180,7 +180,7 @@ The problem with injecting all live state is token cost. A smarter approach: inj
 ```
 # System State (as of 6:14pm)
 
-All 4 services healthy. Last deploy: openforge-web 12min ago (live).
+All 4 services healthy. Last deploy: web 12min ago (live).
 No active alerts. Monthly spend: $42.
 
 Use render_* tools for details.
@@ -191,8 +191,8 @@ Use render_* tools for details.
 ```
 # System State (as of 6:14pm)
 
-WARNING: openforge-agent unhealthy (last health check failed 3min ago).
-Last deploy: openforge-agent 8min ago (deploy_failed). 
+WARNING: agent unhealthy (last health check failed 3min ago).
+Last deploy: agent 8min ago (deploy_failed). 
 2 active alerts. Monthly spend: $42.
 
 Use render_get_logs to investigate.

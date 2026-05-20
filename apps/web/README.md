@@ -1,4 +1,4 @@
-# openforge-web
+# web
 
 Next.js 15 application that serves the OpenForge browser UI — auth, chat, code browser, settings, and SSE streaming.
 
