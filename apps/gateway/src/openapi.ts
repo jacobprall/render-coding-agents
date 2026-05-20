@@ -373,7 +373,7 @@ const spec = {
                   repoName: { type: "string" as const },
                   repoOwner: { type: "string" as const },
                   mirror: { type: "boolean" as const },
-                  service: { type: "string" as const, enum: ["git", "github", "gitlab", "gitea", "forgejo"] },
+                  service: { type: "string" as const, enum: ["git", "github"] },
                   authToken: { type: "string" as const },
                   syncConnectionId: { type: "string" as const },
                 },
@@ -1419,26 +1419,6 @@ const spec = {
     },
 
     // ---- Webhooks ----
-    "/webhooks/forgejo": {
-      post: {
-        tags: ["Webhooks"],
-        operationId: "handleForgejoWebhook",
-        summary: "Receive Forgejo/Gitea webhook",
-        parameters: [
-          { name: "x-forgejo-signature", in: "header" as const, schema: { type: "string" as const } },
-          { name: "x-forgejo-event", in: "header" as const, schema: { type: "string" as const } },
-        ],
-        requestBody: {
-          required: true,
-          content: { "application/json": { schema: { type: "object" as const } } },
-        },
-        responses: {
-          "200": { description: "Webhook processed", content: { "application/json": { schema: { $ref: "#/components/schemas/OkResponse" } } } },
-          "401": { description: "Invalid signature" },
-          "500": { description: "Processing error" },
-        },
-      },
-    },
     "/webhooks/github": {
       post: {
         tags: ["Webhooks"],
@@ -1459,27 +1439,6 @@ const spec = {
         },
       },
     },
-    "/webhooks/gitlab": {
-      post: {
-        tags: ["Webhooks"],
-        operationId: "handleGitlabWebhook",
-        summary: "Receive GitLab webhook",
-        parameters: [
-          { name: "x-gitlab-token", in: "header" as const, schema: { type: "string" as const } },
-          { name: "x-gitlab-event", in: "header" as const, schema: { type: "string" as const } },
-        ],
-        requestBody: {
-          required: true,
-          content: { "application/json": { schema: { type: "object" as const } } },
-        },
-        responses: {
-          "200": { description: "Webhook processed", content: { "application/json": { schema: { $ref: "#/components/schemas/OkResponse" } } } },
-          "401": { description: "Invalid token" },
-          "500": { description: "Processing error" },
-        },
-      },
-    },
-
     // ---- CI ----
     "/ci/results": {
       post: {

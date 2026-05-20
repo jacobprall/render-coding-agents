@@ -11,6 +11,7 @@ interface AnthropicContentBlock {
   name?: string;
   input?: unknown;
   thinking?: string;
+  signature?: string;
 }
 
 export function createAnthropicProvider(apiKey: string): LLMProvider {
@@ -18,20 +19,39 @@ export function createAnthropicProvider(apiKey: string): LLMProvider {
     async chat(params) {
       const { model, system, messages, tools, maxTokens, signal, thinking, onToken } = params;
 
+      const systemBlocks = [
+        {
+          type: "text",
+          text: system,
+          cache_control: { type: "ephemeral" },
+        },
+      ];
+
+      const anthropicTools = tools.map((t, i) => {
+        const tool: Record<string, unknown> = {
+          name: t.name,
+          description: t.description,
+          input_schema: t.input_schema,
+        };
+        if (i === tools.length - 1) {
+          tool.cache_control = { type: "ephemeral" };
+        }
+        return tool;
+      });
+
+      const convertedMessages = convertMessages(messages);
+      markConversationPrefixForCaching(convertedMessages);
+
       const body: Record<string, unknown> = {
         model,
-        system,
-        messages: convertMessages(messages),
+        system: systemBlocks,
+        messages: convertedMessages,
         max_tokens: maxTokens ?? DEFAULT_MAX_TOKENS,
         stream: true,
       };
 
-      if (tools.length > 0) {
-        body.tools = tools.map((t) => ({
-          name: t.name,
-          description: t.description,
-          input_schema: t.input_schema,
-        }));
+      if (anthropicTools.length > 0) {
+        body.tools = anthropicTools;
       }
 
       if (thinking) {
@@ -47,6 +67,7 @@ export function createAnthropicProvider(apiKey: string): LLMProvider {
           "content-type": "application/json",
           "x-api-key": apiKey,
           "anthropic-version": ANTHROPIC_VERSION,
+          "anthropic-beta": "prompt-caching-2024-07-31",
         },
         body: JSON.stringify(body),
         signal,
@@ -60,6 +81,30 @@ export function createAnthropicProvider(apiKey: string): LLMProvider {
       return parseSSEStream(res, onToken);
     },
   };
+}
+
+/**
+ * Mark the last user-role message in the conversation for caching.
+ * On multi-step calls, the entire prefix up to the cache breakpoint is
+ * reused from Anthropic's server-side cache (0.1x cost vs 1.25x write).
+ */
+function markConversationPrefixForCaching(messages: unknown[]): void {
+  if (messages.length < 2) return;
+
+  for (let i = messages.length - 2; i >= 0; i--) {
+    const msg = messages[i] as Record<string, unknown>;
+    if (msg.role !== "user") continue;
+
+    if (typeof msg.content === "string") {
+      msg.content = [
+        { type: "text", text: msg.content, cache_control: { type: "ephemeral" } },
+      ];
+    } else if (Array.isArray(msg.content) && msg.content.length > 0) {
+      const lastBlock = msg.content[msg.content.length - 1] as Record<string, unknown>;
+      lastBlock.cache_control = { type: "ephemeral" };
+    }
+    break;
+  }
 }
 
 function convertMessages(messages: LLMMessage[]): unknown[] {
@@ -79,7 +124,11 @@ function convertBlock(block: ContentBlock): unknown {
     case "text":
       return { type: "text", text: block.text ?? "" };
     case "thinking":
-      return { type: "thinking", thinking: block.thinking ?? "" };
+      return {
+        type: "thinking",
+        thinking: block.thinking ?? "",
+        ...(block.signature ? { signature: block.signature } : {}),
+      };
     case "tool_use":
       return { type: "tool_use", id: block.id, name: block.name, input: block.input };
     case "tool_result":
@@ -102,10 +151,11 @@ async function parseSSEStream(
   const decoder = new TextDecoder();
 
   const contentBlocks: AnthropicContentBlock[] = [];
-  let currentBlockIndex = -1;
   let stopReason = "end_turn";
   let inputTokens = 0;
   let outputTokens = 0;
+  let cacheCreationInputTokens = 0;
+  let cacheReadInputTokens = 0;
   let modelId = "";
   let buffer = "";
   let inputPartial: Record<number, string> = {};
@@ -142,13 +192,14 @@ async function parseSSEStream(
             if (usage) {
               inputTokens += usage.input_tokens ?? 0;
               outputTokens += usage.output_tokens ?? 0;
+              cacheCreationInputTokens += usage.cache_creation_input_tokens ?? 0;
+              cacheReadInputTokens += usage.cache_read_input_tokens ?? 0;
             }
             break;
           }
           case "content_block_start": {
             const idx = event.index as number;
             const block = event.content_block as AnthropicContentBlock;
-            currentBlockIndex = idx;
             while (contentBlocks.length <= idx) {
               contentBlocks.push({ type: "text" });
             }
@@ -178,6 +229,8 @@ async function parseSSEStream(
               onToken?.(text);
             } else if (deltaType === "thinking_delta") {
               block.thinking = (block.thinking ?? "") + (delta.thinking as string);
+            } else if (deltaType === "signature_delta") {
+              block.signature = (block.signature ?? "") + (delta.signature as string);
             } else if (deltaType === "input_json_delta") {
               if (idx in inputPartial) {
                 inputPartial[idx] += delta.partial_json as string;
@@ -206,6 +259,8 @@ async function parseSSEStream(
             const usage = event.usage as Record<string, number> | undefined;
             if (usage) {
               outputTokens += usage.output_tokens ?? 0;
+              cacheCreationInputTokens += usage.cache_creation_input_tokens ?? 0;
+              cacheReadInputTokens += usage.cache_read_input_tokens ?? 0;
             }
             break;
           }
@@ -221,7 +276,11 @@ async function parseSSEStream(
       case "text":
         return { type: "text" as const, text: b.text ?? "" };
       case "thinking":
-        return { type: "thinking" as const, thinking: b.thinking ?? "" };
+        return {
+          type: "thinking" as const,
+          thinking: b.thinking ?? "",
+          ...(b.signature ? { signature: b.signature } : {}),
+        };
       case "tool_use":
         return { type: "tool_use" as const, id: b.id, name: b.name, input: b.input };
       default:
@@ -232,7 +291,12 @@ async function parseSSEStream(
   return {
     content,
     stopReason: normalizeStopReason(stopReason),
-    usage: { inputTokens, outputTokens },
+    usage: {
+      inputTokens,
+      outputTokens,
+      cacheCreationInputTokens: cacheCreationInputTokens || undefined,
+      cacheReadInputTokens: cacheReadInputTokens || undefined,
+    },
     model: modelId,
   };
 }

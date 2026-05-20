@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { User, Key } from "lucide-react";
+import { User, Key, Users, GitBranch } from "lucide-react";
 
 const settingsLinks = [
   { label: "Profile", href: "/settings", icon: User, exact: true },
   { label: "API Keys", href: "/settings/api-keys", icon: Key },
+  { label: "Connections", href: "/settings/connections", icon: GitBranch },
+  { label: "Team", href: "/settings/team", icon: Users },
 ];
 
 export default function SettingsLayout({

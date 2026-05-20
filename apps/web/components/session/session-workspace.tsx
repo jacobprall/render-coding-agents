@@ -45,9 +45,6 @@ interface SessionInfo {
 
 interface SessionWorkspaceProps {
   session: SessionInfo;
-  /** From `FORGEJO_PUBLIC_URL` / `FORGEJO_EXTERNAL_URL` for PR links when `upstreamPrUrl` is absent */
-  forgejoWebOrigin?: string | null;
-  /** Chat row / user default model — keeps the header selector aligned with what messages use */
   initialModelId?: string | null;
   activeRunId: string | null;
   initialMessages: {
@@ -67,7 +64,6 @@ const statusDot: Record<string, string> = {
 
 export function SessionWorkspace({
   session,
-  forgejoWebOrigin,
   initialModelId,
   activeRunId,
   initialMessages,
@@ -185,7 +181,6 @@ export function SessionWorkspace({
             prStatus={session.prStatus ?? null}
             branch={session.branch}
             upstreamPrUrl={session.upstreamPrUrl}
-            forgejoWebOrigin={forgejoWebOrigin}
           />
         </div>
       )}

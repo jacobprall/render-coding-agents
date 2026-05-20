@@ -51,7 +51,7 @@ export const registerRepoTools: ToolRegistrar = (server, p, auth) => {
       repoName: z.string().describe("Name for the imported repo"),
       repoOwner: z.string().optional().describe("Owner (defaults to current user)"),
       mirror: z.boolean().optional().describe("Set up as mirror"),
-      service: z.enum(["git", "github", "gitlab", "gitea", "forgejo"]).optional(),
+      service: z.enum(["git", "github"]).optional(),
       authToken: z.string().optional().describe("Auth token for private repos"),
     }),
   }, async (args) => {

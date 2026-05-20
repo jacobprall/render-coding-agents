@@ -2,23 +2,7 @@ import { isForgeAgentContext } from "../context/agent-context";
 
 const DIFF_PREVIEW_MAX_LINES = 200;
 const HUNK_CONTEXT = 3;
-
-function countDiff(before: string, after: string): { additions: number; deletions: number } {
-  const oldLines = before ? before.split("\n") : [];
-  const newLines = after ? after.split("\n") : [];
-  const oldSet = new Set(oldLines);
-  const newSet = new Set(newLines);
-
-  let additions = 0;
-  let deletions = 0;
-  for (const line of newLines) {
-    if (!oldSet.has(line)) additions++;
-  }
-  for (const line of oldLines) {
-    if (!newSet.has(line)) deletions++;
-  }
-  return { additions, deletions };
-}
+const MAX_DIFF_LINES = 5000;
 
 function toLines(text: string): string[] {
   if (text === "") return [];
@@ -30,7 +14,6 @@ type DiffOp =
   | { type: "delete"; line: string }
   | { type: "insert"; line: string };
 
-/** LCS-based edit script (same DP/backtrace idea as apps/web inline-diff). */
 function buildEditScript(oldLines: string[], newLines: string[]): DiffOp[] {
   const m = oldLines.length;
   const n = newLines.length;
@@ -63,6 +46,22 @@ function buildEditScript(oldLines: string[], newLines: string[]): DiffOp[] {
   }
   reversed.reverse();
   return reversed;
+}
+
+function countFromOps(ops: DiffOp[]): { additions: number; deletions: number } {
+  let additions = 0;
+  let deletions = 0;
+  for (const op of ops) {
+    if (op.type === "insert") additions++;
+    else if (op.type === "delete") deletions++;
+  }
+  return { additions, deletions };
+}
+
+function countDiffSimple(before: string, after: string): { additions: number; deletions: number } {
+  const oldLines = toLines(before);
+  const newLines = toLines(after);
+  return { additions: Math.max(0, newLines.length - oldLines.length), deletions: Math.max(0, oldLines.length - newLines.length) };
 }
 
 interface UnifiedLine {
@@ -124,14 +123,14 @@ function hunkHeader(hunk: UnifiedLine[]): string {
   for (const ln of hunk) {
     if (ln.prefix === " " || ln.prefix === "-") {
       oldCount++;
-      if (!oldStartSet && (ln.prefix === " " || ln.prefix === "-")) {
+      if (!oldStartSet) {
         oldStart = ln.oldNum;
         oldStartSet = true;
       }
     }
     if (ln.prefix === " " || ln.prefix === "+") {
       newCount++;
-      if (!newStartSet && (ln.prefix === " " || ln.prefix === "+")) {
+      if (!newStartSet) {
         newStart = ln.newNum;
         newStartSet = true;
       }
@@ -150,7 +149,7 @@ function hunkHeader(hunk: UnifiedLine[]): string {
   return `@@ -${oldStart},${oldCount} +${newStart},${newCount} @@`;
 }
 
-function emitHunks(path: string, oldLabel: string, newLabel: string, hunks: UnifiedLine[][]): string {
+function emitHunks(oldLabel: string, newLabel: string, hunks: UnifiedLine[][]): string {
   const parts: string[] = [`--- ${oldLabel}`, `+++ ${newLabel}`];
   for (const hunk of hunks) {
     if (hunk.length === 0) continue;
@@ -170,13 +169,17 @@ function truncateOutput(unified: string): string {
   return `${kept.join("\n")}\n... (${omitted} more lines truncated)`;
 }
 
-/** Standard unified diff with ---/+++ headers, @@ hunks, and +/- lines; capped at ~200 lines. */
 export function generateUnifiedDiff(path: string, before: string, after: string): string {
   const oldLines = toLines(before);
   const newLines = toLines(after);
 
   if (oldLines.length === 0 && newLines.length === 0) {
     return "";
+  }
+
+  // Skip expensive LCS for large files to avoid O(m*n) blowup
+  if (oldLines.length * newLines.length > MAX_DIFF_LINES * MAX_DIFF_LINES) {
+    return `--- a/${path}\n+++ b/${path}\n(diff too large to compute: ${oldLines.length} → ${newLines.length} lines)`;
   }
 
   let full: string;
@@ -188,7 +191,7 @@ export function generateUnifiedDiff(path: string, before: string, after: string)
       oldNum: 0,
       newNum: i + 1,
     }));
-    full = emitHunks(path, "/dev/null", `b/${path}`, [hunk]);
+    full = emitHunks("/dev/null", `b/${path}`, [hunk]);
   } else if (newLines.length === 0) {
     const hunk: UnifiedLine[] = oldLines.map((line, i) => ({
       prefix: "-" as const,
@@ -196,14 +199,14 @@ export function generateUnifiedDiff(path: string, before: string, after: string)
       oldNum: i + 1,
       newNum: 0,
     }));
-    full = emitHunks(path, `a/${path}`, "/dev/null", [hunk]);
+    full = emitHunks(`a/${path}`, "/dev/null", [hunk]);
   } else {
     const ops = buildEditScript(oldLines, newLines);
     const unifiedLines = opsToUnifiedLines(ops);
     const hunks = buildHunkSlices(unifiedLines);
     full =
       hunks.length > 0
-        ? emitHunks(path, `a/${path}`, `b/${path}`, hunks)
+        ? emitHunks(`a/${path}`, `b/${path}`, hunks)
         : [`--- a/${path}`, `+++ b/${path}`].join("\n");
   }
 
@@ -220,7 +223,20 @@ export async function notifyFileChanged(
   const cb = context.onFileChanged;
   if (!cb) return;
 
-  const { additions, deletions } = countDiff(before, after);
+  const oldLines = toLines(before);
+  const newLines = toLines(after);
+
+  let additions: number;
+  let deletions: number;
+
+  // Use accurate LCS-based count for reasonable sizes, fallback for large files
+  if (oldLines.length * newLines.length <= MAX_DIFF_LINES * MAX_DIFF_LINES) {
+    const ops = buildEditScript(oldLines, newLines);
+    ({ additions, deletions } = countFromOps(ops));
+  } else {
+    ({ additions, deletions } = countDiffSimple(before, after));
+  }
+
   await cb({
     path,
     additions,

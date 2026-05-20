@@ -6,7 +6,7 @@
  */
 
 import { desc, eq, inArray, and } from "drizzle-orm";
-import { agentRuns, mirrors, sessions } from "@coding-agents/db";
+import { agentRuns, sessions } from "@coding-agents/db";
 import { logger } from "@coding-agents/shared";
 import type { PlatformDb } from "../interfaces/database";
 import type { QueueAdapter } from "../interfaces/queue";
@@ -208,25 +208,6 @@ export class InboundDispatcher {
             ),
           )
           .orderBy(desc(sessions.updatedAt));
-
-      case "mirror_repo": {
-        const matchingMirrors = await db
-          .select({ sessionId: mirrors.sessionId })
-          .from(mirrors)
-          .where(eq(mirrors.remoteRepoUrl, matcher.remoteUrl));
-
-        const sessionIds = matchingMirrors
-          .map((m) => m.sessionId)
-          .filter((id): id is string => !!id);
-
-        if (sessionIds.length === 0) return [];
-
-        return db
-          .select()
-          .from(sessions)
-          .where(inArray(sessions.id, sessionIds))
-          .orderBy(desc(sessions.updatedAt));
-      }
     }
   }
 }

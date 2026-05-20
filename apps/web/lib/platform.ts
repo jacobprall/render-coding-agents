@@ -34,11 +34,39 @@ export function getPlatform(): PlatformContainer {
 
 /**
  * Resolve the current NextAuth session into a platform `AuthContext`.
- * Throws a 401 `Response` if unauthenticated (suitable for route handlers).
+ * Requires both identity AND a forge token. Throws 401/403 if missing.
+ * Use for routes that need repo access (sessions, repos, agent actions).
+ */
+export async function requireForgeAuth(): Promise<AuthContext> {
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  if (!session.forgeToken) {
+    throw new Response(
+      JSON.stringify({ error: "GitHub not connected. Please connect GitHub in Settings > Connections." }),
+      { status: 403, headers: { "Content-Type": "application/json" } },
+    );
+  }
+  return {
+    userId: session.user.id,
+    username: session.forgeUsername,
+    forgeToken: session.forgeToken,
+    forgeType: session.forgeType ?? "github",
+    isAdmin: session.isAdmin,
+  };
+}
+
+/**
+ * Identity-only auth. Does NOT require a forge token.
+ * Use for settings, profile, invite management, etc.
  */
 export async function requireAuth(): Promise<AuthContext> {
   const session = await auth();
-  if (!session?.user?.id || !session.forgeToken) {
+  if (!session?.user?.id) {
     throw new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
       headers: { "Content-Type": "application/json" },
@@ -46,8 +74,8 @@ export async function requireAuth(): Promise<AuthContext> {
   }
   return {
     userId: session.user.id,
-    username: session.forgeUsername,
-    forgeToken: session.forgeToken,
+    username: session.forgeUsername ?? "",
+    forgeToken: session.forgeToken ?? "",
     forgeType: session.forgeType ?? "github",
     isAdmin: session.isAdmin,
   };

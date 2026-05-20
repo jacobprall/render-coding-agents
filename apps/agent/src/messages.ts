@@ -41,7 +41,7 @@ export function jobMessagesToLLMMessages(
 /**
  * Basic sanitization — remove empty messages, trim whitespace.
  */
-export function sanitizeMessages(messages: LLMMessage[], _chatId?: string): LLMMessage[] {
+export function sanitizeMessages(messages: LLMMessage[]): LLMMessage[] {
   return messages.filter((m) => {
     if (typeof m.content === "string") return m.content.trim().length > 0;
     return true;

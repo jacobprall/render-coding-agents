@@ -199,10 +199,6 @@ export function getModel(
       return { provider: createOpenAIProvider(openaiKey), modelId: def.modelId, providerName: "openai" };
     }
     default:
-      return {
-        provider: createAnthropicProvider(anthropicKey!),
-        modelId: def.modelId,
-        providerName: "anthropic",
-      };
+      throw new Error(`Unsupported LLM provider: ${def.provider}`);
   }
 }

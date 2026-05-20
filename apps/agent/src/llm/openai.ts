@@ -80,9 +80,8 @@ function convertMessages(system: string, messages: LLMMessage[]): unknown[] {
       const toolUseParts = m.content.filter((b) => b.type === "tool_use");
 
       const msg: Record<string, unknown> = { role: "assistant" };
-      if (textParts.length > 0) {
-        msg.content = textParts.map((b) => b.text).join("");
-      }
+      const textContent = textParts.map((b) => b.text).join("");
+      msg.content = textContent || null;
       if (toolUseParts.length > 0) {
         msg.tool_calls = toolUseParts.map((b) => ({
           id: b.id,
@@ -99,6 +98,7 @@ function convertMessages(system: string, messages: LLMMessage[]): unknown[] {
 
     if (m.role === "user") {
       const toolResults = m.content.filter((b) => b.type === "tool_result");
+      const textParts = m.content.filter((b) => b.type === "text");
       if (toolResults.length > 0) {
         for (const tr of toolResults) {
           result.push({
@@ -107,12 +107,13 @@ function convertMessages(system: string, messages: LLMMessage[]): unknown[] {
             content: typeof tr.content === "string" ? tr.content : JSON.stringify(tr.content),
           });
         }
-      } else {
-        const text = m.content
-          .filter((b) => b.type === "text")
-          .map((b) => b.text)
-          .join("");
-        result.push({ role: "user", content: text });
+      }
+      if (textParts.length > 0) {
+        const text = textParts.map((b) => b.text).join("");
+        if (text) result.push({ role: "user", content: text });
+      }
+      if (toolResults.length === 0 && textParts.length === 0) {
+        result.push({ role: "user", content: "" });
       }
     }
   }

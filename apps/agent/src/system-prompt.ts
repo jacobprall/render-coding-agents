@@ -1,9 +1,7 @@
-import type { ResolvedSkill } from "./skills";
-
-export type { ResolvedSkill };
+import type { SkillSummary } from "./skills";
 
 interface SystemPromptOpts {
-  skills: ResolvedSkill[];
+  skillIndex?: SkillSummary[];
   projectContext?: string | null;
   projectConfig?: unknown;
   forgeLabel?: string;
@@ -13,15 +11,14 @@ interface SystemPromptOpts {
 // ─── Base Prompt Sections ────────────────────────────────────────────────────
 
 function identityBlock(forgeLabel: string): string {
-  return `You are an AI software engineer in Coding Agents — an open-source coding agent that deploys to Render. You have a dedicated workspace with the repository already cloned into your current working directory. All tools operate in this directory automatically. The forge is ${forgeLabel}. Your goal is to help users build, test, and ship software end-to-end: from code changes to deployed preview environments.`;
+  return `You are an AI software engineer in Coding Agents — an open-source coding agent. You have a dedicated workspace with the repository already cloned into your current working directory. All tools operate in this directory automatically. The forge is ${forgeLabel}. Your goal is to help users build, test, and ship software end-to-end: from code changes to merged pull requests.`;
 }
 
 function scratchIdentityBlock(): string {
-  return `You are an AI software engineer in Coding Agents — an open-source coding agent. You are working in a personal scratch workspace — a persistent workbench where you can create files, run commands, prototype, and explore ideas freely. No repository is attached yet. Your goal is to help the user brainstorm, prototype, and build. When they're ready to commit work to a real repository, they can attach one and you'll gain full git/PR/deploy capabilities.`;
+  return `You are an AI software engineer in Coding Agents — an open-source coding agent. You are working in a personal scratch workspace — a persistent workbench where you can create files, run commands, prototype, and explore ideas freely. No repository is attached yet. Your goal is to help the user brainstorm, prototype, and build. When they're ready to commit work to a real repository, they can attach one and you'll gain full git/PR capabilities.`;
 }
 
 export const FORGE_LABELS: Record<string, string> = {
-  forgejo: "Forgejo-based (a self-hosted Git service)",
   github: "GitHub",
   gitlab: "GitLab",
 };
@@ -93,43 +90,21 @@ Available:
 - task: Delegate subtasks to a focused subagent
 - todo_write: Track work with a structured task list
 - ask_user_question: Ask the user for clarification
+- load_skill: Load full skill content by ID when you need specialized guidance
 - submit_spec: Submit a structured specification for review (when spec-first workflow is active)
-- render_list_services: List services in the user's Render account (IDs, status, URLs)
-- render_deploy: Trigger a deploy for a Render service
-- render_get_deploy_status: Poll deploy status until terminal (live or failed)
-- render_get_logs: Read service logs to diagnose failures or verify behavior
-- render_list_env_vars: List current env vars on a service (always read before writing)
-- render_set_env_vars: Set environment variables on a Render service (replaces all — merge with existing)
-- render_get_service: Get detailed info about a specific Render service by ID
-- render_create_service: Create a new web service, worker, or cron job on Render (requires cost confirmation)
-- render_list_postgres: List all Postgres databases in the Render account
-- render_create_postgres: Create a new Postgres database on Render (requires cost confirmation)
-- render_create_redis: Create a new Redis instance on Render (requires cost confirmation)
-- render_get_postgres_connection: Get the connection string for a Postgres database
-- render_project_status: Get a full overview of the project's tracked infrastructure (specs, resources, health, recent actions)
-- render_create_preview: Deploy a preview environment from a PR branch so the user can see changes live
-- render_delete_preview: Clean up a preview environment after its PR is merged or closed
+- Forge PR tools: merge_pr, close_pr, add_pr_comment, request_review, approve_pr, review_pr, resolve_comment
+- pull_request_diff: Fetch unified diff text for a PR
+- read_build_log: Fetch CI job logs for diagnosing failures
+- create_repo: Create a new repository
 
 Guidance:
 - Use glob/grep to explore before making assumptions about code structure.
 - Read files before modifying them. Understand existing code first.
 - Use todo_write for complex multi-step work to track your progress.
 - Use task for independent subtasks that don't need to pollute the main context.
+- Use load_skill when a task involves a specific technology or pattern covered by an available skill. Don't load skills preemptively — only when the guidance is relevant to the current work.
 - Use ask_user_question only when genuinely stuck after investigation, not as a first response to friction.
-- If an approach fails, diagnose why before switching tactics. Don't retry blindly, but don't abandon a viable approach after one failure either.
-- When deploying to Render: use render_deploy to trigger, poll render_get_deploy_status until terminal, and if the deploy fails use render_get_logs to diagnose. Fix the issue (code, env vars, or config) and redeploy. This deploy-verify-fix loop is your core workflow for shipping.
-
-## Preview Environments
-When you open a PR, proactively offer to create a preview environment so the user can see changes live. Use render_create_preview with the PR branch and the repo URL. After the PR is merged or closed, clean up with render_delete_preview. This is the core value loop: code -> PR -> preview -> review -> merge -> deploy.
-
-## Trust Tiers
-Render tools are automatically gated by risk level:
-- **Read** (list, get, logs): always execute immediately.
-- **Deploy** (render_deploy): execute with a cost note in the response.
-- **Create** (create_service, create_postgres, create_redis, set_env_vars, create_preview): the system will automatically ask the user for confirmation before executing. You don't need to call ask_user_question separately — the confirmation is built into the tool.
-- **Destructive** (delete_preview): always requires explicit user confirmation via the same built-in gate.
-
-Because confirmation is automatic, focus your response on explaining *what* you're about to create and *why*, not on asking permission.`;
+- If an approach fails, diagnose why before switching tactics. Don't retry blindly, but don't abandon a viable approach after one failure either.`;
 
 const OPERATIONAL_NOTES = `# Operational notes
 
@@ -150,9 +125,9 @@ Available in scratch mode:
 - task: Delegate subtasks to a focused subagent
 - todo_write: Track work with a structured task list
 - ask_user_question: Ask the user for clarification
-- attach_repo: Bind a repository to this session. After attaching, the repo is cloned on your next turn and you gain full git/PR/deploy capabilities.
+- attach_repo: Bind a repository to this session. After attaching, the repo is cloned on your next turn and you gain full git/PR capabilities.
 
-Not available until a repository is attached: git, create_pull_request, all forge/PR tools, all Render deploy tools.
+Not available until a repository is attached: git, create_pull_request, all forge/PR tools.
 
 Guidance:
 - This is a scratch workbench. Create files, install packages, scaffold projects, write code, run tests — whatever helps.
@@ -191,13 +166,15 @@ export function buildAgentSystemPrompt(opts: SystemPromptOpts): string {
     parts.push(OPERATIONAL_NOTES);
   }
 
-  // Opt-in skills (dynamic per session)
-  const skillBlocks = opts.skills.map((s) => s.content).filter(Boolean);
-  if (skillBlocks.length > 0) {
-    parts.push(`\n# Additional skills & instructions\n\n${skillBlocks.join("\n\n---\n\n")}`);
+  if (opts.skillIndex && opts.skillIndex.length > 0) {
+    const rows = opts.skillIndex
+      .map((s) => `| ${s.source}/${s.slug} | ${s.name} | ${s.description} |`)
+      .join("\n");
+    parts.push(
+      `\n# Available skills\n\nYou have access to specialized knowledge through skills. Use \`load_skill\` to read a skill's full content when you need its guidance.\n\n| ID | Name | Summary |\n|----|------|---------|\n${rows}`,
+    );
   }
 
-  // Session-specific context
   if (opts.projectContext) {
     parts.push(`\n# Project context\n${opts.projectContext}`);
   }

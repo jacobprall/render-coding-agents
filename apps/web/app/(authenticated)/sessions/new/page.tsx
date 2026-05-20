@@ -50,6 +50,7 @@ export default async function NewSessionPage({
       projectId={params.project}
       recentSessions={recentSessions}
       initialRepos={reposResult.repos ?? []}
+      hasForgeToken={!!session.forgeToken}
     />
   );
 }

@@ -12,6 +12,9 @@ import {
 } from "@coding-agents/platform";
 import { runAgentTurn } from "./agent";
 import { fetchAvailableModels } from "./models";
+import { resolveActiveSkills } from "./skills";
+import { getForgeProviderForSession } from "./providers";
+import type { AgentJob } from "./types";
 
 const REDIS_URL = process.env.REDIS_URL;
 if (!REDIS_URL) {
@@ -59,6 +62,7 @@ async function heartbeat(redis: Redis): Promise<void> {
     );
     await new Promise((r) => setTimeout(r, HEARTBEAT_TTL * 1000 * 0.8));
   }
+  await redis.del(`worker:heartbeat:${WORKER_ID}`).catch(() => {});
 }
 
 async function finalizeDeadLetter(platform: PlatformContainer, job: ValidatedAgentJob): Promise<void> {
@@ -113,15 +117,55 @@ async function reclaimLoop(redis: Redis, platform: PlatformContainer): Promise<v
   }
 }
 
-async function processJob(redis: Redis, streamId: string, job: ValidatedAgentJob, platform: PlatformContainer): Promise<void> {
+/**
+ * Resolve activeSkillRefs from the job queue payload into full ResolvedSkills
+ * by loading markdown content from builtins / user repos / project repos.
+ */
+async function resolveJobSkills(
+  job: ValidatedAgentJob,
+  platform: PlatformContainer,
+): Promise<AgentJob> {
+  const { db } = platform;
+  const activeRefs = job.activeSkillRefs ?? [];
+
+  let resolvedSkills: Awaited<ReturnType<typeof resolveActiveSkills>> = [];
   try {
-    await runAgentTurn(job, redis, platform);
-    await ackJob(redis, streamId);
+    const forge = await getForgeProviderForSession(db, {
+      forgeType: "github",
+      userId: job.userId,
+    });
+    resolvedSkills = await resolveActiveSkills(forge, {
+      activeSkills: activeRefs,
+      forgeUsername: "",
+      projectRepoPath: "",
+    });
+  } catch (err) {
+    console.warn("[worker] Skill resolution failed, using empty skills:", err);
+    resolvedSkills = [];
+  }
+
+  return {
+    ...job,
+    resolvedSkills,
+  };
+}
+
+async function processJob(
+  redis: Redis,
+  streamId: string,
+  job: ValidatedAgentJob,
+  platform: PlatformContainer,
+): Promise<void> {
+  try {
+    const resolvedJob = await resolveJobSkills(job, platform);
+    await runAgentTurn(resolvedJob, redis, platform);
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     const errStack = err instanceof Error ? err.stack : undefined;
     console.error(`[worker] Job ${job.runId} failed (session=${job.sessionId} model=${job.modelId ?? "default"}):\n  ${errMsg}`);
     if (errStack) console.error(errStack);
+  } finally {
+    await ackJob(redis, streamId);
   }
 }
 
@@ -170,7 +214,7 @@ async function main() {
     if (!entry) continue;
 
     const { streamId, job } = entry;
-    console.info(`[worker] Processing job: runId=${job.runId} sessionId=${job.sessionId} skills=${job.resolvedSkills.length}`);
+    console.info(`[worker] Processing job: runId=${job.runId} sessionId=${job.sessionId} activeSkillRefs=${job.activeSkillRefs.length}`);
 
     active++;
     void processJob(redis, streamId, job, platform).finally(() => {

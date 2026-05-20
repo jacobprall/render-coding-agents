@@ -19,14 +19,8 @@ import {
   registerRepoTools,
   registerPullRequestTools,
   registerOrgTools,
-  registerProjectTools,
-  registerSkillTools,
-  registerInboxTools,
-  registerMirrorTools,
   registerModelTools,
   registerSettingsTools,
-  registerNotificationTools,
-  registerInviteTools,
 } from "./tools";
 
 // ---------------------------------------------------------------------------
@@ -51,14 +45,8 @@ export function createMcpServer(auth: AuthContext): McpServer {
   registerRepoTools(server, p, auth);
   registerPullRequestTools(server, p, auth);
   registerOrgTools(server, p, auth);
-  registerProjectTools(server, p, auth);
-  registerSkillTools(server, p, auth);
-  registerInboxTools(server, p, auth);
-  registerMirrorTools(server, p, auth);
   registerModelTools(server, p, auth);
   registerSettingsTools(server, p, auth);
-  registerNotificationTools(server, p, auth);
-  registerInviteTools(server, p, auth);
 
   return server;
 }

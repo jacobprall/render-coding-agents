@@ -2,7 +2,7 @@ import { defineTool } from "./define-tool";
 import type { ToolConfig } from "./define-tool";
 import { nanoid } from "nanoid";
 import { z } from "zod";
-import { getSandboxContext, isForgeAgentContext, type ForgeAgentContext } from "../context/agent-context";
+import type { ForgeAgentContext } from "../context/agent-context";
 import type { LLMProvider } from "../llm";
 import { agentLoop } from "../loop";
 import { zodToJsonSchema } from "../zod-to-json-schema";
@@ -13,24 +13,40 @@ const MAX_SUBAGENT_STEPS = 20;
 const taskInputSchema = z.object({
   task: z.string().describe("Description of the task for the subagent"),
   context: z.string().optional().describe("Additional context the subagent needs"),
+  model: z
+    .string()
+    .optional()
+    .describe(
+      "Model ID to use for this subagent (e.g. 'anthropic/claude-haiku-4-5'). " +
+        "Defaults to the configured subagent model. Use a stronger model for complex reasoning tasks.",
+    ),
 });
+
+export interface SubagentModelResolver {
+  resolve(requestedModelId?: string): {
+    provider: LLMProvider;
+    modelId: string;
+    providerName: "anthropic" | "openai";
+  };
+}
 
 export function taskTool(
   publishFn: (event: Record<string, unknown>) => Promise<void>,
   buildSubTools: () => Record<string, ToolConfig>,
-  provider: LLMProvider,
-  modelId: string,
+  modelResolver: SubagentModelResolver,
   forgeContext: ForgeAgentContext,
   parentSystemPromptSuffix?: string,
 ) {
   return defineTool({
     description: "Delegate a self-contained subtask to a focused subagent. Use for parallelizable or isolated work.",
     inputSchema: taskInputSchema,
-    execute: async ({ task, context: taskContext }) => {
+    execute: async ({ task, context: taskContext, model: requestedModel }) => {
       const taskId = nanoid();
       await publishFn({ type: "task_start", task, taskId });
 
       try {
+        const { provider: subProvider, modelId: subModelId } = modelResolver.resolve(requestedModel);
+
         const subToolConfigs = buildSubTools();
         const subTools = new Map<string, AgentTool>();
 
@@ -52,16 +68,17 @@ export function taskTool(
         ].filter(Boolean).join("\n\n");
 
         const result = await agentLoop({
-          provider,
-          model: modelId,
+          provider: subProvider,
+          model: subModelId,
           system: subSystem,
           messages: [{ role: "user" as const, content: task }],
           tools: subTools,
           maxSteps: MAX_SUBAGENT_STEPS,
         });
 
-        await publishFn({ type: "task_done", task, taskId, result: result.text });
-        return { success: true, result: result.text };
+        const summary = result.text || `Completed ${result.steps} steps with ${result.totalUsage.outputTokens} output tokens.`;
+        await publishFn({ type: "task_done", task, taskId, result: summary });
+        return { success: true, result: summary };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         await publishFn({ type: "task_error", task, taskId, message });

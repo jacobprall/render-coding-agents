@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { syncConnections } from "@coding-agents/db";
 import type { GatewayEnv } from "../middleware/auth";
 import { getPlatform } from "../platform";
-import { getForgeProviderForAuth, createForgeProvider, type ForgeProviderType } from "@coding-agents/platform/forge";
+import { getForgeProviderForAuth, createForgeProvider } from "@coding-agents/platform/forge";
 import { decryptTokenSafe } from "@coding-agents/shared/lib/encryption";
 import { formatZodError } from "../middleware/validation";
 
@@ -24,12 +24,10 @@ async function resolveForgeForUser(auth: { userId: string; forgeToken: string; f
     .limit(1);
 
   if (conn?.accessToken) {
-    const baseUrl = conn.provider === "github" ? "https://api.github.com" : "https://gitlab.com";
-    return createForgeProvider({
-      type: conn.provider as ForgeProviderType,
-      baseUrl,
-      token: decryptTokenSafe(conn.accessToken),
-    });
+    const token = decryptTokenSafe(conn.accessToken);
+    if (token) {
+      return createForgeProvider({ token });
+    }
   }
 
   return getForgeProviderForAuth(auth);
@@ -84,12 +82,9 @@ sessionRoutes.get("/repos", async (c) => {
 
   for (const conn of conns) {
     try {
-      const baseUrl = conn.provider === "github" ? "https://api.github.com" : "https://gitlab.com";
-      const forge = createForgeProvider({
-        type: conn.provider as ForgeProviderType,
-        baseUrl,
-        token: decryptTokenSafe(conn.accessToken),
-      });
+      const token = decryptTokenSafe(conn.accessToken);
+      if (!token) continue;
+      const forge = createForgeProvider({ token });
       const repos = await forge.repos.list();
       allRepos.push(...repos);
     } catch (err) {

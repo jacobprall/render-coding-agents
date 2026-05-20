@@ -2,22 +2,72 @@ import type { LLMProvider, LLMMessage, LLMResponse, ContentBlock, ToolDefinition
 
 export interface AgentTool {
   definition: ToolDefinition;
-  execute: (input: unknown) => Promise<unknown>;
+  execute: (input: unknown, toolCallId?: string) => Promise<unknown>;
 }
 
 export interface AgentStep {
   text: string;
   toolCalls: Array<{ toolCallId: string; toolName: string; input: unknown }>;
   toolResults: Array<{ toolCallId: string; output: unknown }>;
-  usage: { inputTokens: number; outputTokens: number };
+  usage: { inputTokens: number; outputTokens: number; cacheCreationInputTokens?: number; cacheReadInputTokens?: number };
 }
 
 export interface AgentLoopResult {
   text: string;
   messages: LLMMessage[];
-  totalUsage: { inputTokens: number; outputTokens: number };
+  totalUsage: { inputTokens: number; outputTokens: number; cacheCreationInputTokens?: number; cacheReadInputTokens?: number };
   steps: number;
   hitStepLimit: boolean;
+}
+
+const COMPACTION_CHAR_THRESHOLD = 2000;
+const COMPACTION_STALE_STEPS = 2;
+
+/**
+ * Replace large tool results from older steps with compact pointers.
+ * The full content is stored in resultStore and retrievable via get_tool_result.
+ */
+function compactStaleToolResults(
+  allMessages: LLMMessage[],
+  resultStore: Map<string, string>,
+  currentStep: number,
+): void {
+  let stepCounter = 0;
+  const cutoffStep = currentStep - COMPACTION_STALE_STEPS;
+
+  for (const msg of allMessages) {
+    if (msg.role === "assistant") {
+      const blocks = Array.isArray(msg.content) ? msg.content : [];
+      if (blocks.some((b) => b.type === "tool_use")) {
+        stepCounter++;
+      }
+    }
+
+    if (msg.role !== "user" || typeof msg.content === "string") continue;
+    if (stepCounter > cutoffStep) continue;
+
+    const blocks = msg.content;
+    for (let i = 0; i < blocks.length; i++) {
+      const block = blocks[i];
+      if (block.type !== "tool_result") continue;
+      if (block.is_error) continue;
+
+      const content = typeof block.content === "string" ? block.content : JSON.stringify(block.content);
+      if (content.length < COMPACTION_CHAR_THRESHOLD) continue;
+
+      const toolCallId = block.tool_use_id;
+      if (!toolCallId || resultStore.has(toolCallId)) continue;
+
+      resultStore.set(toolCallId, content);
+
+      const firstLine = content.slice(0, 100).split("\n")[0];
+      const approxLines = content.split("\n").length;
+      blocks[i] = {
+        ...block,
+        content: `[Compacted: ${approxLines} lines. Preview: "${firstLine}…". Use get_tool_result("${toolCallId}") to retrieve full content.]`,
+      };
+    }
+  }
 }
 
 export async function agentLoop(params: {
@@ -32,6 +82,7 @@ export async function agentLoop(params: {
   onStep?: (step: AgentStep) => Promise<void>;
   shouldAbort?: () => Promise<boolean>;
   onToken?: (token: string) => void;
+  resultStore?: Map<string, string>;
 }): Promise<AgentLoopResult> {
   const {
     provider,
@@ -45,6 +96,7 @@ export async function agentLoop(params: {
     onStep,
     shouldAbort,
     onToken,
+    resultStore = new Map<string, string>(),
   } = params;
 
   const allMessages = [...initialMessages];
@@ -52,12 +104,18 @@ export async function agentLoop(params: {
 
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
+  let totalCacheCreation = 0;
+  let totalCacheRead = 0;
   let accumulatedText = "";
   let steps = 0;
 
   while (steps < maxSteps) {
     if (shouldAbort && (await shouldAbort())) {
       break;
+    }
+
+    if (steps > 0) {
+      compactStaleToolResults(allMessages, resultStore, steps);
     }
 
     const response: LLMResponse = await provider.chat({
@@ -72,6 +130,8 @@ export async function agentLoop(params: {
 
     totalInputTokens += response.usage.inputTokens;
     totalOutputTokens += response.usage.outputTokens;
+    totalCacheCreation += response.usage.cacheCreationInputTokens ?? 0;
+    totalCacheRead += response.usage.cacheReadInputTokens ?? 0;
     steps++;
 
     const textBlocks = response.content.filter((b) => b.type === "text");
@@ -121,7 +181,7 @@ export async function agentLoop(params: {
       }
 
       try {
-        const output = await tool.execute(input);
+        const output = await tool.execute(input, toolCallId);
         const serialized = typeof output === "string" ? output : JSON.stringify(output);
         stepToolResults.push({ toolCallId, output });
         resultBlocks.push({
@@ -160,7 +220,12 @@ export async function agentLoop(params: {
   return {
     text: accumulatedText,
     messages: allMessages.slice(initialMessages.length),
-    totalUsage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens },
+    totalUsage: {
+      inputTokens: totalInputTokens,
+      outputTokens: totalOutputTokens,
+      cacheCreationInputTokens: totalCacheCreation || undefined,
+      cacheReadInputTokens: totalCacheRead || undefined,
+    },
     steps,
     hitStepLimit: steps >= maxSteps,
   };

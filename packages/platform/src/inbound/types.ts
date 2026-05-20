@@ -1,17 +1,13 @@
 // ---------------------------------------------------------------------------
 // Canonical inbound event types
 // ---------------------------------------------------------------------------
-// Every external signal — GitHub webhook, GitLab webhook, Forgejo webhook,
-// CI callback, Render deploy hook, chat message — is normalised into an
-// InboundEvent before any routing or dispatch logic runs. This lets the
-// router be source-agnostic and makes tracing / logging uniform.
+// Every external signal — GitHub webhook, CI callback, chat message — is
+// normalised into an InboundEvent before any routing or dispatch logic runs.
+// This lets the router be source-agnostic and makes tracing / logging uniform.
 // ---------------------------------------------------------------------------
 
 export type InboundSource =
   | "github"
-  | "gitlab"
-  | "forgejo"
-  | "render"
   | "ci"
   | "chat"
   | "mcp";
@@ -120,8 +116,7 @@ export type RouteAction =
 
 export type SessionMatcher =
   | { by: "repo_pr"; repo: string; prNumber: number }
-  | { by: "repo_branch"; repo: string; branch: string }
-  | { by: "mirror_repo"; remoteUrl: string };
+  | { by: "repo_branch"; repo: string; branch: string };
 
 // ---------------------------------------------------------------------------
 // Route rule — a match predicate + action factory

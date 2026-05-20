@@ -12,6 +12,7 @@ export interface ContentBlock {
   tool_use_id?: string;
   content?: string | ContentBlock[];
   thinking?: string;
+  signature?: string;
   is_error?: boolean;
 }
 
@@ -24,7 +25,12 @@ export interface ToolDefinition {
 export interface LLMResponse {
   content: ContentBlock[];
   stopReason: "end_turn" | "tool_use" | "max_tokens" | "stop_sequence";
-  usage: { inputTokens: number; outputTokens: number };
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheCreationInputTokens?: number;
+    cacheReadInputTokens?: number;
+  };
   model: string;
 }
 

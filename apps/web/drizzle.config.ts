@@ -35,5 +35,7 @@ export default defineConfig({
     "projects",
     "project_repos",
     "webhook_deliveries",
+    "budgets",
+    "llm_calls",
   ],
 });

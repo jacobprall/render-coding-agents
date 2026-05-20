@@ -19,10 +19,10 @@ const createPrInputSchema = z.object({
 export function createPullRequestTool() {
   return defineTool({
     description:
-      "Create a pull request from the current branch. If the repo is a pull mirror, the PR is created on the upstream provider (e.g. GitHub). Push your branch with the git tool first. Returns the PR URL and number on success.",
+      "Create a pull request from the current branch. Push your branch with the git tool first. Returns the PR URL and number on success.",
     inputSchema: createPrInputSchema,
     execute: withForgeContext(async ({ title, body, base: baseOpt }, ctx) => {
-      const { forge, repoOwner, repoName, sessionId, baseBranch, adapter, upstream } = ctx;
+      const { forge, repoOwner, repoName, sessionId, baseBranch, adapter } = ctx;
 
       const branchOut = await adapter.git(sessionId, ["branch", "--show-current"]);
       const head = branchOut.stdout.trim();
@@ -40,13 +40,9 @@ export function createPullRequestTool() {
 
       const prTitle = sanitizePrTitle(title, "Update");
 
-      const targetForge = upstream?.forge ?? forge;
-      const targetOwner = upstream?.remoteOwner ?? repoOwner;
-      const targetRepo = upstream?.remoteRepo ?? repoName;
-
-      const pr = await targetForge.pulls.create({
-        owner: targetOwner,
-        repo: targetRepo,
+      const pr = await forge.pulls.create({
+        owner: repoOwner,
+        repo: repoName,
         head,
         base,
         title: prTitle,
@@ -62,7 +58,6 @@ export function createPullRequestTool() {
         head,
         base,
         title: prTitle,
-        upstream: upstream ? `${upstream.provider}:${targetOwner}/${targetRepo}` : undefined,
       };
     }),
   });

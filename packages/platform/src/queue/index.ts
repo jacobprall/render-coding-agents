@@ -1,10 +1,10 @@
 export {
   AGENT_JOBS_STREAM,
   AGENT_JOBS_GROUP,
-  ResolvedSkillSchema,
+  ActiveSkillRefSchema,
   AgentJobSchema,
   type ValidatedAgentJob,
-  type ValidatedResolvedSkill,
+  type ValidatedActiveSkillRef,
   ensureConsumerGroup,
   enqueueJob,
   readOneJob,
@@ -12,10 +12,3 @@ export {
   reclaimStalePending,
 } from "./job-queue";
 
-export {
-  DEAD_LETTER_KEY,
-  moveToDeadLetter,
-  listDeadLetterJobs,
-  retryDeadLetterJob,
-  discardDeadLetterJob,
-} from "./dead-letter";

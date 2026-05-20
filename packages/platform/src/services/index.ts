@@ -62,3 +62,11 @@ export type {
   UsageSummary,
   SpendCheckResult,
 } from "./cost";
+
+export { InviteService } from "./invite";
+export type {
+  CreateInviteParams,
+  CreateInviteResult,
+  AcceptInviteParams,
+  InviteSummary,
+} from "./invite";

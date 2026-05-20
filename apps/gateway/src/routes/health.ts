@@ -28,29 +28,13 @@ async function checkRedis(): Promise<CheckResult> {
   }
 }
 
-async function checkForgejo(): Promise<CheckResult | null> {
-  if (!process.env.FORGEJO_INTERNAL_URL) return null;
-  const start = Date.now();
-  try {
-    const baseUrl = process.env.FORGEJO_INTERNAL_URL;
-    const res = await fetch(`${baseUrl}/api/v1/version`, { signal: AbortSignal.timeout(3000) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return { status: "ok", latencyMs: Date.now() - start };
-  } catch (err) {
-    return { status: "error", latencyMs: Date.now() - start, error: err instanceof Error ? err.message : "Unknown" };
-  }
-}
-
 healthRoutes.get("/", async (c) => {
-  const [postgres, redis, forgejo] = await Promise.all([
+  const [postgres, redis] = await Promise.all([
     checkPostgres(),
     checkRedis(),
-    checkForgejo(),
   ]);
 
   const checks: Record<string, CheckResult> = { postgres, redis };
-  if (forgejo) checks.forgejo = forgejo;
-
   const allOk = Object.values(checks).every((ch) => ch.status === "ok");
   const anyOk = Object.values(checks).some((ch) => ch.status === "ok");
   const status = allOk ? "healthy" : anyOk ? "degraded" : "unhealthy";

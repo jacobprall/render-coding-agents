@@ -28,7 +28,7 @@ services:
   sandbox:
     build:
       context: .
-      dockerfile: packages/sandbox/Dockerfile
+      dockerfile: apps/sandbox/Dockerfile
     environment:
       - PORT=3001
       - WORKSPACE_ROOT=/workspace

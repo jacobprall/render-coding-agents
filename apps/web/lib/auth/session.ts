@@ -18,6 +18,7 @@ export interface UserSession {
   isAdmin: boolean;
 }
 
+
 async function readSession(): Promise<UserSession | null> {
   const session = await auth();
   if (!session?.user) return null;

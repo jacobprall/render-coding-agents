@@ -30,17 +30,17 @@ export async function expireRunStream(redis: Redis, runId: string): Promise<void
  * live streaming (tool_call with embedded result).
  */
 export function mergeToolResults(parts: AssistantPart[]): AssistantPart[] {
-  const toolCallMap = new Map<string, AssistantPart>();
+  const toolCallIndices = new Map<string, number>();
   const merged: AssistantPart[] = [];
 
   for (const part of parts) {
     if (part.type === "tool_call" && typeof part.toolCallId === "string") {
-      toolCallMap.set(part.toolCallId, part);
-      merged.push(part);
+      toolCallIndices.set(part.toolCallId, merged.length);
+      merged.push({ ...part });
     } else if (part.type === "tool_result" && typeof part.toolCallId === "string") {
-      const tc = toolCallMap.get(part.toolCallId);
-      if (tc) {
-        tc.result = part.result;
+      const idx = toolCallIndices.get(part.toolCallId);
+      if (idx !== undefined) {
+        merged[idx] = { ...merged[idx], result: part.result };
       }
     } else {
       merged.push(part);

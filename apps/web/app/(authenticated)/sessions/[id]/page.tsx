@@ -95,12 +95,8 @@ export default async function SessionDetailPage({
         .orderBy(chatMessages.createdAt)
     : [];
 
-  const forgejoWebOrigin =
-    process.env.FORGEJO_PUBLIC_URL || process.env.FORGEJO_EXTERNAL_URL || null;
-
   return (
     <SessionWorkspace
-      forgejoWebOrigin={forgejoWebOrigin}
       initialModelId={initialModelId}
       session={{
         id: sessionRow.id,

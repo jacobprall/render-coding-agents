@@ -11,10 +11,7 @@ interface PrSummaryProps {
   prNumber: number;
   prStatus: string | null;
   branch: string | null;
-  /** e.g. GitHub PR URL; when set, overrides Forgejo / internal fallback */
   upstreamPrUrl?: string | null;
-  /** Forgejo (or Gitea) web origin for fallback links — pass from server env */
-  forgejoWebOrigin?: string | null;
 }
 
 const statusConfig: Record<string, { color: string; label: string; dotColor: string }> = {
@@ -54,7 +51,6 @@ export function PrSummaryPanel({
   prStatus,
   branch,
   upstreamPrUrl,
-  forgejoWebOrigin,
 }: PrSummaryProps) {
   const [isPending, startTransition] = useTransition();
   const [reviewRequested, setReviewRequested] = useState(false);
@@ -65,7 +61,6 @@ export function PrSummaryPanel({
     repoPath,
     prNumber,
     upstreamPrUrl,
-    forgejoWebOrigin,
   });
 
   async function handleRequestReview() {

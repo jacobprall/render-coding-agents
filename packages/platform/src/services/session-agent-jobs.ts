@@ -3,27 +3,31 @@ import { agentRuns, chatMessages, chats, sessions, syncConnections } from "@codi
 import type { PlatformDb } from "../interfaces/database";
 import type { QueueAdapter } from "../interfaces/queue";
 import { getDefaultForgeProvider, getForgeProviderForAuth } from "../forge/factory";
-import type { ForgeProvider, ForgeProviderType } from "../forge/provider";
-import { resolveSkillsForSession } from "./session-skills";
+import type { ForgeProvider } from "../forge/provider";
+import { normalizeActiveSkills, type ActiveSkillRef } from "./session-skills";
 import { decryptTokenSafe } from "../auth/encryption";
 
 /**
- * Forge token / provider resolution for sessions (GitHub/GitLab OAuth).
+ * Forge token / provider resolution for sessions (GitHub OAuth).
  */
 export async function getForgeProviderForSession(
   db: PlatformDb,
   session: { forgeType: string | null; userId: string },
 ): Promise<ForgeProvider> {
-  const forgeType = (session.forgeType ?? "github") as ForgeProviderType;
   const [conn] = await db
     .select({ accessToken: syncConnections.accessToken })
     .from(syncConnections)
-    .where(and(eq(syncConnections.userId, session.userId), eq(syncConnections.provider, forgeType)))
+    .where(and(eq(syncConnections.userId, session.userId), eq(syncConnections.provider, "github")))
     .limit(1);
   if (conn?.accessToken) {
-    return getForgeProviderForAuth({ forgeToken: decryptTokenSafe(conn.accessToken), forgeType });
+    const token = decryptTokenSafe(conn.accessToken);
+    if (token) return getForgeProviderForAuth({ forgeToken: token });
   }
-  return getDefaultForgeProvider(process.env.GITHUB_TOKEN ?? "");
+  const envToken = process.env.GITHUB_TOKEN;
+  if (!envToken) {
+    throw new Error(`No GitHub token found for user ${session.userId}`);
+  }
+  return getDefaultForgeProvider(envToken);
 }
 
 // ---------------------------------------------------------------------------
@@ -93,6 +97,17 @@ export async function getOrCreateChatId(
 }
 
 // ---------------------------------------------------------------------------
+// getActiveSkillRefsForSession
+// ---------------------------------------------------------------------------
+
+function getActiveSkillRefs(
+  sessionRow: { activeSkills?: unknown },
+): ActiveSkillRef[] {
+  const stored = sessionRow.activeSkills as ActiveSkillRef[] | null | undefined;
+  return normalizeActiveSkills(stored);
+}
+
+// ---------------------------------------------------------------------------
 // startAgentJob
 // ---------------------------------------------------------------------------
 
@@ -113,8 +128,7 @@ export async function startAgentJob(
     fixContext?: string;
   },
 ): Promise<string> {
-  const { sessionRow, chatId, authUserId, authUsername, forgeToken, projectConfigPatch, fixContext } =
-    params;
+  const { sessionRow, chatId, authUserId, projectConfigPatch, fixContext } = params;
 
   const rows = await db
     .select()
@@ -137,19 +151,7 @@ export async function startAgentJob(
       : {};
   Object.assign(baseConfig, projectConfigPatch ?? {});
 
-  const sessionForResolve = {
-    ...sessionRow,
-    projectConfig: Object.keys(baseConfig).length ? baseConfig : sessionRow.projectConfig,
-  };
-  const forge = getForgeProviderForAuth({
-    forgeToken,
-    forgeType: (sessionRow.forgeType ?? "github") as ForgeProviderType,
-  });
-  const resolvedSkills = await resolveSkillsForSession(
-    sessionForResolve,
-    forge,
-    authUsername,
-  );
+  const activeSkillRefs = getActiveSkillRefs(sessionRow);
 
   await db.insert(agentRuns).values({
     id: runId,
@@ -175,7 +177,7 @@ export async function startAgentJob(
     userId: authUserId,
     messages,
     modelMessages,
-    resolvedSkills,
+    activeSkillRefs,
     projectConfig: Object.keys(baseConfig).length ? baseConfig : undefined,
     projectContext: sessionRow.projectContext ?? undefined,
     modelId: DEFAULT_MODEL_ID,
@@ -194,7 +196,6 @@ export async function startAgentJob(
 
 /**
  * Enqueue an agent job triggered by a non-user-message event (CI, review, etc.).
- * Mirrors the logic in apps/web/lib/agent/enqueue-session-job.ts.
  */
 export async function enqueueSessionTriggerJob(
   db: PlatformDb,
@@ -257,13 +258,7 @@ export async function enqueueSessionTriggerJob(
   const modelMsgs = collectModelMessages(rows);
   const runId = crypto.randomUUID();
 
-  const forge = await getForgeProviderForSession(db, sessionRow);
-  const resolvedSkills = await resolveSkillsForSession(
-    sessionRow,
-    forge,
-    sessionRow.forgeUsername ?? "unknown",
-  );
-
+  const activeSkillRefs = getActiveSkillRefs(sessionRow);
   const effectiveModelId = modelId ?? DEFAULT_MODEL_ID;
 
   await db.insert(agentRuns).values({
@@ -295,7 +290,7 @@ export async function enqueueSessionTriggerJob(
     userId,
     messages,
     modelMessages: modelMsgs,
-    resolvedSkills,
+    activeSkillRefs,
     projectConfig: sessionRow.projectConfig,
     projectContext: sessionRow.projectContext ?? undefined,
     modelId: effectiveModelId,

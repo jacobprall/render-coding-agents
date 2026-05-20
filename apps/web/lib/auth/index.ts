@@ -1,6 +1,5 @@
 import NextAuth from "next-auth";
 import type { NextAuthConfig } from "next-auth";
-import GitHub from "next-auth/providers/github";
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import { and, eq } from "drizzle-orm";
 import { encryptToken, decryptTokenSafe } from "@coding-agents/shared/lib/encryption";
@@ -47,48 +46,23 @@ declare module "@auth/core/jwt" {
 }
 
 /**
- * Resolve a forge access token for the user by checking providers in order:
- * github first, then forgejo, then gitlab.
- * Optionally prefer a specific provider (e.g. the one used for sign-in).
+ * Load forge token from sync_connections for a user.
  */
 async function loadForgeAccessTokenForUser(
   userId: string,
-  preferProvider?: string,
 ): Promise<{ token: string; forgeType: "github" | "gitlab"; username?: string } | undefined> {
   const db = getDb();
 
-  const defaultOrder: Array<"github" | "gitlab"> = ["github", "gitlab"];
-  const providerOrder = preferProvider && (preferProvider === "github" || preferProvider === "gitlab")
-    ? [preferProvider, ...defaultOrder.filter((p) => p !== preferProvider)]
-    : defaultOrder;
+  const [conn] = await db
+    .select({ accessToken: syncConnections.accessToken, remoteUsername: syncConnections.remoteUsername })
+    .from(syncConnections)
+    .where(and(eq(syncConnections.userId, userId), eq(syncConnections.provider, "github")))
+    .limit(1);
 
-  for (const provider of providerOrder) {
-    const [row] = await db
-      .select({ accessToken: accounts.access_token, providerAccountId: accounts.providerAccountId })
-      .from(accounts)
-      .where(and(eq(accounts.userId, userId), eq(accounts.provider, provider)))
-      .limit(1);
-    if (row?.accessToken) {
-      return {
-        token: decryptTokenSafe(row.accessToken),
-        forgeType: provider,
-        username: row.providerAccountId,
-      };
-    }
-  }
-
-  for (const provider of providerOrder) {
-    const [conn] = await db
-      .select({ accessToken: syncConnections.accessToken, remoteUsername: syncConnections.remoteUsername })
-      .from(syncConnections)
-      .where(and(eq(syncConnections.userId, userId), eq(syncConnections.provider, provider)))
-      .limit(1);
-    if (conn?.accessToken) {
-      return {
-        token: decryptTokenSafe(conn.accessToken),
-        forgeType: provider,
-        username: conn.remoteUsername ?? undefined,
-      };
+  if (conn?.accessToken) {
+    const token = decryptTokenSafe(conn.accessToken);
+    if (token) {
+      return { token, forgeType: "github", username: conn.remoteUsername ?? undefined };
     }
   }
 
@@ -96,10 +70,10 @@ async function loadForgeAccessTokenForUser(
 }
 
 /**
- * When a user signs in via GitHub OAuth, ensure a syncConnections row exists
- * so the agent can resolve their token for GitHub-direct sessions.
+ * Upsert a sync_connections row for GitHub so the agent/gateway can
+ * resolve the user's token. Called from the GitHub connect OAuth flow.
  */
-async function ensureSyncConnection(
+export async function ensureSyncConnection(
   userId: string,
   provider: "github" | "gitlab" | "bitbucket",
   accessToken: string,
@@ -132,18 +106,6 @@ async function ensureSyncConnection(
   }
 }
 
-const githubProvider = GitHub({
-  clientId: process.env.GITHUB_OAUTH_CLIENT_ID,
-  clientSecret: process.env.GITHUB_OAUTH_CLIENT_SECRET,
-  authorization: { params: { scope: "read:user user:email repo" } },
-  allowDangerousEmailAccountLinking: true,
-});
-
-const providers: NextAuthConfig["providers"] = [credentialsProvider];
-if (process.env.GITHUB_OAUTH_CLIENT_ID) {
-  providers.push(githubProvider);
-}
-
 const config: NextAuthConfig = {
   adapter: drizzleAdapterWithEncryptedForgeTokens(
     DrizzleAdapter(getDb(), {
@@ -155,7 +117,7 @@ const config: NextAuthConfig = {
 
   session: { strategy: "jwt" },
 
-  providers,
+  providers: [credentialsProvider],
 
   pages: {
     signIn: "/",
@@ -188,29 +150,23 @@ const config: NextAuthConfig = {
   },
 
   callbacks: {
-    async jwt({ token, user, account, profile }) {
-      if (user?.id) {
-        // When signing in via OAuth, prefer that provider's token
-        const signInProvider = account?.provider;
-        const forgeInfo = await loadForgeAccessTokenForUser(user.id, signInProvider);
-        token.forgeToken = forgeInfo?.token;
-        token.forgeType = forgeInfo?.forgeType ?? "github";
-        token.isAdmin = user.isAdmin ?? false;
-
-        const ghLogin = (profile as { login?: string } | undefined)?.login;
-        token.forgeUsername = ghLogin ?? user.externalUsername ?? user.name ?? undefined;
-
-        if (account?.provider === "github" && account.access_token) {
-          // Use the fresh OAuth token directly -- it's newer than whatever was in the DB
-          token.forgeToken = account.access_token;
-          token.forgeType = "github";
-
-          await ensureSyncConnection(
-            user.id,
-            "github",
-            account.access_token,
-            token.forgeUsername ?? "",
-          ).catch(() => {});
+    async jwt({ token, user }) {
+      // Always load on sign-in. Also re-load when forgeToken is absent so that
+      // connecting GitHub after sign-in is reflected on the next request without
+      // requiring the user to sign out and back in.
+      const userId = user?.id ?? token.sub;
+      if (userId && (user?.id || !token.forgeToken)) {
+        const forgeInfo = await loadForgeAccessTokenForUser(userId);
+        token.forgeToken = forgeInfo?.token ?? token.forgeToken;
+        token.forgeType = forgeInfo?.forgeType ?? token.forgeType ?? "github";
+        token.forgeUsername =
+          forgeInfo?.username ??
+          token.forgeUsername ??
+          user?.externalUsername ??
+          user?.name ??
+          undefined;
+        if (user?.id) {
+          token.isAdmin = user.isAdmin ?? false;
         }
       }
       return token;

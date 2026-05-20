@@ -28,6 +28,7 @@ import { ModelService } from "./services/model";
 import { CIService } from "./services/ci";
 import { WebhookService } from "./services/webhook";
 import { CostService } from "./services/cost";
+import { InviteService } from "./services/invite";
 import { InboundRouter } from "./inbound/router";
 import { InboundDispatcher } from "./inbound/dispatcher";
 import { DEFAULT_ROUTES } from "./inbound/default-routes";
@@ -74,6 +75,7 @@ export interface PlatformContainer {
   ci: CIService;
   webhooks: WebhookService;
   costs: CostService;
+  invites: InviteService;
   inboundRouter: InboundRouter;
   inboundDispatcher: InboundDispatcher;
 }
@@ -150,6 +152,7 @@ function buildContainer(
   const ci = new CIService(db, queue);
   const webhooks = new WebhookService(db, queue, events, ci);
   const costs = new CostService(db);
+  const invites = new InviteService(db);
   const inboundRouter = new InboundRouter(DEFAULT_ROUTES);
   const inboundDispatcher = new InboundDispatcher({
     db,
@@ -175,6 +178,7 @@ function buildContainer(
     ci,
     webhooks,
     costs,
+    invites,
     inboundRouter,
     inboundDispatcher,
   };

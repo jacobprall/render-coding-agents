@@ -5,9 +5,12 @@ import { specs } from "@coding-agents/db";
 import type { PlatformDb, EventBus } from "@coding-agents/platform";
 import type { LLMProvider } from "./llm";
 import type { ToolConfig } from "./tools/define-tool";
+import type { SubagentModelResolver } from "./tools/task";
 import type { AgentTool } from "./loop";
 import type { ForgeAgentContext } from "./context/agent-context";
 import { zodToJsonSchema } from "./zod-to-json-schema";
+import { getModel } from "./models";
+import type { ResolvedLlmKeys } from "@coding-agents/platform";
 import {
   bashTool,
   readFileTool,
@@ -34,10 +37,12 @@ import {
   submitSpecTool,
   type SubmitSpecInput,
   attachRepoTool,
+  loadSkillTool,
+  resetSkillCache,
+  getToolResultTool,
 } from "./tools";
 import type { AgentJob, StreamEvent } from "./types";
 import { publishEvent } from "./run-persistence";
-import { applyTrustTiers } from "./trust-tiers";
 
 // ─── Tool config registries ──────────────────────────────────────────────────
 
@@ -84,13 +89,32 @@ export function toolConfigsToAgentTools(
         description: cfg.description,
         input_schema: zodToJsonSchema(cfg.inputSchema),
       },
-      execute: (input) => {
+      execute: (input, toolCallId) => {
         const parsed = cfg.inputSchema.parse(input);
-        return cfg.execute(parsed, { context });
+        return cfg.execute(parsed, { context, toolCallId });
       },
     });
   }
   return tools;
+}
+
+const SUBAGENT_DEFAULT_MODEL = process.env.SUBAGENT_DEFAULT_MODEL ?? "anthropic/claude-haiku-4-5";
+
+function buildSubagentModelResolver(
+  parentProvider: LLMProvider,
+  parentModelId: string,
+  llmKeys: ResolvedLlmKeys,
+): SubagentModelResolver {
+  return {
+    resolve(requestedModelId?: string) {
+      const targetId = requestedModelId || SUBAGENT_DEFAULT_MODEL;
+      try {
+        return getModel(targetId, llmKeys);
+      } catch {
+        return { provider: parentProvider, modelId: parentModelId, providerName: "anthropic" };
+      }
+    },
+  };
 }
 
 export function buildToolSet(
@@ -103,6 +127,8 @@ export function buildToolSet(
   forgeContext: ForgeAgentContext,
   skillsPromptSuffix: string,
   hasRepo = true,
+  resultStore?: Map<string, string>,
+  llmKeys?: ResolvedLlmKeys,
 ): Map<string, AgentTool> {
   const reqId = job.requestId;
   const makeSubToolConfigs = () => buildSubagentToolConfigs(hasRepo);
@@ -110,11 +136,14 @@ export function buildToolSet(
     await publishEvent(events, job.runId, event as unknown as StreamEvent, reqId);
   };
 
-  const baseConfigs = applyTrustTiers(
-    makeSubToolConfigs(),
-    job.runId,
-    () => redis.duplicate(),
-    publishFn,
+  const baseConfigs = makeSubToolConfigs();
+
+  resetSkillCache();
+
+  const modelResolver = buildSubagentModelResolver(
+    provider,
+    modelId,
+    llmKeys ?? ({} as ResolvedLlmKeys),
   );
 
   const allConfigs: ToolConfigSet = {
@@ -122,13 +151,14 @@ export function buildToolSet(
     task: taskTool(
       publishFn,
       makeSubToolConfigs,
-      provider,
-      modelId,
+      modelResolver,
       forgeContext,
       skillsPromptSuffix,
     ),
     todo_write: todoWriteTool(),
     ask_user_question: askUserQuestionTool(job.runId, () => redis.duplicate(), publishFn),
+    load_skill: loadSkillTool(),
+    get_tool_result: getToolResultTool(resultStore ?? new Map()),
   };
 
   if (!hasRepo) {

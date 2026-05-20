@@ -32,6 +32,7 @@ interface NewChatViewProps {
     defaultBranch: string;
     isPrivate?: boolean;
   }>;
+  hasForgeToken?: boolean;
 }
 
 interface CreatedSession {
@@ -49,6 +50,7 @@ export function NewChatView({
   projectId,
   recentSessions = [],
   initialRepos,
+  hasForgeToken = true,
 }: NewChatViewProps) {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -215,6 +217,19 @@ export function NewChatView({
 
       <div className="shrink-0 border-t border-stroke-subtle px-(--of-space-md) py-(--of-space-md)">
         <div className="mx-auto max-w-4xl">
+          {!hasForgeToken && (
+            <div className="mb-3 flex items-center justify-between border border-amber-500/20 bg-amber-500/5 px-4 py-3">
+              <p className="text-sm text-amber-200">
+                Connect your GitHub account to access repositories.
+              </p>
+              <Link
+                href="/settings/connections"
+                className="shrink-0 bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/70"
+              >
+                Connect GitHub
+              </Link>
+            </div>
+          )}
           <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center">
             <RepoBranchPicker
               value={repoBranch}
@@ -248,7 +263,7 @@ export function NewChatView({
               <button
                 type="submit"
                 disabled={!input.trim() || creating}
-                className="flex items-center gap-1.5 bg-accent px-3 py-1.5 text-sm font-medium text-white transition-colors duration-(--of-duration-instant) hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex items-center gap-1.5 bg-primary px-3 py-1.5 text-sm font-medium text-white transition-colors duration-(--of-duration-instant) hover:bg-primary/70 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {creating ? (
                   <>

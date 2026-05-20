@@ -1,6 +1,6 @@
 import type Redis from "ioredis";
 import { eq } from "drizzle-orm";
-import { agentRuns, chats, sessions, prEvents, projects, projectRepos } from "@coding-agents/db";
+import { agentRuns, sessions, prEvents, projects, projectRepos } from "@coding-agents/db";
 import { AppError } from "@coding-agents/shared";
 import { resolveLlmApiKeys, type ResolvedLlmKeys, type PlatformContainer, type PlatformDb, type EventBus } from "@coding-agents/platform";
 import type { SandboxAdapter } from "@coding-agents/sandbox";
@@ -8,20 +8,20 @@ import type { ForgeAgentContext } from "./context/agent-context";
 import type { LLMMessage } from "./llm";
 import { jobMessagesToLLMMessages, sanitizeMessages } from "./messages";
 import { buildAgentSystemPrompt, FORGE_LABELS } from "./system-prompt";
+import { listBuiltinSummaries } from "./skills";
 import { getModel, getModelDef } from "./models";
 import type { AgentJob, StreamEvent, AssistantPart } from "./types";
 import { isDeliverComplete, transitionToComplete } from "./lib/deliver";
-import { rewriteForSandbox } from "./sandbox-url";
-import { getForgeProvider, getForgeProviderForSession, resolveUpstreamMirror, getAdapter, triggerMirrorSync } from "./providers";
+import { getForgeProviderForSession, getAdapter } from "./providers";
 import { buildToolSet } from "./tool-registry";
 import { publishEvent, expireRunStream, mergeToolResults, persistAssistantMessage, updateRunStatus } from "./run-persistence";
 import { agentLoop } from "./loop";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const MAX_STEPS = 100;
+const MAX_STEPS = parseInt(process.env.MAX_AGENT_STEPS ?? "100", 10);
 const RUN_STATUS_TTL = 3600;
-const TURN_TIMEOUT_MS = 5 * 60 * 1000;
+const TURN_TIMEOUT_MS = parseInt(process.env.TURN_TIMEOUT_MS ?? String(10 * 60 * 1000), 10);
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -30,6 +30,16 @@ class AbortError extends Error {
     super("ABORTED");
     this.name = "AbortError";
   }
+}
+
+function isTimeoutAbort(error: unknown): boolean {
+  if (error instanceof Error && error.name === "AbortError" && !(error instanceof AbortError)) {
+    return true;
+  }
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return true;
+  }
+  return false;
 }
 
 async function isAborted(events: EventBus, runId: string): Promise<boolean> {
@@ -43,7 +53,7 @@ function buildModelMessages(job: AgentJob): LLMMessage[] {
   const raw = job.modelMessages?.length
     ? (job.modelMessages as LLMMessage[])
     : jobMessagesToLLMMessages(job.messages);
-  return sanitizeMessages(raw, job.chatId);
+  return sanitizeMessages(raw);
 }
 
 // ─── System prompt & context ─────────────────────────────────────────────────
@@ -59,13 +69,16 @@ function buildThinkingParams(job: AgentJob) {
     : { type: "enabled" as const, budgetTokens: 8000 };
 }
 
-function buildSystemPromptForJob(job: AgentJob, forgeType?: string, isScratch = false): string {
+function buildSystemPromptForJob(job: AgentJob, isScratch = false): string {
   const appended = [job.fixContext].filter(Boolean).join("\n\n");
+
+  const skillIndex = listBuiltinSummaries();
+
   const base = buildAgentSystemPrompt({
-    skills: job.resolvedSkills,
+    skillIndex,
     projectContext: job.projectContext,
     projectConfig: job.projectConfig,
-    forgeLabel: FORGE_LABELS[forgeType ?? "github"],
+    forgeLabel: FORGE_LABELS.github,
     isScratch,
   });
   return appended ? `${base}\n\n${appended}` : base;
@@ -101,12 +114,6 @@ function buildWorkspaceContext(
 
   if (ctx.repoOwner && ctx.repoName) {
     lines.push(`- **Owner:** ${ctx.repoOwner}`);
-  }
-
-  if (ctx.upstream) {
-    lines.push(
-      `- **Upstream:** ${ctx.upstream.provider} — ${ctx.upstream.remoteOwner}/${ctx.upstream.remoteRepo} (push and PRs target the upstream, not the internal forge)`,
-    );
   }
 
   return lines.join("\n");
@@ -150,26 +157,14 @@ async function buildForgeContext(params: {
     .limit(1);
 
   const isScratch = !sessionRow?.repoPath;
-  const forgeType = sessionRow?.forgeType ?? "github";
 
-  let forge;
-  try {
-    forge = forgeType === "forgejo"
-      ? getForgeProvider()
-      : await getForgeProviderForSession(db, { forgeType, userId: sessionRow?.userId ?? job.userId });
-  } catch {
-    forge = getForgeProvider();
-  }
+  const forge = await getForgeProviderForSession(db, {
+    forgeType: sessionRow?.forgeType ?? "github",
+    userId: sessionRow?.userId ?? job.userId,
+  });
 
   const repoPath = sessionRow?.repoPath ?? "";
   const [repoOwner, repoName] = repoPath.split("/");
-
-  const upstream = !isScratch && forgeType === "forgejo"
-    ? await resolveUpstreamMirror(db, repoPath)
-    : undefined;
-  if (upstream) {
-    console.log(`[agent] upstream mirror detected: ${upstream.provider} ${upstream.remoteOwner}/${upstream.remoteRepo}`);
-  }
 
   const forgeContext: ForgeAgentContext = {
     __brand: "ForgeAgentContext",
@@ -181,7 +176,6 @@ async function buildForgeContext(params: {
     repoName: repoName ?? "",
     branch: sessionRow?.branch ?? "main",
     baseBranch: sessionRow?.baseBranch ?? "main",
-    upstream,
     onFileChanged: async (p) => {
       const ev: StreamEvent = {
         type: "file_changed",
@@ -211,10 +205,6 @@ async function buildForgeContext(params: {
         actionNeeded: true,
         metadata: { createdByAgent: true, runId: job.runId },
       });
-
-      if (upstream && repoOwner && repoName) {
-        triggerMirrorSync(forge, repoOwner, repoName);
-      }
     },
   };
 
@@ -278,10 +268,7 @@ async function runTurn(params: {
   const { forgeContext, sessionRow } = await buildForgeContext({ job, db, events, adapter, assistantParts });
 
   const isScratch = !sessionRow?.repoPath;
-  const sessionForgeType = sessionRow?.forgeType ?? "github";
-  const basePrompt = isScratch
-    ? buildSystemPromptForJob(job, sessionForgeType, true)
-    : buildSystemPromptForJob(job, sessionForgeType);
+  const basePrompt = buildSystemPromptForJob(job, isScratch);
   const workspaceBlock = buildWorkspaceContext(sessionRow, forgeContext);
   let systemPrompt = workspaceBlock ? `${basePrompt}\n\n${workspaceBlock}` : basePrompt;
 
@@ -294,7 +281,8 @@ async function runTurn(params: {
     ? `## Important notes\n- All git operations target the forge. Authentication is automatic.\n- When creating a PR, push your branch first with the git tool, then use create_pull_request.\n- The repository is already cloned in your workspace. Use glob/grep to explore it.`
     : "";
 
-  const tools = buildToolSet(events, redis, db, job, provider, modelId, forgeContext, skillsSuffix, !isScratch);
+  const resultStore = new Map<string, string>();
+  const tools = buildToolSet(events, redis, db, job, provider, modelId, forgeContext, skillsSuffix, !isScratch, resultStore, llmKeys);
   const inputMessages = buildModelMessages(job);
 
   console.log(
@@ -315,6 +303,7 @@ async function runTurn(params: {
       maxSteps: MAX_STEPS,
       signal: abortController.signal,
       thinking: thinkingParams,
+      resultStore,
       shouldAbort: async () => {
         if (await isAborted(events, job.runId)) {
           throw new AbortError(assistantParts);
@@ -322,9 +311,11 @@ async function runTurn(params: {
         return false;
       },
       onToken: (token) => {
-        publishEvent(events, job.runId, { type: "token", token }, reqId).catch(() => {});
+        publishEvent(events, job.runId, { type: "token", token }, reqId).catch((err) => {
+          console.warn("[agent] Failed to publish token event:", err);
+        });
       },
-      onStep: async ({ text, toolCalls, toolResults, usage }) => {
+      onStep: async ({ text, toolCalls, toolResults }) => {
         if (text) {
           assistantParts.push({ type: "text", text });
         }
@@ -372,6 +363,22 @@ async function ensureScratchWorkspace(adapter: SandboxAdapter, userId: string): 
   console.log(`[scratch] ensured workspace for user ${userId}`);
 }
 
+class CloneError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CloneError";
+  }
+}
+
+async function tryClone(
+  adapter: SandboxAdapter,
+  sessionId: string,
+  args: string[],
+): Promise<{ exitCode: number; stderr: string }> {
+  const result = await adapter.git(sessionId, args);
+  return { exitCode: result.exitCode, stderr: result.stderr ?? "" };
+}
+
 async function ensureRepoCloned(db: PlatformDb, job: AgentJob, adapter: SandboxAdapter): Promise<void> {
   const [session] = await db.select().from(sessions).where(eq(sessions.id, job.sessionId)).limit(1);
   if (!session?.repoPath) {
@@ -386,49 +393,49 @@ async function ensureRepoCloned(db: PlatformDb, job: AgentJob, adapter: SandboxA
   const [owner, repo] = session.repoPath.split("/");
   if (!owner || !repo) return;
 
-  const forgeType = session.forgeType ?? "github";
-  const isForgejo = forgeType === "forgejo";
-
-  const rawAuthUrl = forge.git.authenticatedCloneUrl(owner, repo);
-  const rawPlainUrl = forge.git.plainCloneUrl(owner, repo);
-  const authenticatedUrl = isForgejo ? rewriteForSandbox(rawAuthUrl) : rawAuthUrl;
-  const plainUrl = isForgejo ? rewriteForSandbox(rawPlainUrl) : rawPlainUrl;
-
-  const cloneArgs = ["clone", "--depth", "50"];
-  if (session.branch) cloneArgs.push("--branch", session.branch);
-  cloneArgs.push(authenticatedUrl, ".");
+  const authenticatedUrl = forge.git.authenticatedCloneUrl(owner, repo);
+  const plainUrl = forge.git.plainCloneUrl(owner, repo);
 
   console.log(`[clone] cloning ${session.repoPath} for session ${job.sessionId}`);
-  const result = await adapter.git(job.sessionId, cloneArgs);
-  if (result.exitCode !== 0) {
-    const branchNotFound = result.stderr?.includes("not found in upstream") ||
-      result.stderr?.includes("Remote branch") && result.stderr?.includes("not found");
 
-    if (branchNotFound && session.branch) {
-      console.log(`[clone] branch "${session.branch}" not found, cloning default branch`);
-      const defaultArgs = ["clone", "--depth", "50", authenticatedUrl, "."];
-      const defaultResult = await adapter.git(job.sessionId, defaultArgs);
-      if (defaultResult.exitCode !== 0) {
-        console.error(`[clone] default branch clone failed for session ${job.sessionId}:`, defaultResult.stderr);
-        return;
-      }
-      const checkout = await adapter.git(job.sessionId, ["checkout", "-b", session.branch]);
-      if (checkout.exitCode !== 0) {
-        console.error(`[clone] branch creation failed for session ${job.sessionId}:`, checkout.stderr);
-        return;
-      }
-    } else {
-      console.error(`[clone] failed for session ${job.sessionId}:`, result.stderr);
-      const fullArgs = ["clone"];
-      if (session.branch) fullArgs.push("--branch", session.branch);
-      fullArgs.push(authenticatedUrl, ".");
-      const retry = await adapter.git(job.sessionId, fullArgs);
-      if (retry.exitCode !== 0) {
-        console.error(`[clone] full clone also failed for session ${job.sessionId}:`, retry.stderr);
-        return;
-      }
+  // Attempt 1: shallow clone with branch
+  const shallowArgs = ["clone", "--depth", "50"];
+  if (session.branch) shallowArgs.push("--branch", session.branch);
+  shallowArgs.push(authenticatedUrl, ".");
+
+  const result = await tryClone(adapter, job.sessionId, shallowArgs);
+  if (result.exitCode === 0) {
+    console.log(`[clone] success for session ${job.sessionId}`);
+    await adapter.git(job.sessionId, ["remote", "set-url", "origin", plainUrl]);
+    return;
+  }
+
+  const branchNotFound = result.stderr.includes("not found in upstream") ||
+    (result.stderr.includes("Remote branch") && result.stderr.includes("not found"));
+
+  if (branchNotFound && session.branch) {
+    // Attempt 2: clone default branch, then create the target branch
+    console.log(`[clone] branch "${session.branch}" not found, cloning default branch`);
+    const defaultResult = await tryClone(adapter, job.sessionId, ["clone", "--depth", "50", authenticatedUrl, "."]);
+    if (defaultResult.exitCode !== 0) {
+      throw new CloneError(`Clone failed for session ${job.sessionId}: ${defaultResult.stderr}`);
+    }
+    const checkout = await adapter.git(job.sessionId, ["checkout", "-b", session.branch]);
+    if (checkout.exitCode !== 0) {
+      throw new CloneError(`Branch creation failed for session ${job.sessionId}: ${checkout.stderr}`);
+    }
+  } else {
+    // Attempt 3: full (non-shallow) clone
+    console.log(`[clone] shallow clone failed, retrying full clone for session ${job.sessionId}`);
+    const fullArgs = ["clone"];
+    if (session.branch) fullArgs.push("--branch", session.branch);
+    fullArgs.push(authenticatedUrl, ".");
+    const retry = await tryClone(adapter, job.sessionId, fullArgs);
+    if (retry.exitCode !== 0) {
+      throw new CloneError(`Clone failed for session ${job.sessionId}: ${retry.stderr}`);
     }
   }
+
   console.log(`[clone] success for session ${job.sessionId}`);
   await adapter.git(job.sessionId, ["remote", "set-url", "origin", plainUrl]);
 }
@@ -482,6 +489,7 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
       await publishEvent(events, job.runId, { type: "phase_changed", phase: "complete" } as unknown as StreamEvent, job.requestId);
     }
   } catch (error) {
+    // Handle user-initiated abort
     if (error instanceof AbortError) {
       const mergedParts = mergeToolResults(error.parts);
       if (mergedParts.length > 0) {
@@ -489,6 +497,15 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
           console.error("[agent] Failed to persist partial abort work:", e),
         );
       }
+      await updateRunStatus(db, job, "aborted");
+      await publishEvent(events, job.runId, { type: "aborted" }, job.requestId);
+      await events.setKey(`run:${job.runId}:status`, "aborted", RUN_STATUS_TTL);
+      await expireRunStream(redis, job.runId);
+      return;
+    }
+
+    // Handle turn timeout (native AbortError from fetch/signal)
+    if (isTimeoutAbort(error)) {
       await updateRunStatus(db, job, "aborted");
       await publishEvent(events, job.runId, { type: "aborted" }, job.requestId);
       await events.setKey(`run:${job.runId}:status`, "aborted", RUN_STATUS_TTL);

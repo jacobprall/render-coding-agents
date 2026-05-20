@@ -15,7 +15,7 @@ const ImportRepoSchema = z.object({
   repoName: z.string(),
   repoOwner: z.string().optional(),
   mirror: z.boolean().optional(),
-  service: z.enum(["git", "github", "gitlab", "gitea", "forgejo"]).optional(),
+  service: z.enum(["git", "github"]).optional(),
   authToken: z.string().optional(),
   syncConnectionId: z.string().optional(),
 });

@@ -51,15 +51,6 @@ export {
   type ValidatedAgentJob,
 } from "./queue/job-queue";
 
-// Dead letter queue
-export {
-  DEAD_LETTER_KEY,
-  moveToDeadLetter,
-  listDeadLetterJobs,
-  retryDeadLetterJob,
-  discardDeadLetterJob,
-} from "./queue/dead-letter";
-
 // Run event stream
 export {
   askUserReplyQueueKey,

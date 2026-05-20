@@ -116,10 +116,10 @@ export default async function Home() {
               />
             </svg>
           </div>
-          <span className="text-lg font-semibold">Coding Agents</span>
+          {/* <span className="text-lg font-semibold">coding agents</span> */}
         </div>
         <a
-          href="https://github.com/render-oss/render-open-forge"
+          href="https://github.com/jacobprall/render-open-forge"
           target="_blank"
           rel="noopener noreferrer"
           className="text-sm text-text-tertiary transition-colors duration-(--of-duration-instant) hover:text-text-primary"
@@ -144,43 +144,22 @@ export default async function Home() {
                 d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09Z"
               />
             </svg>
-            Open source, deploy on Render
+            Open source on Render
           </div>
-          <h1 className="text-5xl font-bold tracking-tight sm:text-6xl">
-            AI coding agent
-            <br />
-            <span className="text-accent-text">that ships to production</span>
+          <h1 className="text-6xl font-bold tracking-tight sm:text-6xl pb-6">
+            coding-agents
           </h1>
-          <p className="mt-6 text-lg leading-relaxed text-text-secondary">
-            Connect your GitHub repos, describe what you want built, and let the
-            agent write code, run tests, and open pull requests. Deploy the
-            result to Render with one click.
+          <p>
+              Your code. Your agents. Your infra.
           </p>
           <div className="mt-10 flex flex-col items-center gap-6">
             <SignInForm />
           </div>
         </div>
-
-        <div className="mx-auto mt-24 grid max-w-4xl gap-6 sm:grid-cols-2">
-          {features.map((feature) => (
-            <div
-              key={feature.title}
-              className="border border-stroke-subtle bg-surface-1 p-(--of-space-lg) transition-colors duration-(--of-duration-instant) hover:border-stroke-default"
-            >
-              <div className="mb-4 flex h-10 w-10 items-center justify-center bg-accent-bg text-accent-text">
-                {feature.icon}
-              </div>
-              <h3 className="text-lg font-semibold">{feature.title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-text-secondary">
-                {feature.description}
-              </p>
-            </div>
-          ))}
-        </div>
       </div>
 
       <footer className="border-t border-stroke-subtle px-6 py-6 text-center text-sm text-text-tertiary">
-        Coding Agents &mdash; Open-source AI coding agent, powered by Render
+        coding-agents &mdash; Open-source AI coding agent platform, powered by Render
       </footer>
     </main>
   );

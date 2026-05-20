@@ -96,7 +96,7 @@ export function SessionsList({
         </div>
         <Link
           href="/sessions/new"
-          className="flex items-center gap-1.5 bg-accent px-3 py-1.5 text-sm font-medium text-white transition-colors duration-(--of-duration-instant) hover:bg-accent-hover"
+          className="flex items-center gap-1.5 bg-primary px-3 py-1.5 text-sm font-medium text-white transition-colors duration-(--of-duration-instant) hover:bg-primary/70"
         >
           <Plus className="h-3.5 w-3.5" />
           New

@@ -53,35 +53,16 @@ async function checkRedis(): Promise<HealthCheck> {
   }
 }
 
-async function checkForgejo(): Promise<HealthCheck> {
-  const start = Date.now();
-  try {
-    const baseUrl = process.env.FORGEJO_INTERNAL_URL || "http://localhost:3000";
-    const res = await fetch(`${baseUrl}/api/v1/version`, {
-      signal: AbortSignal.timeout(3000),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return { status: "ok", latencyMs: Date.now() - start };
-  } catch (err) {
-    return {
-      status: "error",
-      latencyMs: Date.now() - start,
-      error: err instanceof Error ? err.message : "Unknown error",
-    };
-  }
-}
-
 export async function GET(req: NextRequest) {
   if (!isAuthorizedObservabilityRequest(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const [postgres, redis, forgejo] = await Promise.all([
+  const [postgres, redis] = await Promise.all([
     checkPostgres(),
     checkRedis(),
-    checkForgejo(),
   ]);
 
-  const checks = { postgres, redis, forgejo };
+  const checks = { postgres, redis };
   const allOk = Object.values(checks).every((c) => c.status === "ok");
   const anyOk = Object.values(checks).some((c) => c.status === "ok");
 
