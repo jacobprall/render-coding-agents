@@ -99,7 +99,7 @@ function ConnectionsContent() {
             ) : (
               <a
                 href="/api/oauth/github"
-                className="inline-flex items-center gap-2 bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+                className="inline-flex items-center gap-2 bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent/60"
               >
                 <GitHubIcon className="h-4 w-4" />
                 Connect GitHub

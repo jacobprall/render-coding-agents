@@ -4,14 +4,16 @@ import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
 import { sessions, projects } from "@coding-agents/db";
 import { eq, desc, inArray } from "drizzle-orm";
-import { SessionsList } from "./sessions-list";
+import { getUserPreferences } from "@/lib/db/loaders";
+import { gatewayFetch } from "@/lib/gateway";
+import { SessionsHome } from "./sessions-home";
 
 export const metadata: Metadata = { title: "Sessions" };
 
 export default async function SessionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ project?: string; status?: string }>;
+  searchParams: Promise<{ repo?: string; branch?: string; project?: string; status?: string }>;
 }) {
   const [session, params] = await Promise.all([getSession(), searchParams]);
   if (!session) redirect("/");
@@ -19,20 +21,26 @@ export default async function SessionsPage({
   const db = getDb();
   const userId = String(session.userId);
 
-  const userSessions = await db
-    .select({
-      id: sessions.id,
-      title: sessions.title,
-      status: sessions.status,
-      repoPath: sessions.repoPath,
-      branch: sessions.branch,
-      projectId: sessions.projectId,
-      lastActivityAt: sessions.lastActivityAt,
-      createdAt: sessions.createdAt,
-    })
-    .from(sessions)
-    .where(eq(sessions.userId, userId))
-    .orderBy(desc(sessions.createdAt));
+  const [prefsRow, userSessions, reposResult] = await Promise.all([
+    getUserPreferences(userId),
+    db
+      .select({
+        id: sessions.id,
+        title: sessions.title,
+        status: sessions.status,
+        repoPath: sessions.repoPath,
+        branch: sessions.branch,
+        projectId: sessions.projectId,
+        lastActivityAt: sessions.lastActivityAt,
+        createdAt: sessions.createdAt,
+      })
+      .from(sessions)
+      .where(eq(sessions.userId, userId))
+      .orderBy(desc(sessions.createdAt)),
+    gatewayFetch("/sessions/repos", { userId })
+      .then((r) => (r.ok ? r.json() : { repos: [] }))
+      .catch(() => ({ repos: [] })),
+  ]);
 
   const projectIds = [...new Set(userSessions.map((s) => s.projectId).filter(Boolean))] as string[];
   const projectRows = projectIds.length > 0
@@ -46,12 +54,19 @@ export default async function SessionsPage({
     projectNames[p.id] = p.name;
   }
 
+  const defaultModelId = prefsRow?.data?.defaultModelId ?? undefined;
+
   return (
-    <SessionsList
+    <SessionsHome
       sessions={userSessions}
       projectNames={projectNames}
       initialProjectFilter={params.project}
       initialStatusFilter={params.status}
+      defaultModelId={defaultModelId}
+      defaultRepo={params.repo}
+      defaultBranch={params.branch}
+      initialRepos={reposResult.repos ?? []}
+      hasForgeToken={!!session.forgeToken}
     />
   );
 }

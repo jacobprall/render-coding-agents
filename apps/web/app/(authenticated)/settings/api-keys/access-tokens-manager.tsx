@@ -241,7 +241,7 @@ export function AccessTokensManager() {
           <button
             type="submit"
             disabled={creating || !label.trim()}
-            className="bg-accent px-5 py-2.5 text-sm font-medium text-white transition-colors duration-(--of-duration-instant) hover:bg-accent-hover disabled:opacity-50"
+            className="bg-accent px-5 py-2.5 text-sm font-medium text-white transition-colors duration-(--of-duration-instant) hover:bg-accent/60 disabled:opacity-50"
           >
             {creating ? "Generating…" : "Generate token"}
           </button>

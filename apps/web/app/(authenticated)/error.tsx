@@ -38,7 +38,7 @@ export default function AuthenticatedError({
       <div className="mt-6 flex items-center justify-center gap-3">
         <button
           onClick={reset}
-          className="bg-accent px-4 py-2 text-sm font-medium text-white transition-colors duration-(--of-duration-instant) hover:bg-accent-hover"
+          className="bg-accent px-4 py-2 text-sm font-medium text-white transition-colors duration-(--of-duration-instant) hover:bg-accent/60"
         >
           Try again
         </button>

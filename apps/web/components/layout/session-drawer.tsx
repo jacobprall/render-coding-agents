@@ -124,7 +124,7 @@ export function SessionDrawer({ open, onClose }: SessionDrawerProps) {
           </span>
           <div className="flex items-center gap-1">
             <Link
-              href="/sessions/new"
+              href="/sessions"
               onClick={onClose}
               className="flex h-6 w-6 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
             >

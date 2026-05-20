@@ -44,7 +44,7 @@ export function AskUserCard({
           />
           <button
             type="submit"
-            className="bg-warning px-3 py-1.5 text-sm font-medium text-surface-0 transition-colors duration-(--of-duration-instant) hover:brightness-110"
+            className="bg-warning px-3 py-1.5 text-sm font-medium text-surface-0 transition-colors duration-(--of-duration-instant) hover:bg-warning/70"
           >
             Reply
           </button>

@@ -102,7 +102,7 @@ export default function TeamPage() {
         <button
           type="submit"
           disabled={creating || !email}
-          className="flex shrink-0 items-center gap-2 bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+          className="flex shrink-0 items-center gap-2 bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent/60 disabled:opacity-50"
         >
           <UserPlus className="h-4 w-4" />
           {creating ? "Creating…" : "Invite"}

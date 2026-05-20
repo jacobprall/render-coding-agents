@@ -223,7 +223,7 @@ export function ApiKeysManager() {
           <button
             type="submit"
             disabled={saving || !data.encryptionConfigured}
-            className="bg-accent px-5 py-2.5 text-sm font-medium text-white transition-colors duration-(--of-duration-instant) hover:bg-accent-hover disabled:opacity-50"
+            className="bg-accent px-5 py-2.5 text-sm font-medium text-white transition-colors duration-(--of-duration-instant) hover:bg-accent/60 disabled:opacity-50"
           >
             {saving ? "Saving…" : "Save key"}
           </button>

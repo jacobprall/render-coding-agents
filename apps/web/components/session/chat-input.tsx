@@ -57,7 +57,7 @@ export function ChatInput({ isStreaming, onSend, onStop }: ChatInputProps) {
             <button
               type="submit"
               disabled={!input.trim()}
-              className="flex items-center gap-1.5 bg-primary px-3 py-1.5 text-sm font-medium text-white transition-colors duration-(--of-duration-instant) hover:bg-primary/70 disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex items-center gap-1.5 bg-primary px-3 py-1.5 text-sm font-medium text-white transition-colors duration-(--of-duration-instant) hover:bg-primary/60 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                 <path

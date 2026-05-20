@@ -223,7 +223,7 @@ export function RepoBranchPicker({ value, onChange, initialRepos }: RepoBranchPi
                   type="button"
                   onClick={() => void handleCreateBranch()}
                   disabled={!newBranchName.trim()}
-                  className="shrink-0 bg-accent px-2.5 py-1 text-[11px] font-medium text-white transition-colors duration-(--of-duration-instant) hover:bg-accent-hover disabled:opacity-50"
+                  className="shrink-0 bg-accent px-2.5 py-1 text-[11px] font-medium text-white transition-colors duration-(--of-duration-instant) hover:bg-accent/60 disabled:opacity-50"
                 >
                   Create
                 </button>

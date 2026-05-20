@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { X, Circle, Pause, CheckCircle2, AlertCircle } from "lucide-react";
+import { Plus, X, Circle, Pause, CheckCircle2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface SessionTab {
@@ -99,7 +99,9 @@ export function SessionTabs() {
     };
   }, [addTab, updateTab]);
 
-  if (!pathname.startsWith("/sessions") || tabs.length === 0) return null;
+  if (!pathname.startsWith("/sessions")) return null;
+
+  const showNewButton = pathname !== "/sessions";
 
   return (
     <div className="flex h-9 shrink-0 items-end border-b border-border bg-card/50">
@@ -129,6 +131,14 @@ export function SessionTabs() {
           );
         })}
       </div>
+      {showNewButton && (
+        <Link
+          href="/sessions"
+          className="flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </Link>
+      )}
     </div>
   );
 }

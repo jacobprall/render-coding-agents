@@ -107,7 +107,7 @@ function AcceptInviteForm() {
           </p>
           <a
             href="/"
-            className="inline-block bg-accent px-6 py-2.5 text-sm font-medium text-white hover:bg-accent-hover"
+            className="inline-block bg-accent px-6 py-2.5 text-sm font-medium text-white hover:bg-accent/60"
           >
             Sign in
           </a>
@@ -160,7 +160,7 @@ function AcceptInviteForm() {
           <button
             type="submit"
             disabled={loading || !password || !confirmPassword}
-            className="w-full bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+            className="w-full bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent/60 disabled:opacity-50"
           >
             {loading ? "Creating account…" : "Create account"}
           </button>
