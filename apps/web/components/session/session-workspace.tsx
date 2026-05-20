@@ -194,7 +194,7 @@ export function SessionWorkspace({
                       </span>
                     ) : null}
                   </div>
-                  <ModelSelector value={modelId} onChange={setModelId} compact />
+                  <ModelSelector value={modelId} onChange={setModelId} compact dropUp />
                 </div>
               </div>
             }
