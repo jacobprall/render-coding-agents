@@ -92,8 +92,9 @@ services:
           name: web
           type: web
           envVarKey: ENCRYPTION_KEY
+      # Set to sandbox's public URL in Render dashboard (e.g. sandbox-XXXX.onrender.com)
       - key: SANDBOX_SERVICE_HOST
-        value: sandbox:3001
+        sync: false
       - key: SANDBOX_SHARED_SECRET
         fromService:
           name: sandbox

@@ -6,11 +6,19 @@ export class SharedHttpSandboxProvider implements SandboxProvider {
 
   private adapter: HttpSandboxAdapter | null = null;
 
+  private baseUrl: string;
+
   constructor(
     private host: string,
     private sharedSecret?: string,
     private sessionAuth?: SandboxSessionAuth,
-  ) {}
+  ) {
+    this.baseUrl = host.startsWith("http://") || host.startsWith("https://")
+      ? host.replace(/\/$/, "")
+      : host.includes("onrender.com")
+        ? `https://${host}`
+        : `http://${host}`;
+  }
 
   async provision(_sessionId: string, _opts?: ProvisionOptions): Promise<HttpSandboxAdapter> {
     if (!this.adapter) {
@@ -23,7 +31,7 @@ export class SharedHttpSandboxProvider implements SandboxProvider {
 
   async health(_sessionId: string): Promise<SandboxHealth> {
     try {
-      const res = await fetch(`http://${this.host}/health`, {
+      const res = await fetch(`${this.baseUrl}/health`, {
         signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) return { ready: false, type: this.type };

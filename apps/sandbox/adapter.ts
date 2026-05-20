@@ -20,11 +20,19 @@ export interface SandboxSessionAuth {
 }
 
 export class HttpSandboxAdapter implements SandboxAdapter {
+  private baseUrl: string;
+
   constructor(
-    private host: string,
+    host: string,
     private sharedSecret?: string,
     private sessionAuth?: SandboxSessionAuth,
-  ) {}
+  ) {
+    this.baseUrl = host.startsWith("http://") || host.startsWith("https://")
+      ? host.replace(/\/$/, "")
+      : host.includes("onrender.com") || host.includes("localhost") === false
+        ? `https://${host}`
+        : `http://${host}`;
+  }
 
   private get authHeaders(): Record<string, string> {
     return this.sharedSecret ? { Authorization: `Bearer ${this.sharedSecret}` } : {};
@@ -48,7 +56,7 @@ export class HttpSandboxAdapter implements SandboxAdapter {
   ): Promise<T> {
     let res: Response;
     try {
-      res = await fetch(`http://${this.host}${path}`, {
+      res = await fetch(`${this.baseUrl}${path}`, {
         method: "POST",
         headers: {
           "X-Session-Id": sessionId,
