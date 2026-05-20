@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, startTransition } from "react";
 import dynamic from "next/dynamic";
-import type { AssistantPart } from "@openforge/ui";
+import type { AssistantPart } from "@/lib/ui";
 import { ModelSelector } from "@/components/model-selector";
 import { DEFAULT_MODEL_ID } from "@/lib/model-defaults";
 import { PrSummaryPanel } from "./pr-summary-panel";

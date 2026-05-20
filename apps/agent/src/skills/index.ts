@@ -25,4 +25,3 @@ export {
   normalizeActiveSkills,
   resolveActiveSkills,
 } from "./resolve";
-export { ensureUserSkillsRepo, seedBuiltinSummariesForDocs } from "./provisioning";

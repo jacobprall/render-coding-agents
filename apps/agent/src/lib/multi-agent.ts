@@ -1,7 +1,7 @@
 import type Redis from "ioredis";
 import { nanoid } from "nanoid";
 import { eq } from "drizzle-orm";
-import type { ResolvedSkill } from "@openforge/skills";
+import type { ResolvedSkill } from "../skills";
 import { sessions, agentRuns, chats } from "@openforge/db";
 import { enqueueJob, ensureConsumerGroup, publishRunEvent } from "@openforge/platform";
 

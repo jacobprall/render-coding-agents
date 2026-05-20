@@ -6,8 +6,7 @@ import type { SkillSource, SkillSummary } from "./types";
 
 const _dir = dirname(fileURLToPath(import.meta.url));
 
-/** Built-in skill markdown files live next to `src/`. */
-export const BUILTINS_DIR = join(_dir, "..", "builtins");
+export const BUILTINS_DIR = join(_dir, "builtins");
 
 export function loadBuiltinFiles(): Array<{ slug: string; raw: string }> {
   const names = readdirSync(BUILTINS_DIR).filter((f) => f.endsWith(".md"));

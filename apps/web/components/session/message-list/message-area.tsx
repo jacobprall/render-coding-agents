@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { AssistantPart } from "@openforge/ui";
+import type { AssistantPart } from "@/lib/ui";
 import type { Message, LiveFileChange } from "../chat-reducer";
 import { AskUserCard } from "../ask-user-card";
 import { AssistantParts } from "./assistant-parts";

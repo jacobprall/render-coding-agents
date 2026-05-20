@@ -10,7 +10,6 @@
       "ai": "^6.0.165",
       "@ai-sdk/anthropic": "^3.0.70",
       "@ai-sdk/openai": "^3.0.57",
-      "@ai-sdk/react": "^3.0.167",
       "zod": "^4.3.6"
     }
   },
@@ -28,7 +27,6 @@
     "db:push": "cd apps/web && bun run db:push",
     "db:generate": "cd apps/web && bun run db:generate",
     "db:studio": "cd apps/web && bun run db:studio",
-    "setup": "bun run infrastructure/forgejo/setup.ts",
     "deploy:render": "bun run scripts/deploy-render.ts"
   },
   "devDependencies": {

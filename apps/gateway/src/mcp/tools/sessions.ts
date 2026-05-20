@@ -19,19 +19,7 @@ export const registerSessionTools: ToolRegistrar = (server, p, auth) => {
   }, async (args) => {
     const branch = args.repoPath ? (args.branch || args.baseBranch || "main") : undefined;
 
-    let projectId = args.projectId;
-    if (projectId) {
-      const project = await p.projects.get(auth, projectId);
-      if (!project) return textResult({ error: "Project not found" });
-    } else if (args.repoPath) {
-      const project = await p.projects.findOrCreateForRepo(auth, args.repoPath, args.forgeType);
-      projectId = project.id;
-    } else {
-      const scratch = await p.projects.getScratchProject(auth);
-      projectId = scratch.id;
-    }
-
-    const result = await p.sessions.create(auth, { ...args, branch, projectId });
+    const result = await p.sessions.create(auth, { ...args, branch });
     return textResult(result);
   });
 

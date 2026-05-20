@@ -8,7 +8,7 @@ export type { EventBus } from "./interfaces/events";
 export { RedisEventBus } from "./interfaces/events";
 
 // Forge provider abstraction
-export { ForgejoProvider, createForgeProvider, getDefaultForgeProvider, getForgeProviderForAuth } from "./forge";
+export { createForgeProvider, getDefaultForgeProvider, getForgeProviderForAuth } from "./forge";
 export type {
   ForgeProvider,
   ForgeProviderType,
@@ -31,24 +31,12 @@ export type {
   ForgePREvent,
   ForgeWorkflowRunEvent,
   ForgeStatusEvent,
-  MirrorConfig,
-  MirrorSyncResult,
-  MirrorConflictResult,
   BranchProtectionRule,
   CreateRepoParams,
   CreatePRParams,
-  MirrorDirection,
-  ConflictStrategy,
   ReviewEvent,
   MergeMethod,
 } from "./forge";
-
-// Forgejo helpers
-export {
-  verifyForgejoWebhookSignature,
-  isForgejoWebhookVerificationConfigured,
-  shouldAllowUnsignedForgejoWebhooks,
-} from "./forgejo/webhook-signature";
 
 // Redis Streams agent job queue
 export {
@@ -95,9 +83,6 @@ export {
   validateOpenAiApiKey,
 } from "./auth/llm-key-validation";
 export { resolveLlmApiKeys, type ResolvedLlmKeys } from "./auth/api-key-resolver";
-
-// Observability
-export { metrics, type MetricEntry } from "./observability/metrics";
 
 // Services
 export { SessionService } from "./services/session";
@@ -147,7 +132,7 @@ export type {
   CostGuardState,
   CostGuardDecision,
   ToolFilterDecision,
-} from "./permissions";
+} from "./policy";
 export {
   DEFAULT_POLICY,
   resolvePolicy,
@@ -156,7 +141,7 @@ export {
   filterTools,
   redactCredentials,
   containsCredentials,
-} from "./permissions";
+} from "./policy";
 
 // Agent run state machine
 export {
@@ -191,7 +176,4 @@ export type {
 export { InboundRouter, InboundDispatcher, DEFAULT_ROUTES } from "./inbound";
 export {
   githubWebhookToInboundEvent,
-  forgejoWebhookToInboundEvent,
-  gitlabWebhookToInboundEvent,
-  renderWebhookToInboundEvent,
 } from "./inbound";

@@ -38,7 +38,7 @@ interface UseAgentChatOptions {
 
 export interface UseAgentChatReturn {
   messages: Message[];
-  streamingParts: import("@openforge/ui").AssistantPart[];
+  streamingParts: import("@/lib/ui").AssistantPart[];
   status: ChatStatus;
   error: string | null;
   liveFileChanges: LiveFileChange[];

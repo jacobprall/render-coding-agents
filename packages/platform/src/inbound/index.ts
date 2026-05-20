@@ -22,7 +22,4 @@ export { InboundDispatcher } from "./dispatcher";
 export { DEFAULT_ROUTES } from "./default-routes";
 export {
   githubWebhookToInboundEvent,
-  forgejoWebhookToInboundEvent,
-  gitlabWebhookToInboundEvent,
-  renderWebhookToInboundEvent,
 } from "./adapters";

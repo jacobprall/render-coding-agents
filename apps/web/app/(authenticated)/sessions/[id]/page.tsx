@@ -6,7 +6,7 @@ import { sessions, chats, chatMessages, userPreferences } from "@openforge/db";
 import { eq, and, desc } from "drizzle-orm";
 import { SessionWorkspace } from "@/components/session/session-workspace";
 import { DEFAULT_MODEL_ID } from "@/lib/model-defaults";
-import type { AssistantPart } from "@openforge/ui";
+import type { AssistantPart } from "@/lib/ui";
 
 export async function generateMetadata({
   params,

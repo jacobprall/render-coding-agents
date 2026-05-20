@@ -5,7 +5,10 @@ import { Button } from "@/components/primitives/button";
 import { apiFetch } from "@/lib/api-fetch";
 import { Badge } from "@/components/primitives/badge";
 import type { Spec } from "@openforge/db/schema";
-import type { ActiveSkillRef } from "@openforge/skills";
+interface ActiveSkillRef {
+  source: "builtin" | "user" | "repo";
+  slug: string;
+}
 
 interface Props {
   sessionId: string;

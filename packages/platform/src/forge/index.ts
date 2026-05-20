@@ -60,16 +60,13 @@ export type {
   RepoSecretOperations,
   OrgSecretOperations,
   OrgOperations,
-  MirrorOperations,
   AuthOperations,
   WebhookOperations,
   GitOperations,
 } from "./provider";
 
 // Concrete adapters
-export { ForgejoProvider } from "./forgejo-adapter";
 export { GitHubProvider } from "./github-adapter";
-export { GitLabProvider } from "./gitlab-adapter";
 
 // Factory
 export { createForgeProvider, getDefaultForgeProvider, getForgeProviderForAuth } from "./factory";

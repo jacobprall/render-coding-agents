@@ -1,53 +1,45 @@
-import {
-  ensureUserSkillsRepo,
-  getBuiltinRaw,
-  listMdSlugsInRepoPath,
-  normalizeActiveSkills,
-  resolveActiveSkills,
-  REPO_SKILLS_PATH,
-  skillMarkdownToResolved,
-} from "@openforge/skills";
-import type { ResolvedSkill } from "@openforge/skills";
-import type { ForgeProvider } from "../forge/provider";
+/**
+ * Skill types for session jobs.
+ *
+ * Skill resolution (loading markdown, reading from repos) happens
+ * in the agent worker at runtime. Platform passes activeSkillRefs
+ * in the job payload; the agent resolves them to full content.
+ */
+
+export type SkillSource = "builtin" | "user" | "repo";
+
+export interface ActiveSkillRef {
+  source: SkillSource;
+  slug: string;
+}
+
+export interface ResolvedSkill {
+  slug: string;
+  name: string;
+  source: SkillSource;
+  content: string;
+}
+
+export const DEFAULT_ACTIVE_SKILL_REFS: ActiveSkillRef[] = [
+  { source: "builtin", slug: "react-best-practices" },
+  { source: "builtin", slug: "next-best-practices" },
+];
 
 /**
- * Load ordered skill bodies for an agent job.
- * Mirrors the logic in apps/web/lib/skills/resolve-for-session.ts.
+ * Normalize stored active skills, filling defaults when empty.
  */
-export async function resolveSkillsForSession(
-  sessionRow: {
-    repoPath: string | null;
-    branch: string | null;
-    activeSkills: Array<{ source: "builtin" | "user" | "repo"; slug: string }> | null | undefined;
-  },
-  forge: ForgeProvider,
-  forgeUsername: string,
-): Promise<ResolvedSkill[]> {
-  if (forgeUsername) {
-    await ensureUserSkillsRepo(forge, forgeUsername);
+export function normalizeActiveSkills(
+  stored: ActiveSkillRef[] | null | undefined,
+  repoDefaultSlugs: string[] = [],
+): ActiveSkillRef[] {
+  if (stored && stored.length > 0) {
+    return stored;
   }
-
-  const [owner, repo] = (sessionRow.repoPath ?? "").split("/");
-  const branch = sessionRow.branch ?? "main";
-  const repoSlugs =
-    owner && repo
-      ? await listMdSlugsInRepoPath(forge, owner, repo, REPO_SKILLS_PATH, branch)
-      : [];
-
-  const active = normalizeActiveSkills(sessionRow.activeSkills, repoSlugs);
-  const resolved = await resolveActiveSkills(forge, {
-    activeSkills: active,
-    forgeUsername,
-    projectRepoPath: sessionRow.repoPath ?? "",
-    ref: branch,
-  });
-
-  if (resolved.length === 0) {
-    const fallback = getBuiltinRaw("implementation");
-    if (fallback) {
-      return [skillMarkdownToResolved("builtin", "implementation", fallback)];
+  const base = [...DEFAULT_ACTIVE_SKILL_REFS];
+  for (const slug of repoDefaultSlugs) {
+    if (!base.some((r) => r.source === "repo" && r.slug === slug)) {
+      base.push({ source: "repo", slug });
     }
   }
-
-  return resolved;
+  return base;
 }

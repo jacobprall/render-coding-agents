@@ -11,7 +11,6 @@ import { buildAgentSystemPrompt, FORGE_LABELS } from "./system-prompt";
 import { getModel, getModelDef } from "./models";
 import type { AgentJob, StreamEvent, AssistantPart } from "./types";
 import { isDeliverComplete, transitionToComplete } from "./lib/deliver";
-import { RenderClient } from "@openforge/render-client";
 import { rewriteForSandbox } from "./sandbox-url";
 import { getForgeProvider, getForgeProviderForSession, resolveUpstreamMirror, getAdapter, triggerMirrorSync } from "./providers";
 import { buildToolSet } from "./tool-registry";
@@ -120,33 +119,6 @@ function buildWorkspaceContext(
   return lines.join("\n");
 }
 
-async function buildLiveStateBlock(redis: Redis): Promise<string | null> {
-  const apiKey = process.env.RENDER_API_KEY;
-  if (!apiKey) return null;
-
-  try {
-    const cached = await redis.get("state:summary:global");
-    if (cached) return cached;
-
-    const client = new RenderClient({ apiKey });
-    const services = await client.listServices();
-    const suspended = services.filter((s) => s.suspended === "suspended");
-
-    const lines = ["# System State"];
-    if (suspended.length === 0) {
-      lines.push(`All ${services.length} services healthy.`);
-    } else {
-      lines.push(`WARNING: ${suspended.map((s) => s.name).join(", ")} suspended.`);
-    }
-    lines.push(`Use render_* tools for details.`);
-
-    const summary = lines.join("\n");
-    await redis.setex("state:summary:global", 300, summary);
-    return summary;
-  } catch {
-    return null;
-  }
-}
 
 // ─── Forge context construction ──────────────────────────────────────────────
 
@@ -327,10 +299,6 @@ async function runTurn(params: {
     systemPrompt = `${systemPrompt}\n\n${projectBlock}`;
   }
 
-  const liveState = isScratch ? null : await buildLiveStateBlock(redis);
-  if (liveState) {
-    systemPrompt = `${systemPrompt}\n\n${liveState}`;
-  }
 
   const skillsSuffix = !isScratch && job.resolvedSkills.length > 0
     ? `## Important notes\n- All git operations target the forge. Authentication is automatic.\n- When creating a PR, push your branch first with the git tool, then use create_pull_request.\n- The repository is already cloned in your workspace. Use glob/grep to explore it.`

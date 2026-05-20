@@ -17,27 +17,13 @@ for (const envFile of [".env.local", ".env"]) {
   } catch {}
 }
 
-const forgejoHost = (() => {
-  const raw = process.env.FORGEJO_EXTERNAL_URL || process.env.FORGEJO_INTERNAL_URL || "";
-  try { return new URL(raw).hostname; } catch { return "localhost"; }
-})();
-
 const nextConfig: NextConfig = {
   transpilePackages: [
     "@openforge/db",
     "@openforge/shared",
-    "@openforge/skills",
   ],
   images: {
     remotePatterns: [
-      {
-        protocol: "http",
-        hostname: forgejoHost,
-      },
-      {
-        protocol: "https",
-        hostname: forgejoHost,
-      },
       {
         protocol: "https",
         hostname: "avatars.githubusercontent.com",

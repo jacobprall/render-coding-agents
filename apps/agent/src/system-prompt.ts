@@ -1,4 +1,4 @@
-import type { ResolvedSkill } from "@openforge/skills";
+import type { ResolvedSkill } from "./skills";
 
 export type { ResolvedSkill };
 

@@ -18,7 +18,7 @@ import {
   ValidationError,
   logger,
 } from "@openforge/shared";
-import type { ActiveSkillRef } from "@openforge/skills";
+import { normalizeActiveSkills, type ActiveSkillRef } from "./session-skills";
 import type { PlatformDb } from "../interfaces/database";
 import type { AuthContext } from "../interfaces/auth";
 import type { QueueAdapter } from "../interfaces/queue";
@@ -26,7 +26,6 @@ import type { EventBus } from "../interfaces/events";
 import { getForgeProviderForAuth } from "../forge/factory";
 import { resolveLlmApiKeys } from "../auth/api-key-resolver";
 import { askUserReplyQueueKey } from "../events/run-stream";
-import { resolveSkillsForSession } from "./session-skills";
 import { validateModel } from "./session-model-validation";
 import { generateAutoTitle as generateAutoTitleImpl } from "./session-auto-title";
 import {
@@ -231,18 +230,7 @@ export class SessionService {
         .set({ activeRunId: runId, updatedAt: new Date() })
         .where(eq(chats.id, chatId));
 
-      let resolvedSkills: import("@openforge/skills").ResolvedSkill[] = [];
-      if (!isScratch) {
-        try {
-          const forge = getForgeProviderForAuth(auth);
-          const sessionRow = await this.db.select().from(sessions).where(eq(sessions.id, sessionId)).limit(1).then((r) => r[0]);
-          if (sessionRow) {
-            resolvedSkills = await resolveSkillsForSession(sessionRow as Parameters<typeof resolveSkillsForSession>[0], forge, auth.username);
-          }
-        } catch {
-          // Skills resolution failed -- proceed without skills
-        }
-      }
+      const activeSkillRefs = normalizeActiveSkills(null);
 
       await this.queue.ensureGroup();
       await this.queue.enqueue({
@@ -251,7 +239,7 @@ export class SessionService {
         sessionId,
         userId: auth.userId,
         messages: [{ role: "user" as const, content: [{ type: "text", text: firstMessage }] }],
-        resolvedSkills,
+        activeSkillRefs,
         modelId,
         requestId,
         maxRetries: 3,
@@ -500,19 +488,7 @@ export class SessionService {
       content: m.parts,
     }));
 
-    let resolvedSkills: import("@openforge/skills").ResolvedSkill[] = [];
-    if (sessionRow.repoPath) {
-      try {
-        const forge = getForgeProviderForAuth(auth);
-        resolvedSkills = await resolveSkillsForSession(
-          sessionRow as Parameters<typeof resolveSkillsForSession>[0],
-          forge,
-          sessionRow.forgeUsername ?? auth.username,
-        );
-      } catch {
-        // Skills resolution failed -- proceed without
-      }
-    }
+    const activeSkillRefs = normalizeActiveSkills(sessionRow.activeSkills as ActiveSkillRef[] | null);
 
     await this.queue.ensureGroup();
     await this.queue.enqueue({
@@ -521,7 +497,7 @@ export class SessionService {
       sessionId,
       userId: auth.userId,
       messages,
-      resolvedSkills,
+      activeSkillRefs,
       projectConfig: sessionRow.projectConfig ?? undefined,
       projectContext: sessionRow.projectContext ?? undefined,
       modelId,

@@ -30,21 +30,6 @@ import {
   submitSpecTool,
   type SubmitSpecInput,
   attachRepoTool,
-  renderListServicesTool,
-  renderDeployTool,
-  renderGetDeployStatusTool,
-  renderGetLogsTool,
-  renderListEnvVarsTool,
-  renderSetEnvVarsTool,
-  renderGetServiceTool,
-  renderCreateServiceTool,
-  renderListPostgresTool,
-  renderCreatePostgresTool,
-  renderCreateRedisTool,
-  renderGetPostgresConnectionTool,
-  renderProjectStatusTool,
-  renderCreatePreviewTool,
-  renderDeletePreviewTool,
 } from "./tools";
 import type { AgentJob, StreamEvent } from "./types";
 import { publishEvent } from "./run-persistence";
@@ -64,35 +49,16 @@ function coreTools(): ToolSet {
   };
 }
 
-function repoTools(db?: PlatformDb): ToolSet {
+function repoTools(): ToolSet {
   return {
     git: gitTool(),
     create_pull_request: createPullRequestTool(),
-    ...(process.env.RENDER_API_KEY
-      ? {
-          render_list_services: renderListServicesTool(),
-          render_deploy: renderDeployTool(db),
-          render_get_deploy_status: renderGetDeployStatusTool(),
-          render_get_logs: renderGetLogsTool(),
-          render_list_env_vars: renderListEnvVarsTool(),
-          render_set_env_vars: renderSetEnvVarsTool(db),
-          render_get_service: renderGetServiceTool(),
-          render_create_service: renderCreateServiceTool(db),
-          render_list_postgres: renderListPostgresTool(),
-          render_create_postgres: renderCreatePostgresTool(db),
-          render_create_redis: renderCreateRedisTool(db),
-          render_get_postgres_connection: renderGetPostgresConnectionTool(),
-          render_project_status: renderProjectStatusTool(db),
-          render_create_preview: renderCreatePreviewTool(db),
-          render_delete_preview: renderDeletePreviewTool(db),
-        }
-      : {}),
   };
 }
 
-export function buildSubagentToolSet(db?: PlatformDb, hasRepo = true): ToolSet {
+export function buildSubagentToolSet(hasRepo = true): ToolSet {
   return hasRepo
-    ? { ...coreTools(), ...repoTools(db) }
+    ? { ...coreTools(), ...repoTools() }
     : coreTools();
 }
 
@@ -106,7 +72,7 @@ export function buildToolSet(
   hasRepo = true,
 ): ToolSet {
   const reqId = job.requestId;
-  const makeSubTools = () => buildSubagentToolSet(db, hasRepo);
+  const makeSubTools = () => buildSubagentToolSet(hasRepo);
   const publishFn = async (event: Record<string, unknown>) => {
     await publishEvent(events, job.runId, event as unknown as StreamEvent, reqId);
   };

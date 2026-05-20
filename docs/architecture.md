@@ -2,7 +2,7 @@
 
 ## System overview
 
-OpenForge is a four-tier system: clients → application services → a shared platform layer → infrastructure.
+coding-agents is a four-tier system: clients → application services → a shared platform layer → infrastructure.
 
 All four application processes (web, gateway, agent, CLI) interact with the same typed domain services via the platform layer. No app contains business logic directly; route handlers and job processors are thin adapters that resolve auth and delegate to services.
 

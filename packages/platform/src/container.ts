@@ -23,14 +23,8 @@ import { SessionService } from "./services/session";
 import { RepoService } from "./services/repo";
 import { PullRequestService } from "./services/pull-request";
 import { OrgService } from "./services/org";
-import { InboxService } from "./services/inbox";
 import { SettingsService } from "./services/settings";
-import { SkillService } from "./services/skill";
 import { ModelService } from "./services/model";
-import { NotificationService } from "./services/notification";
-import { InviteService } from "./services/invite";
-import { ProjectService } from "./services/project";
-import { MirrorService } from "./services/mirror";
 import { CIService } from "./services/ci";
 import { WebhookService } from "./services/webhook";
 import { InboundRouter } from "./inbound/router";
@@ -74,14 +68,8 @@ export interface PlatformContainer {
   repos: RepoService;
   pullRequests: PullRequestService;
   orgs: OrgService;
-  inbox: InboxService;
   settings: SettingsService;
-  skills: SkillService;
   models: ModelService;
-  notifications: NotificationService;
-  invites: InviteService;
-  projects: ProjectService;
-  mirrors: MirrorService;
   ci: CIService;
   webhooks: WebhookService;
   inboundRouter: InboundRouter;
@@ -155,14 +143,8 @@ function buildContainer(
   const repos = new RepoService(db);
   const pullRequests = new PullRequestService();
   const orgs = new OrgService(db);
-  const inbox = new InboxService(db);
   const settings = new SettingsService(db);
-  const skills = new SkillService();
   const models = new ModelService(db);
-  const notifications = new NotificationService(db);
-  const invites = new InviteService(db);
-  const projectsSvc = new ProjectService(db);
-  const mirrors = new MirrorService(db);
   const ci = new CIService(db, queue);
   const webhooks = new WebhookService(db, queue, events, ci);
   const inboundRouter = new InboundRouter(DEFAULT_ROUTES);
@@ -185,14 +167,8 @@ function buildContainer(
     repos,
     pullRequests,
     orgs,
-    inbox,
     settings,
-    skills,
     models,
-    notifications,
-    invites,
-    projects: projectsSvc,
-    mirrors,
     ci,
     webhooks,
     inboundRouter,

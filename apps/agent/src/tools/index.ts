@@ -25,20 +25,3 @@ export { submitSpecTool, submitSpecInputSchema } from "./submit-spec";
 export type { SubmitSpecInput } from "./submit-spec";
 export { resolveCommentTool } from "./resolve-comment";
 export { attachRepoTool } from "./attach-repo";
-export {
-  renderListServicesTool,
-  renderDeployTool,
-  renderGetDeployStatusTool,
-  renderGetLogsTool,
-  renderListEnvVarsTool,
-  renderSetEnvVarsTool,
-  renderGetServiceTool,
-  renderCreateServiceTool,
-  renderListPostgresTool,
-  renderCreatePostgresTool,
-  renderCreateRedisTool,
-  renderGetPostgresConnectionTool,
-  renderProjectStatusTool,
-  renderCreatePreviewTool,
-  renderDeletePreviewTool,
-} from "./render";

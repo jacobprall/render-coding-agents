@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { Bot } from "lucide-react";
-import type { AssistantPart } from "@openforge/ui";
+import type { AssistantPart } from "@/lib/ui";
 
 const Markdown = dynamic(
   () => import("@/components/markdown").then((m) => ({ default: m.Markdown })),

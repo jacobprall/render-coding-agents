@@ -1,5 +1,5 @@
-import type { AssistantPart } from "@openforge/ui";
-import { appendStreamEvent } from "@openforge/ui";
+import type { AssistantPart } from "@/lib/ui";
+import { appendStreamEvent } from "@/lib/ui";
 import type { StreamEvent } from "@openforge/shared";
 
 export const MAX_NO_RUN_RETRIES = 30;

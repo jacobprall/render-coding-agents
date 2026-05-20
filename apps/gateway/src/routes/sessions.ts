@@ -58,19 +58,7 @@ sessionRoutes.post("/", async (c) => {
   const platform = getPlatform();
   const branch = data.repoPath ? (data.branch || data.baseBranch || "main") : undefined;
 
-  let projectId = data.projectId;
-  if (projectId) {
-    const project = await platform.projects.get(auth, projectId);
-    if (!project) return c.json({ error: "Project not found" }, 404);
-  } else if (data.repoPath) {
-    const project = await platform.projects.findOrCreateForRepo(auth, data.repoPath, data.forgeType);
-    projectId = project.id;
-  } else {
-    const scratch = await platform.projects.getScratchProject(auth);
-    projectId = scratch.id;
-  }
-
-  const result = await platform.sessions.create(auth, { ...data, branch, projectId });
+  const result = await platform.sessions.create(auth, { ...data, branch });
   return c.json({ id: result.sessionId, ...result }, 201);
 });
 
