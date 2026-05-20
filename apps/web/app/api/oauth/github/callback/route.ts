@@ -16,23 +16,23 @@ export async function GET(req: NextRequest) {
   const state = req.nextUrl.searchParams.get("state");
 
   if (!code || !state) {
-    return NextResponse.redirect(publicUrl("/settings/connections?error=missing_params"));
+    return NextResponse.redirect(publicUrl("/settings?error=missing_params"));
   }
 
   let statePayload: { userId: string; ts: number };
   try {
     statePayload = JSON.parse(Buffer.from(state, "base64url").toString());
   } catch {
-    return NextResponse.redirect(publicUrl("/settings/connections?error=invalid_state"));
+    return NextResponse.redirect(publicUrl("/settings?error=invalid_state"));
   }
 
   if (statePayload.userId !== session.user.id) {
-    return NextResponse.redirect(publicUrl("/settings/connections?error=state_mismatch"));
+    return NextResponse.redirect(publicUrl("/settings?error=state_mismatch"));
   }
 
   const MAX_STATE_AGE_MS = 10 * 60 * 1000;
   if (Date.now() - statePayload.ts > MAX_STATE_AGE_MS) {
-    return NextResponse.redirect(publicUrl("/settings/connections?error=state_expired"));
+    return NextResponse.redirect(publicUrl("/settings?error=state_expired"));
   }
 
   try {
@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
 
     const tokenData = await tokenRes.json();
     if (!tokenData.access_token) {
-      return NextResponse.redirect(publicUrl("/settings/connections?error=token_exchange_failed"));
+      return NextResponse.redirect(publicUrl("/settings?error=token_exchange_failed"));
     }
 
     const userRes = await fetch("https://api.github.com/user", {
@@ -71,8 +71,8 @@ export async function GET(req: NextRequest) {
       ghUser.login ?? "",
     );
 
-    return NextResponse.redirect(publicUrl("/settings/connections?connected=github"));
+    return NextResponse.redirect(publicUrl("/settings?connected=github"));
   } catch {
-    return NextResponse.redirect(publicUrl("/settings/connections?error=oauth_failed"));
+    return NextResponse.redirect(publicUrl("/settings?error=oauth_failed"));
   }
 }

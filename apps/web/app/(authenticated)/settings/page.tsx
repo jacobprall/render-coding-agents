@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import Image from "next/image";
+import { Suspense } from "react";
 import { getSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import { getUserPreferences } from "@/lib/db/loaders";
 import { PreferencesForm } from "./preferences-form";
+import { GitHubConnection } from "./github-connection";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -48,6 +50,17 @@ export default async function SettingsPage() {
             Profile information is synced from your connected forge account.
           </p>
         </div>
+      </section>
+
+      {/* GitHub connection */}
+      <section>
+        <h2 className="mb-4 text-lg font-semibold text-text-primary">GitHub Connection</h2>
+        <p className="mb-4 text-sm text-text-secondary">
+          Connect your GitHub account to access repositories and create sessions.
+        </p>
+        <Suspense fallback={<div className="text-sm text-text-tertiary">Loading…</div>}>
+          <GitHubConnection />
+        </Suspense>
       </section>
 
       {/* Preferences section */}
