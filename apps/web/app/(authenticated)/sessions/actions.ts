@@ -1,11 +1,11 @@
 "use server";
 
-import { requireForgeAuth, getPlatform } from "@/lib/platform";
+import { requireAuth, getPlatform } from "@/lib/platform";
 import { revalidatePath } from "next/cache";
 
 export async function archiveSessionAction(sessionId: string): Promise<{ error?: string }> {
   try {
-    const auth = await requireForgeAuth();
+    const auth = await requireAuth();
     await getPlatform().sessions.archive(auth, sessionId);
     revalidatePath("/sessions");
     revalidatePath("/", "layout");

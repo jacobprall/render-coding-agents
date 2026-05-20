@@ -13,11 +13,13 @@ export class SharedHttpSandboxProvider implements SandboxProvider {
     private sharedSecret?: string,
     private sessionAuth?: SandboxSessionAuth,
   ) {
-    this.baseUrl = host.startsWith("http://") || host.startsWith("https://")
-      ? host.replace(/\/$/, "")
-      : host.includes("onrender.com")
-        ? `https://${host}`
-        : `http://${host}`;
+    if (host.startsWith("http://") || host.startsWith("https://")) {
+      this.baseUrl = host.replace(/\/$/, "");
+    } else if (host.includes("localhost") || host.match(/^[\d.:]+$/)) {
+      this.baseUrl = `http://${host}`;
+    } else {
+      this.baseUrl = `https://${host}`;
+    }
   }
 
   async provision(_sessionId: string, _opts?: ProvisionOptions): Promise<HttpSandboxAdapter> {

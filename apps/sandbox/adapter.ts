@@ -27,11 +27,13 @@ export class HttpSandboxAdapter implements SandboxAdapter {
     private sharedSecret?: string,
     private sessionAuth?: SandboxSessionAuth,
   ) {
-    this.baseUrl = host.startsWith("http://") || host.startsWith("https://")
-      ? host.replace(/\/$/, "")
-      : host.includes("onrender.com") || host.includes("localhost") === false
-        ? `https://${host}`
-        : `http://${host}`;
+    if (host.startsWith("http://") || host.startsWith("https://")) {
+      this.baseUrl = host.replace(/\/$/, "");
+    } else if (host.includes("localhost") || host.match(/^[\d.:]+$/)) {
+      this.baseUrl = `http://${host}`;
+    } else {
+      this.baseUrl = `https://${host}`;
+    }
   }
 
   private get authHeaders(): Record<string, string> {
@@ -107,7 +109,7 @@ export class HttpSandboxAdapter implements SandboxAdapter {
   }
 
   async snapshot(sessionId: string, snapshotId: string): Promise<SnapshotResult> {
-    const res = await fetch(`http://${this.host}/snapshot/${snapshotId}`, {
+    const res = await fetch(`${this.baseUrl}/snapshot/${snapshotId}`, {
       method: "POST",
       headers: {
         "X-Session-Id": sessionId,
@@ -121,7 +123,7 @@ export class HttpSandboxAdapter implements SandboxAdapter {
   }
 
   async restore(sessionId: string, snapshotId: string): Promise<void> {
-    const res = await fetch(`http://${this.host}/restore/${snapshotId}`, {
+    const res = await fetch(`${this.baseUrl}/restore/${snapshotId}`, {
       method: "POST",
       headers: {
         "X-Session-Id": sessionId,
@@ -134,7 +136,7 @@ export class HttpSandboxAdapter implements SandboxAdapter {
   }
 
   async cloneWorkspace(fromSessionId: string, toSessionId: string): Promise<void> {
-    const res = await fetch(`http://${this.host}/clone-workspace`, {
+    const res = await fetch(`${this.baseUrl}/clone-workspace`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
