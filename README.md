@@ -1,12 +1,12 @@
-# OpenForge
+# render-coding-agents
 
-An open-source AI coding agent you deploy on [Render](https://render.com). Connect your GitHub repos, describe what you want built, and let the agent write code, run tests, and open pull requests. Deploy the result to production with one click.
+An open-source AI coding agent platform. Connect your GitHub repos, describe what you want built, and let the agent write code, run tests, and open pull requests.
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/render-oss/render-open-forge)
 
 ## How it works
 
-1. **Sign in with GitHub** — OAuth connects your repos instantly. No mirroring, no setup.
+1. **Sign in with GitHub** — OAuth connects your repos instantly.
 2. **Start a session** — Pick a repo and branch. Tell the agent what to build.
 3. **The agent works autonomously** — It reads your codebase, writes code, runs tests, creates branches, and opens PRs.
 4. **Deploy to Render** — Preview environments spin up for every PR. Merge and ship to production.
@@ -18,13 +18,13 @@ graph LR
     subgraph Clients
         direction TB
         Browser["Browser"]
-        CLI["CLI / MCP clients"]
-        LLM["LLM APIs"]
+        CLI["CLI (forge)"]
+        MCP["MCP clients"]
     end
 
     subgraph Application
         direction TB
-        Web["web · Next.js"]
+        Web["web · Next.js 15"]
         Gateway["gateway · Hono"]
         Agent["agent · Bun worker"]
     end
@@ -32,49 +32,50 @@ graph LR
     subgraph Platform["packages/platform"]
         direction TB
         Services["Domain services"]
-        Adapters["Pluggable adapters"]
+        Forge["ForgeProvider (GitHub)"]
     end
 
     subgraph Infrastructure
         direction TB
-        Sandbox["sandbox"]
+        Sandbox["sandbox · Docker"]
         Redis[("Redis")]
         Postgres[("Postgres")]
     end
 
+    Browser --> Web
+    CLI --> Gateway
+    MCP --> Gateway
     Web --> Services
     Gateway --> Services
     Agent --> Services
-    Services --> Adapters
-    Adapters --> Sandbox
-    Adapters --> Redis
-    Adapters --> Postgres
+    Services --> Forge
+    Agent --> Sandbox
+    Services --> Redis
+    Services --> Postgres
 ```
 
 | Component | What it does |
 |---|---|
-| **web** | Next.js 15 app: auth, sessions, chat UI, repo browser, PR review, streaming |
-| **gateway** | Hono REST/SSE/MCP API — connect Claude Desktop, Cursor, or any MCP client |
-| **agent** | Bun worker reading jobs from Redis Streams, driving multi-step LLM execution |
-| **sandbox** | Isolated Docker environment for git operations and code execution |
-
-**CI:** GitHub Actions on your repositories; OpenForge reacts via GitHub webhooks and accepts detailed payloads on `POST /api/ci/results` (shared secret).
+| **web** | Next.js 15 app: GitHub OAuth, sessions UI, chat streaming, repo browser |
+| **gateway** | Hono headless API: REST, SSE, MCP — connect Claude Desktop, Cursor, or any MCP client |
+| **agent** | Bun worker consuming jobs from Redis Streams, driving multi-step LLM execution with tools |
+| **sandbox** | Isolated Docker environment for git operations, file I/O, and code execution |
+| **cli** | Terminal client (`rca`) for managing sessions via the gateway API |
 
 ## Repo layout
 
 ```
 apps/
-  web/                   Next.js 15: auth, chat UI, repo browser, streaming (port 4000)
-  gateway/               Hono headless API: REST, SSE, MCP (port 4100)
-  agent/                 Agent worker: LLM tools, skills, Redis Streams consumer
+  web/          Next.js 15: auth, chat UI, repo browser, streaming (port 4000)
+  gateway/      Hono headless API: REST, SSE, MCP (port 4100)
+  agent/        Agent worker: LLM tools, Redis Streams consumer
+  sandbox/      Bun HTTP server in Docker: exec, file ops, git, snapshots
+  cli/          CLI client ("rca"): config, chat, list, stop, pause, resume, stream
 
 packages/
-  platform/              Framework-agnostic service layer, ForgeProvider abstraction
-  db/                    Shared Drizzle ORM schema
-  shared/                Error hierarchy, logger, API types, model catalog
-  skills/                Skill pipeline: builtins, resolve, install, provisioning
-  sandbox/               SandboxAdapter interface + HTTP provider
-  ui/                    Shared React components and hooks
+  platform/     Framework-agnostic service layer, ForgeProvider, queue, events, auth
+  db/           Shared Drizzle ORM schema (Postgres 16)
+  shared/       Error hierarchy, logger, API types, encryption utilities
 ```
 
 ## Quick start (local dev)
@@ -93,12 +94,14 @@ bun install
 cp .env.example .env
 ```
 
-Fill in the required values — see the `.env.example` comments for guidance. At minimum you need:
+Fill in the required values — see `.env.example` for guidance. At minimum you need:
 
 - `GITHUB_OAUTH_CLIENT_ID` / `GITHUB_OAUTH_CLIENT_SECRET` — [create a GitHub OAuth App](https://github.com/settings/developers) with callback URL `http://localhost:4000/api/auth/callback/github`
 - `AUTH_SECRET` — generate with `openssl rand -base64 32`
 - `ANTHROPIC_API_KEY` — from your [Anthropic account](https://console.anthropic.com/)
 - `ADMIN_EMAIL` / `ADMIN_PASSWORD` — for the auto-created admin account
+- `SANDBOX_SHARED_SECRET` / `SANDBOX_SESSION_SECRET` — shared secrets for sandbox auth
+- `ENCRYPTION_KEY` — generate with `openssl rand -hex 32`
 
 ### 3. Start infrastructure
 
@@ -106,7 +109,7 @@ Fill in the required values — see the `.env.example` comments for guidance. At
 bun run infra:up
 ```
 
-Starts Postgres (5433), Redis (6380), and the sandbox.
+Starts Postgres (port 5433), Redis (port 6380), and the sandbox (port 3001) via Docker Compose.
 
 ### 4. Push database schema
 
@@ -131,11 +134,47 @@ bun run db:studio      # Drizzle Studio on http://localhost:4983
 bun run typecheck      # check all packages
 bun run test           # run tests
 bun run gateway        # start headless API gateway on http://localhost:4100
+bun run worker         # start agent worker standalone
 ```
+
+## CLI
+
+The `rca` CLI lets you interact with sessions from the terminal via the gateway API.
+
+```bash
+cd apps/cli && bun run dev -- config set apiUrl http://localhost:4100
+cd apps/cli && bun run dev -- config set apiKey <GATEWAY_API_SECRET>
+
+rca chat "Fix the failing tests in src/utils.ts" --repo owner/repo
+rca list --status running
+rca stream <session-id>
+rca stop <session-id>
+rca pause <session-id>
+rca resume <session-id>
+```
+
+## MCP integration
+
+The gateway exposes an [MCP](https://modelcontextprotocol.io) endpoint at `/mcp` (Streamable HTTP). Connect Claude Desktop, Cursor, or any MCP client:
+
+```json
+{
+  "mcpServers": {
+    "forge": {
+      "url": "https://<gateway-host>/mcp",
+      "headers": {
+        "Authorization": "Bearer <GATEWAY_API_SECRET>"
+      }
+    }
+  }
+}
+```
+
+See [`apps/gateway/README.md`](apps/gateway/README.md) for the full list of MCP tools and REST endpoints.
 
 ## Deploy to Render
 
-The `render.yaml` blueprint provisions all services. Fork this repo, then:
+The `render.yaml` blueprint provisions all services (web, agent, gateway, sandbox, Redis, Postgres). Fork this repo, then:
 
 ### 1. Create a GitHub OAuth App
 
@@ -149,20 +188,21 @@ Go to [render.com/deploy](https://render.com/deploy?repo=https://github.com/rend
 
 ### 3. Set environment variables
 
-After provisioning, set these on `web`:
+After provisioning, set these on the **web** service:
 
 | Variable | Value |
 |---|---|
 | `GITHUB_OAUTH_CLIENT_ID` | From your GitHub OAuth App |
 | `GITHUB_OAUTH_CLIENT_SECRET` | From your GitHub OAuth App |
 | `AUTH_URL` | `https://<web-url>.onrender.com` |
-| `NEXT_PUBLIC_APP_URL` | Same as AUTH_URL |
+| `NEXT_PUBLIC_APP_URL` | Same as `AUTH_URL` |
 | `ADMIN_EMAIL` | Email for the admin account |
 | `ADMIN_PASSWORD` | Password for signing in |
 | `ANTHROPIC_API_KEY` | Your Anthropic key |
 | `RENDER_API_KEY` | Render Dashboard > Account Settings > API Keys |
+| `SANDBOX_SERVICE_HOST` | Public URL of the sandbox service |
 
-Set `ANTHROPIC_API_KEY` on `agent` as well.
+Set `ANTHROPIC_API_KEY` and `SANDBOX_SERVICE_HOST` on the **agent** service as well.
 
 ### 4. Push the database schema
 
@@ -180,11 +220,6 @@ Redeploy all services, then check:
 
 ## Documentation
 
-- [`docs/architecture.md`](docs/architecture.md) — System design, services, adapters, ForgeProvider
-- [`docs/capabilities.md`](docs/capabilities.md) — Agent tools, skills, CI, streaming
-- [`docs/environment.md`](docs/environment.md) — Environment variable reference
-- [`apps/gateway/README.md`](apps/gateway/README.md) — Headless API, MCP tools, SSE streams
-
-## License
-
-Open source. See [LICENSE](./LICENSE) for details.
+- [`apps/gateway/README.md`](apps/gateway/README.md) — Gateway REST API, MCP tools, SSE streams, webhook endpoints
+- [`docs/backlog.md`](docs/backlog.md) — Planned features and technical debt
+- [`docs/decisions/`](docs/decisions/) — Architecture Decision Records

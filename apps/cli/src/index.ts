@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * Coding Agents CLI — interact with the gateway from the terminal.
+ * Render Coding Agents CLI — interact with the gateway from the terminal.
  *
  * Usage:
- *   forge config set apiUrl http://localhost:4100
- *   forge config set apiKey sk-...
- *   forge chat "Fix the failing tests in src/utils.ts"
- *   forge list
- *   forge stop <session-id>
- *   forge pause <session-id>
- *   forge resume <session-id>
+ *   rca config set apiUrl http://localhost:4100
+ *   rca config set apiKey sk-...
+ *   rca chat "Fix the failing tests in src/utils.ts"
+ *   rca list
+ *   rca stop <session-id>
+ *   rca pause <session-id>
+ *   rca resume <session-id>
  */
 
 import { Command } from "commander";
@@ -27,12 +27,12 @@ import {
 const program = new Command();
 
 program
-  .name("forge")
-  .description("Coding Agents CLI — interact with agent sessions from the terminal")
+  .name("rca")
+  .description("Render Coding Agents CLI — interact with agent sessions from the terminal")
   .version("0.1.0");
 
 // ─────────────────────────────────────────────────────────────────────────────
-// forge config
+// rca config
 // ─────────────────────────────────────────────────────────────────────────────
 
 const configCmd = program.command("config").description("Manage CLI configuration");
@@ -59,7 +59,7 @@ configCmd
   });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// forge chat
+// rca chat
 // ─────────────────────────────────────────────────────────────────────────────
 
 program
@@ -122,7 +122,7 @@ program
                 break;
               default:
                 // Show other events in debug mode
-                if (process.env.FORGE_DEBUG) {
+                if (process.env.RCA_DEBUG) {
                   console.log(`[${event.type}]`, JSON.stringify(data).slice(0, 200));
                 }
             }
@@ -139,7 +139,7 @@ program
   });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// forge send
+// rca send
 // ─────────────────────────────────────────────────────────────────────────────
 
 program
@@ -156,7 +156,7 @@ program
   });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// forge list
+// rca list
 // ─────────────────────────────────────────────────────────────────────────────
 
 program
@@ -187,7 +187,7 @@ program
   });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// forge stop / pause / resume
+// rca stop / pause / resume
 // ─────────────────────────────────────────────────────────────────────────────
 
 program
@@ -230,7 +230,7 @@ program
   });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// forge stream
+// rca stream
 // ─────────────────────────────────────────────────────────────────────────────
 
 program

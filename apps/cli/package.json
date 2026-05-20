@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "bin": {
-    "ca": "./dist/index.js"
+    "rca": "./dist/index.js"
   },
   "scripts": {
     "build": "bun build src/index.ts --outdir dist --target node",
