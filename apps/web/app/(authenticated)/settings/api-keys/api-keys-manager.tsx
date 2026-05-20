@@ -126,10 +126,10 @@ export function ApiKeysManager() {
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium text-text-primary">{k.label}</span>
-                    <span className="rounded-full border border-stroke-subtle px-2 py-0.5 text-[10px] uppercase text-text-tertiary">
+                    <span className="rounded-full border border-stroke-subtle px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-tertiary">
                       {k.provider}
                     </span>
-                    <span className="rounded-full border border-stroke-subtle px-2 py-0.5 text-[10px] uppercase text-text-tertiary">
+                    <span className="rounded-full border border-stroke-subtle px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-tertiary">
                       {k.scope}
                     </span>
                     {!k.isValid && (

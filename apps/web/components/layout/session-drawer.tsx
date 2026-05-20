@@ -119,7 +119,7 @@ export function SessionDrawer({ open, onClose }: SessionDrawerProps) {
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-3 py-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <span className="font-mono text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
             Sessions
           </span>
           <div className="flex items-center gap-1">
