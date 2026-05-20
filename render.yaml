@@ -43,8 +43,9 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
+      # Webhook routes still forward to the gateway; use its public URL
       - key: GATEWAY_INTERNAL_URL
-        value: http://gateway:4100
+        sync: false
       - key: GATEWAY_API_SECRET
         fromService:
           name: gateway

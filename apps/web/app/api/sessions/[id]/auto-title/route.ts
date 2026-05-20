@@ -1,11 +1,17 @@
-import { NextRequest } from "next/server";
-import { gatewayProxy, requireUserId } from "@/lib/gateway";
+import { NextRequest, NextResponse } from "next/server";
+import { requireForgeAuth, getPlatform } from "@/lib/platform";
 
 export async function POST(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const userId = await requireUserId();
-  const { id } = await params;
-  return gatewayProxy(req, `/sessions/${id}/auto-title`, userId);
+  try {
+    const auth = await requireForgeAuth();
+    const { id } = await params;
+    const result = await getPlatform().sessions.generateAutoTitle(id, auth.userId);
+    return NextResponse.json(result);
+  } catch (err) {
+    if (err instanceof Response) return err;
+    return NextResponse.json({ error: "Failed to generate title" }, { status: 500 });
+  }
 }

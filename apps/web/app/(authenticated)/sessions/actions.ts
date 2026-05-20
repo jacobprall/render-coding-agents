@@ -1,19 +1,12 @@
 "use server";
 
-import { gatewayFetch, requireUserId } from "@/lib/gateway";
+import { requireForgeAuth, getPlatform } from "@/lib/platform";
 import { revalidatePath } from "next/cache";
 
 export async function archiveSessionAction(sessionId: string): Promise<{ error?: string }> {
   try {
-    const userId = await requireUserId();
-    const res = await gatewayFetch(`/sessions/${sessionId}`, {
-      method: "DELETE",
-      userId,
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => null);
-      return { error: typeof body?.error === "string" ? body.error : `Archive failed (${res.status})` };
-    }
+    const auth = await requireForgeAuth();
+    await getPlatform().sessions.archive(auth, sessionId);
     revalidatePath("/sessions");
     revalidatePath("/", "layout");
     return {};

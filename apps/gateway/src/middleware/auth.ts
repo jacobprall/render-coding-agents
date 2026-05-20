@@ -123,13 +123,15 @@ async function resolveUserAuth(userId: string): Promise<AuthContext | null> {
   if (!user) return null;
 
   const forgeInfo = await resolveForgeTokenInfo(db, user.id);
-  if (!forgeInfo) return null;
+  if (!forgeInfo) {
+    console.warn(`[auth] user ${userId} has no forge token — using placeholder for non-forge endpoints`);
+  }
 
   return {
     userId: user.id,
     username: user.externalUsername ?? "unknown",
-    forgeToken: forgeInfo.token,
-    forgeType: forgeInfo.forgeType,
+    forgeToken: forgeInfo?.token ?? "",
+    forgeType: forgeInfo?.forgeType,
     isAdmin: user.isAdmin ?? false,
   };
 }

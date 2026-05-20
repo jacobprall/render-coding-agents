@@ -1,12 +1,12 @@
-import { NextRequest } from "next/server";
-import { gatewayProxy, requireUserId } from "@/lib/gateway";
+import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/platform";
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> },
-) {
-  const userId = await requireUserId();
-  const { path } = await params;
-  const qs = req.nextUrl.search;
-  return gatewayProxy(req, `/skills/repo/${path.join("/")}${qs}`, userId);
+export async function GET() {
+  try {
+    await requireAuth();
+    return NextResponse.json({ error: "Not implemented" }, { status: 501 });
+  } catch (err) {
+    if (err instanceof Response) return err;
+    return NextResponse.json({ error: "Failed to read skill" }, { status: 500 });
+  }
 }

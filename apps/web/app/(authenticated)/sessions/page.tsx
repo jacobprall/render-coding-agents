@@ -2,10 +2,11 @@ import type { Metadata } from "next";
 import { getSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
-import { sessions, projects } from "@coding-agents/db";
+import { sessions, projects, syncConnections } from "@coding-agents/db";
 import { eq, desc, inArray } from "drizzle-orm";
 import { getUserPreferences } from "@/lib/db/loaders";
-import { gatewayFetch } from "@/lib/gateway";
+import { decryptTokenSafe } from "@coding-agents/shared/lib/encryption";
+import { createForgeProvider } from "@coding-agents/platform/forge";
 import { SessionsHome } from "./sessions-home";
 
 export const metadata: Metadata = { title: "Sessions" };
@@ -37,9 +38,25 @@ export default async function SessionsPage({
       .from(sessions)
       .where(eq(sessions.userId, userId))
       .orderBy(desc(sessions.createdAt)),
-    gatewayFetch("/sessions/repos", { userId })
-      .then((r) => (r.ok ? r.json() : { repos: [] }))
-      .catch(() => ({ repos: [] })),
+    (async () => {
+      try {
+        const conns = await db
+          .select({ provider: syncConnections.provider, accessToken: syncConnections.accessToken })
+          .from(syncConnections)
+          .where(eq(syncConnections.userId, userId));
+        const allRepos: Array<{ id: string | number; name: string; fullName: string; defaultBranch: string; isPrivate?: boolean }> = [];
+        for (const conn of conns) {
+          const token = decryptTokenSafe(conn.accessToken);
+          if (!token) continue;
+          const forge = createForgeProvider({ token });
+          const repos = await forge.repos.list();
+          allRepos.push(...repos);
+        }
+        return { repos: allRepos };
+      } catch {
+        return { repos: [] };
+      }
+    })(),
   ]);
 
   const projectIds = [...new Set(userSessions.map((s) => s.projectId).filter(Boolean))] as string[];

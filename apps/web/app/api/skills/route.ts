@@ -1,8 +1,12 @@
-import { NextRequest } from "next/server";
-import { gatewayProxy, requireUserId } from "@/lib/gateway";
+import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/platform";
 
-export async function GET(req: NextRequest) {
-  const userId = await requireUserId();
-  const qs = req.nextUrl.search;
-  return gatewayProxy(req, `/skills${qs}`, userId);
+export async function GET() {
+  try {
+    await requireAuth();
+    return NextResponse.json({ skills: [] });
+  } catch (err) {
+    if (err instanceof Response) return err;
+    return NextResponse.json({ error: "Failed to list skills" }, { status: 500 });
+  }
 }

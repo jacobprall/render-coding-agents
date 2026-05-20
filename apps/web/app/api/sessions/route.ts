@@ -1,11 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { gatewayProxy, requireUserId } from "@/lib/gateway";
+import { requireForgeAuth, getPlatform } from "@/lib/platform";
 import { getDb } from "@/lib/db";
 import { sessions } from "@coding-agents/db";
 import { eq, desc, and, ne } from "drizzle-orm";
 
 export async function GET(req: NextRequest) {
-  const userId = await requireUserId();
+  const auth = await requireForgeAuth();
   const url = new URL(req.url);
   const status = url.searchParams.get("status");
   const limitParam = url.searchParams.get("limit");
@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
   const db = getDb();
   type SessionStatus = "running" | "completed" | "failed" | "archived";
   const validStatuses: SessionStatus[] = ["running", "completed", "failed", "archived"];
-  const conditions = [eq(sessions.userId, userId), ne(sessions.status, "archived" satisfies SessionStatus)];
+  const conditions = [eq(sessions.userId, auth.userId), ne(sessions.status, "archived" satisfies SessionStatus)];
   if (status && validStatuses.includes(status as SessionStatus)) {
     conditions.push(eq(sessions.status, status as SessionStatus));
   }
@@ -37,6 +37,15 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const userId = await requireUserId();
-  return gatewayProxy(req, "/sessions", userId);
+  try {
+    const auth = await requireForgeAuth();
+    const data = await req.json();
+    const branch = data.repoPath ? (data.branch || data.baseBranch || "main") : undefined;
+    const result = await getPlatform().sessions.create(auth, { ...data, branch });
+    return NextResponse.json({ id: result.sessionId, ...result }, { status: 201 });
+  } catch (err) {
+    if (err instanceof Response) return err;
+    console.error("[sessions] create failed:", err);
+    return NextResponse.json({ error: "Failed to create session" }, { status: 500 });
+  }
 }

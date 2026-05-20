@@ -1,20 +1,33 @@
-import { NextRequest } from "next/server";
-import { gatewayProxy, requireUserId } from "@/lib/gateway";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuth, getPlatform } from "@/lib/platform";
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const userId = await requireUserId();
-  const { id } = await params;
-  return gatewayProxy(req, `/settings/access-tokens/${id}`, userId);
+  try {
+    const auth = await requireAuth();
+    const { id } = await params;
+    const body = await req.json();
+    await getPlatform().settings.updateAccessToken(auth, id, body);
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    if (err instanceof Response) return err;
+    return NextResponse.json({ error: "Failed to update access token" }, { status: 500 });
+  }
 }
 
 export async function DELETE(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const userId = await requireUserId();
-  const { id } = await params;
-  return gatewayProxy(req, `/settings/access-tokens/${id}`, userId);
+  try {
+    const auth = await requireAuth();
+    const { id } = await params;
+    await getPlatform().settings.deleteAccessToken(auth, id);
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    if (err instanceof Response) return err;
+    return NextResponse.json({ error: "Failed to delete access token" }, { status: 500 });
+  }
 }
