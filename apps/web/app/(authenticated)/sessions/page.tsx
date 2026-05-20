@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { getSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
-import { sessions, projects } from "@openforge/db";
+import { sessions, projects } from "@coding-agents/db";
 import { eq, desc, inArray } from "drizzle-orm";
 import { SessionsList } from "./sessions-list";
 

@@ -1,5 +1,5 @@
 import type { Adapter, AdapterAccount } from "@auth/core/adapters";
-import { encryptToken, decryptTokenSafe } from "@openforge/shared/lib/encryption";
+import { encryptToken, decryptTokenSafe } from "@coding-agents/shared/lib/encryption";
 
 export function drizzleAdapterWithEncryptedForgeTokens(base: Adapter): Adapter {
   return {

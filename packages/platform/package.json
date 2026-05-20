@@ -1,5 +1,5 @@
 {
-  "name": "@openforge/platform",
+  "name": "@coding-agents/platform",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -23,8 +23,8 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3",
     "@aws-sdk/s3-request-presigner": "^3",
-    "@openforge/db": "workspace:*",
-    "@openforge/shared": "workspace:*",
+    "@coding-agents/db": "workspace:*",
+    "@coding-agents/shared": "workspace:*",
     "bcryptjs": "^3.0.3",
     "drizzle-orm": "^0.45.1",
     "ioredis": "^5.9.2",

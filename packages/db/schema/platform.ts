@@ -3,6 +3,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   text,
   timestamp,
@@ -10,6 +11,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { users } from "./auth";
+import { agentRuns, sessions } from "./session";
 
 // ---------------------------------------------------------------------------
 // LLM API keys (encrypted at rest — plaintext only in memory when calling providers)
@@ -152,6 +154,55 @@ export const skillCache = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// LLM calls — records every LLM API call for cost tracking & observability
+// ---------------------------------------------------------------------------
+
+export const llmCalls = pgTable(
+  "llm_calls",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id").references(() => agentRuns.id),
+    sessionId: text("session_id").references(() => sessions.id),
+    userId: text("user_id").notNull(),
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
+    inputTokens: integer("input_tokens").notNull(),
+    outputTokens: integer("output_tokens").notNull(),
+    costUsd: numeric("cost_usd", { precision: 10, scale: 6 }).notNull(),
+    latencyMs: integer("latency_ms").notNull(),
+    stopReason: text("stop_reason"),
+    error: text("error"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("llm_calls_user_id_idx").on(table.userId),
+    index("llm_calls_run_id_idx").on(table.runId),
+    index("llm_calls_session_id_idx").on(table.sessionId),
+    index("llm_calls_user_created_idx").on(table.userId, table.createdAt),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Budgets — monthly spend limits per user or org
+// ---------------------------------------------------------------------------
+
+export const budgets = pgTable(
+  "budgets",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id"),
+    orgId: text("org_id"),
+    monthlyLimitUsd: numeric("monthly_limit_usd", { precision: 10, scale: 2 }).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("budgets_user_id_idx").on(table.userId),
+    index("budgets_org_id_idx").on(table.orgId),
+  ],
+);
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -163,3 +214,7 @@ export type ApiKey = typeof apiKeys.$inferSelect;
 export type NewApiKey = typeof apiKeys.$inferInsert;
 export type SkillCacheRow = typeof skillCache.$inferSelect;
 export type NewSkillCacheRow = typeof skillCache.$inferInsert;
+export type LlmCall = typeof llmCalls.$inferSelect;
+export type NewLlmCall = typeof llmCalls.$inferInsert;
+export type Budget = typeof budgets.$inferSelect;
+export type NewBudget = typeof budgets.$inferInsert;

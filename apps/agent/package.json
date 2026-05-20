@@ -10,13 +10,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "catalog:",
-    "@ai-sdk/openai": "catalog:",
     "@openforge/db": "workspace:*",
     "@openforge/sandbox": "workspace:*",
     "@openforge/platform": "workspace:*",
     "@openforge/shared": "workspace:*",
-    "ai": "catalog:",
     "drizzle-orm": "^0.45.1",
     "ioredis": "^5.9.2",
     "nanoid": "^5.1.6",

@@ -1,4 +1,4 @@
-import type { ForgeFileContent, ForgeProvider } from "@openforge/shared";
+import type { ForgeFileContent, ForgeProvider } from "@coding-agents/shared";
 import {
   decodeForgeFileContent,
   getBuiltinRaw,
@@ -7,7 +7,7 @@ import {
 import { parseSkillMarkdown } from "./parse";
 import type { ActiveSkillRef, ResolvedSkill, SkillSource, SkillSummary } from "./types";
 
-export const FORGE_SKILLS_REPO_NAME = "openforge-skills";
+export const FORGE_SKILLS_REPO_NAME = "coding-agents-skills";
 /** Skills in the user repo live under this directory. */
 export const USER_SKILLS_DIR = "skills";
 /** Repo-level skills path in project repos. */

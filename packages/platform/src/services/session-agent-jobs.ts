@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, lt, sql } from "drizzle-orm";
-import { agentRuns, chatMessages, chats, sessions, syncConnections } from "@openforge/db";
+import { agentRuns, chatMessages, chats, sessions, syncConnections } from "@coding-agents/db";
 import type { PlatformDb } from "../interfaces/database";
 import type { QueueAdapter } from "../interfaces/queue";
 import { getDefaultForgeProvider, getForgeProviderForAuth } from "../forge/factory";
@@ -8,16 +8,13 @@ import { resolveSkillsForSession } from "./session-skills";
 import { decryptTokenSafe } from "../auth/encryption";
 
 /**
- * Forge token / provider resolution for sessions (Forgejo mirror vs GitHub/GitLab OAuth).
+ * Forge token / provider resolution for sessions (GitHub/GitLab OAuth).
  */
 export async function getForgeProviderForSession(
   db: PlatformDb,
   session: { forgeType: string | null; userId: string },
 ): Promise<ForgeProvider> {
   const forgeType = (session.forgeType ?? "github") as ForgeProviderType;
-  if (forgeType === "forgejo") {
-    return getDefaultForgeProvider(process.env.FORGEJO_AGENT_TOKEN ?? "");
-  }
   const [conn] = await db
     .select({ accessToken: syncConnections.accessToken })
     .from(syncConnections)
@@ -26,7 +23,7 @@ export async function getForgeProviderForSession(
   if (conn?.accessToken) {
     return getForgeProviderForAuth({ forgeToken: decryptTokenSafe(conn.accessToken), forgeType });
   }
-  return getDefaultForgeProvider(process.env.FORGEJO_AGENT_TOKEN ?? "");
+  return getDefaultForgeProvider(process.env.GITHUB_TOKEN ?? "");
 }
 
 // ---------------------------------------------------------------------------
@@ -264,7 +261,7 @@ export async function enqueueSessionTriggerJob(
   const resolvedSkills = await resolveSkillsForSession(
     sessionRow,
     forge,
-    sessionRow.forgeUsername ?? "",
+    sessionRow.forgeUsername ?? "unknown",
   );
 
   const effectiveModelId = modelId ?? DEFAULT_MODEL_ID;

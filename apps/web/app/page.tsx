@@ -116,7 +116,7 @@ export default async function Home() {
               />
             </svg>
           </div>
-          <span className="text-lg font-semibold">OpenForge</span>
+          <span className="text-lg font-semibold">Coding Agents</span>
         </div>
         <a
           href="https://github.com/render-oss/render-open-forge"
@@ -180,7 +180,7 @@ export default async function Home() {
       </div>
 
       <footer className="border-t border-stroke-subtle px-6 py-6 text-center text-sm text-text-tertiary">
-        OpenForge &mdash; Open-source AI coding agent, powered by Render
+        Coding Agents &mdash; Open-source AI coding agent, powered by Render
       </footer>
     </main>
   );

@@ -1,8 +1,7 @@
-import { createAnthropic } from "@ai-sdk/anthropic";
-import { createOpenAI } from "@ai-sdk/openai";
-import type { LanguageModel } from "ai";
-import { MODEL_DEFS } from "@openforge/shared";
-import type { ResolvedLlmKeys } from "@openforge/platform";
+import { MODEL_DEFS } from "@coding-agents/shared";
+import type { ResolvedLlmKeys } from "@coding-agents/platform";
+import type { LLMProvider } from "./llm";
+import { createAnthropicProvider, createOpenAIProvider } from "./llm";
 
 export type ThinkingType = "adaptive" | "enabled";
 
@@ -92,7 +91,6 @@ export async function fetchAvailableModels(): Promise<ModelDef[]> {
           const thinking = m.capabilities?.thinking;
           const supportsAdaptive = thinking?.types?.adaptive?.supported === true;
           const supportsEnabled = thinking?.types?.enabled?.supported === true;
-          // Prefer adaptive when both are advertised — it lets the model decide.
           const thinkingType: ThinkingType | undefined = supportsAdaptive
             ? "adaptive"
             : supportsEnabled
@@ -183,7 +181,10 @@ export function getModelDef(modelId?: string): ModelDef {
   return models[0]!;
 }
 
-export function getModel(modelId: string | undefined, keys: ResolvedLlmKeys): LanguageModel {
+export function getModel(
+  modelId: string | undefined,
+  keys: ResolvedLlmKeys,
+): { provider: LLMProvider; modelId: string; providerName: "anthropic" | "openai" } {
   const def = getModelDef(modelId);
   const anthropicKey = keys.anthropic ?? process.env.ANTHROPIC_API_KEY;
   const openaiKey = keys.openai ?? process.env.OPENAI_API_KEY;
@@ -191,13 +192,17 @@ export function getModel(modelId: string | undefined, keys: ResolvedLlmKeys): La
   switch (def.provider) {
     case "anthropic": {
       if (!anthropicKey) throw new Error("No Anthropic API key configured for this user or platform");
-      return createAnthropic({ apiKey: anthropicKey })(def.modelId);
+      return { provider: createAnthropicProvider(anthropicKey), modelId: def.modelId, providerName: "anthropic" };
     }
     case "openai": {
       if (!openaiKey) throw new Error("No OpenAI API key configured for this user or platform");
-      return createOpenAI({ apiKey: openaiKey })(def.modelId);
+      return { provider: createOpenAIProvider(openaiKey), modelId: def.modelId, providerName: "openai" };
     }
     default:
-      return createAnthropic({ apiKey: anthropicKey! })(def.modelId);
+      return {
+        provider: createAnthropicProvider(anthropicKey!),
+        modelId: def.modelId,
+        providerName: "anthropic",
+      };
   }
 }

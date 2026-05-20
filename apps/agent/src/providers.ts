@@ -1,39 +1,34 @@
 import { and, eq } from "drizzle-orm";
-import { mirrors, syncConnections } from "@openforge/db";
-import type { PlatformDb } from "@openforge/platform";
-import { getDefaultForgeProvider, createForgeProvider, type ForgeProvider, type ForgeProviderType } from "@openforge/platform/forge";
+import { mirrors, syncConnections } from "@coding-agents/db";
+import type { PlatformDb } from "@coding-agents/platform";
+import { getDefaultForgeProvider, createForgeProvider, type ForgeProvider, type ForgeProviderType } from "@coding-agents/platform/forge";
 import {
   SharedHttpSandboxProvider,
   type SandboxAdapter,
   type SandboxSessionAuth,
-} from "@openforge/sandbox";
-import { ExeDevSandboxProvider, exeDevProviderFromEnv } from "@openforge/sandbox/providers/exedev";
-import type { SandboxProvider } from "@openforge/sandbox/provider";
-import { decryptTokenSafe } from "@openforge/shared/lib/encryption";
+} from "@coding-agents/sandbox";
+import { ExeDevSandboxProvider, exeDevProviderFromEnv } from "@coding-agents/sandbox/providers/exedev";
+import type { SandboxProvider } from "@coding-agents/sandbox/provider";
+import { decryptTokenSafe } from "@coding-agents/shared/lib/encryption";
 import type { UpstreamMirrorInfo } from "./context/agent-context";
 
 // ─── Forge providers ─────────────────────────────────────────────────────────
 
+/** Fallback forge provider using env token (GitHub by default). */
 export function getForgeProvider(): ForgeProvider {
-  const token = process.env.FORGEJO_AGENT_TOKEN;
-  if (!token) throw new Error("FORGEJO_AGENT_TOKEN not configured");
+  const token = process.env.GITHUB_TOKEN ?? "";
   return getDefaultForgeProvider(token);
 }
 
 /**
  * Build a ForgeProvider appropriate for the session's forge type.
- * For Forgejo sessions, uses the internal agent token.
- * For GitHub/GitLab sessions, resolves the token from sync connections.
+ * Resolves the token from sync connections, falling back to env vars.
  */
 export async function getForgeProviderForSession(
   db: PlatformDb,
   session: { forgeType: string | null; userId: string },
 ): Promise<ForgeProvider> {
   const forgeType = (session.forgeType ?? "github") as ForgeProviderType;
-
-  if (forgeType === "forgejo") {
-    return getForgeProvider();
-  }
 
   const [conn] = await db
     .select({ accessToken: syncConnections.accessToken })
@@ -154,7 +149,7 @@ function buildSharedHttpProvider(): SharedHttpSandboxProvider {
   const secret = process.env.SANDBOX_SHARED_SECRET;
   const sessionSecret = process.env.SANDBOX_SESSION_SECRET;
   const sessionAuth: SandboxSessionAuth | undefined = sessionSecret
-    ? { secret: sessionSecret, userId: "openforge-agent" }
+    ? { secret: sessionSecret, userId: "coding-agents-agent" }
     : undefined;
   return new SharedHttpSandboxProvider(host, secret, sessionAuth);
 }

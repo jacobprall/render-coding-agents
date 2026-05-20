@@ -23,7 +23,7 @@ export interface ExeDevProviderConfig {
   vmStrategy?: VmStrategy;
   /**
    * For "shared-vm" strategy: the VM name to use. If not set, a VM named
-   * "openforge-sandbox" is created on first provision.
+   * "coding-agents-sandbox" is created on first provision.
    */
   sharedVmName?: string;
   /** Custom Docker image for new VMs. */
@@ -125,7 +125,7 @@ export class ExeDevSandboxProvider implements SandboxProvider {
 
   private async provisionSharedVm(sessionId: string, opts?: ProvisionOptions): Promise<SandboxAdapter> {
     if (!this.sharedVm) {
-      const vmName = this.config.sharedVmName ?? "openforge-sandbox";
+      const vmName = this.config.sharedVmName ?? "coding-agents-sandbox";
       const exists = await this.vmExists(vmName);
 
       if (!exists) {
@@ -294,7 +294,7 @@ export function exeDevProviderFromEnv(): ExeDevSandboxProvider {
       sshKeyPath: process.env.EXEDEV_SSH_KEY_PATH,
     },
     vmStrategy: (process.env.EXEDEV_VM_STRATEGY as VmStrategy) ?? "shared-vm",
-    sharedVmName: process.env.EXEDEV_SHARED_VM_NAME ?? "openforge-sandbox",
+    sharedVmName: process.env.EXEDEV_SHARED_VM_NAME ?? "coding-agents-sandbox",
     vmImage: process.env.EXEDEV_VM_IMAGE,
     setupScript: process.env.EXEDEV_SETUP_SCRIPT,
     workspaceRoot: process.env.EXEDEV_WORKSPACE_ROOT ?? "/home/exedev/workspace",

@@ -27,6 +27,7 @@ import { SettingsService } from "./services/settings";
 import { ModelService } from "./services/model";
 import { CIService } from "./services/ci";
 import { WebhookService } from "./services/webhook";
+import { CostService } from "./services/cost";
 import { InboundRouter } from "./inbound/router";
 import { InboundDispatcher } from "./inbound/dispatcher";
 import { DEFAULT_ROUTES } from "./inbound/default-routes";
@@ -72,6 +73,7 @@ export interface PlatformContainer {
   models: ModelService;
   ci: CIService;
   webhooks: WebhookService;
+  costs: CostService;
   inboundRouter: InboundRouter;
   inboundDispatcher: InboundDispatcher;
 }
@@ -81,7 +83,7 @@ export interface PlatformContainer {
  *
  * ```ts
  * import Redis from "ioredis";
- * import { createPlatform } from "@openforge/platform/container";
+ * import { createPlatform } from "@coding-agents/platform/container";
  *
  * const platform = createPlatform({
  *   databaseUrl: process.env.DATABASE_URL!,
@@ -147,6 +149,7 @@ function buildContainer(
   const models = new ModelService(db);
   const ci = new CIService(db, queue);
   const webhooks = new WebhookService(db, queue, events, ci);
+  const costs = new CostService(db);
   const inboundRouter = new InboundRouter(DEFAULT_ROUTES);
   const inboundDispatcher = new InboundDispatcher({
     db,
@@ -171,6 +174,7 @@ function buildContainer(
     models,
     ci,
     webhooks,
+    costs,
     inboundRouter,
     inboundDispatcher,
   };

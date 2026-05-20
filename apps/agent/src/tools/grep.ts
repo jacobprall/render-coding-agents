@@ -1,4 +1,4 @@
-import { tool } from "ai";
+import { defineTool } from "./define-tool";
 import { z } from "zod";
 import { getSandboxContext } from "../context/agent-context";
 import { MAX_GREP_MATCHES, MAX_GREP_MATCH_LINE_CHARS } from "./truncation";
@@ -9,11 +9,11 @@ const grepInputSchema = z.object({
 });
 
 export function grepTool() {
-  return tool({
+  return defineTool({
     description: "Search for a pattern in files using ripgrep.",
     inputSchema: grepInputSchema,
-    execute: async ({ pattern, path }, { experimental_context }) => {
-      const { adapter, sessionId } = getSandboxContext(experimental_context);
+    execute: async ({ pattern, path }, { context }) => {
+      const { adapter, sessionId } = getSandboxContext(context);
       const command = path
         ? `rg --json ${JSON.stringify(pattern)} ${JSON.stringify(path)}`
         : `rg --json ${JSON.stringify(pattern)}`;

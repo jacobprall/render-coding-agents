@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { Session } from "@openforge/db/schema";
+import type { Session } from "@coding-agents/db/schema";
 
 export type SessionCardSession = Pick<
   Session,

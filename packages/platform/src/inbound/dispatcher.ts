@@ -6,8 +6,8 @@
  */
 
 import { desc, eq, inArray, and } from "drizzle-orm";
-import { agentRuns, mirrors, sessions } from "@openforge/db";
-import { logger } from "@openforge/shared";
+import { agentRuns, mirrors, sessions } from "@coding-agents/db";
+import { logger } from "@coding-agents/shared";
 import type { PlatformDb } from "../interfaces/database";
 import type { QueueAdapter } from "../interfaces/queue";
 import type { CIService } from "../services/ci";

@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-const CONFIG_DIR = join(homedir(), ".openforge");
+const CONFIG_DIR = join(homedir(), ".coding-agents");
 const CONFIG_FILE = join(CONFIG_DIR, "config.json");
 
 export interface CliConfig {

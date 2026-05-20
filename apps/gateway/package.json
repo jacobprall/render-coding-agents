@@ -1,5 +1,5 @@
 {
-  "name": "@openforge/gateway",
+  "name": "@coding-agents/gateway",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -15,9 +15,9 @@
     "@hono/swagger-ui": "^0.6.1",
     "@hono/zod-openapi": "^1.3.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@openforge/db": "workspace:*",
-    "@openforge/platform": "workspace:*",
-    "@openforge/shared": "workspace:*",
+    "@coding-agents/db": "workspace:*",
+    "@coding-agents/platform": "workspace:*",
+    "@coding-agents/shared": "workspace:*",
     "hono": "^4.7.11",
     "ioredis": "^5.9.2",
     "zod": "catalog:"

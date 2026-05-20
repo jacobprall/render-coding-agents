@@ -1,4 +1,4 @@
-import { tool } from "ai";
+import { defineTool } from "./define-tool";
 import { z } from "zod";
 import { assertSafeHttpUrl } from "../url-safety";
 import { toErrorResult } from "./tool-helpers";
@@ -31,7 +31,7 @@ const webFetchInputSchema = z.object({
 });
 
 export function webFetchTool() {
-  return tool({
+  return defineTool({
     description: `Fetch a URL from the web and return the response body as text. Responses must be text-oriented; binary types are rejected. Body truncated to ${MAX_BODY_LENGTH} characters.`,
     inputSchema: webFetchInputSchema,
     execute: async ({ url, method = "GET", headers, body }) => {

@@ -3,7 +3,7 @@ import type { NextAuthConfig } from "next-auth";
 import GitHub from "next-auth/providers/github";
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import { and, eq } from "drizzle-orm";
-import { encryptToken, decryptTokenSafe } from "@openforge/shared/lib/encryption";
+import { encryptToken, decryptTokenSafe } from "@coding-agents/shared/lib/encryption";
 import { getDb } from "@/lib/db";
 import {
   users,
@@ -12,16 +12,15 @@ import {
   verificationTokens,
   orgs,
   projects,
-} from "@openforge/db/schema";
+} from "@coding-agents/db/schema";
 import { credentialsProvider } from "./providers/credentials";
 import { drizzleAdapterWithEncryptedForgeTokens } from "./drizzle-adapter-with-encrypted-tokens";
 
 declare module "next-auth" {
   interface Session {
     forgeToken: string;
-    forgeUserId: number;
     forgeUsername: string;
-    forgeType: "forgejo" | "github" | "gitlab";
+    forgeType: "github" | "gitlab";
     isAdmin: boolean;
     user: {
       id: string;
@@ -32,8 +31,8 @@ declare module "next-auth" {
   }
 
   interface User {
-    forgejoUserId?: number | null;
-    forgejoUsername?: string | null;
+    externalProviderId?: number | null;
+    externalUsername?: string | null;
     isAdmin?: boolean;
   }
 }
@@ -41,9 +40,8 @@ declare module "next-auth" {
 declare module "@auth/core/jwt" {
   interface JWT {
     forgeToken?: string;
-    forgeUserId?: number;
     forgeUsername?: string;
-    forgeType?: "forgejo" | "github" | "gitlab";
+    forgeType?: "github" | "gitlab";
     isAdmin?: boolean;
   }
 }
@@ -56,17 +54,15 @@ declare module "@auth/core/jwt" {
 async function loadForgeAccessTokenForUser(
   userId: string,
   preferProvider?: string,
-): Promise<{ token: string; forgeType: "forgejo" | "github" | "gitlab"; username?: string } | undefined> {
+): Promise<{ token: string; forgeType: "github" | "gitlab"; username?: string } | undefined> {
   const db = getDb();
 
-  const defaultOrder: Array<"forgejo" | "github" | "gitlab"> = ["github", "forgejo", "gitlab"];
-  const providerOrder = preferProvider
-    ? [preferProvider as "github" | "forgejo" | "gitlab", ...defaultOrder.filter((p) => p !== preferProvider)]
+  const defaultOrder: Array<"github" | "gitlab"> = ["github", "gitlab"];
+  const providerOrder = preferProvider && (preferProvider === "github" || preferProvider === "gitlab")
+    ? [preferProvider, ...defaultOrder.filter((p) => p !== preferProvider)]
     : defaultOrder;
 
-  // Check OAuth accounts first
   for (const provider of providerOrder) {
-    if (provider === "forgejo") continue; // deprioritize Forgejo -- check sync connections first
     const [row] = await db
       .select({ accessToken: accounts.access_token, providerAccountId: accounts.providerAccountId })
       .from(accounts)
@@ -81,8 +77,7 @@ async function loadForgeAccessTokenForUser(
     }
   }
 
-  // Check sync connections (GitHub/GitLab tokens from OAuth connections page)
-  for (const provider of ["github", "gitlab"] as const) {
+  for (const provider of providerOrder) {
     const [conn] = await db
       .select({ accessToken: syncConnections.accessToken, remoteUsername: syncConnections.remoteUsername })
       .from(syncConnections)
@@ -95,20 +90,6 @@ async function loadForgeAccessTokenForUser(
         username: conn.remoteUsername ?? undefined,
       };
     }
-  }
-
-  // Last resort: Forgejo account
-  const [forgejoRow] = await db
-    .select({ accessToken: accounts.access_token, providerAccountId: accounts.providerAccountId })
-    .from(accounts)
-    .where(and(eq(accounts.userId, userId), eq(accounts.provider, "forgejo")))
-    .limit(1);
-  if (forgejoRow?.accessToken) {
-    return {
-      token: decryptTokenSafe(forgejoRow.accessToken),
-      forgeType: "forgejo",
-      username: forgejoRow.providerAccountId,
-    };
   }
 
   return undefined;
@@ -214,12 +195,10 @@ const config: NextAuthConfig = {
         const forgeInfo = await loadForgeAccessTokenForUser(user.id, signInProvider);
         token.forgeToken = forgeInfo?.token;
         token.forgeType = forgeInfo?.forgeType ?? "github";
-        token.forgeUserId = user.forgejoUserId ?? undefined;
         token.isAdmin = user.isAdmin ?? false;
 
-        // Resolve username: GitHub profile login > stored username > user name
         const ghLogin = (profile as { login?: string } | undefined)?.login;
-        token.forgeUsername = ghLogin ?? user.forgejoUsername ?? user.name ?? undefined;
+        token.forgeUsername = ghLogin ?? user.externalUsername ?? user.name ?? undefined;
 
         if (account?.provider === "github" && account.access_token) {
           // Use the fresh OAuth token directly -- it's newer than whatever was in the DB
@@ -240,7 +219,6 @@ const config: NextAuthConfig = {
     async session({ session, token }) {
       if (token.sub) session.user.id = token.sub;
       session.forgeToken = token.forgeToken ?? "";
-      session.forgeUserId = token.forgeUserId ?? 0;
       session.forgeUsername = token.forgeUsername ?? "";
       session.forgeType = token.forgeType ?? "github";
       session.isAdmin = token.isAdmin ?? false;

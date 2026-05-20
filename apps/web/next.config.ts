@@ -19,8 +19,8 @@ for (const envFile of [".env.local", ".env"]) {
 
 const nextConfig: NextConfig = {
   transpilePackages: [
-    "@openforge/db",
-    "@openforge/shared",
+    "@coding-agents/db",
+    "@coding-agents/shared",
   ],
   images: {
     remotePatterns: [

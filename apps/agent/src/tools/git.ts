@@ -1,4 +1,4 @@
-import { tool } from "ai";
+import { defineTool } from "./define-tool";
 import { z } from "zod";
 import { getSandboxContext, isForgeAgentContext } from "../context/agent-context";
 import { rewriteForSandbox } from "../sandbox-url";
@@ -10,20 +10,19 @@ const gitInputSchema = z.object({
 const GIT_COMMANDS_NEEDING_AUTH = new Set(["push", "fetch", "pull"]);
 
 export function gitTool() {
-  return tool({
+  return defineTool({
     description:
       "Run a git command in the session workspace. For push/fetch/pull, authentication is handled automatically. If the repo is a pull mirror, push targets the upstream provider (e.g. GitHub). Use this instead of bash for git operations.",
     inputSchema: gitInputSchema,
-    execute: async ({ args }, { experimental_context }) => {
-      const { adapter, sessionId } = getSandboxContext(experimental_context);
+    execute: async ({ args }, { context }) => {
+      const { adapter, sessionId } = getSandboxContext(context);
 
       const subcommand = args[0]?.toLowerCase();
       const needsAuth = subcommand && GIT_COMMANDS_NEEDING_AUTH.has(subcommand);
 
-      if (needsAuth && isForgeAgentContext(experimental_context)) {
-        const { forge, repoOwner, repoName, upstream } = experimental_context;
+      if (needsAuth && isForgeAgentContext(context)) {
+        const { forge, repoOwner, repoName, upstream } = context;
 
-        // For push on a mirrored repo, target the upstream provider
         if (subcommand === "push" && upstream) {
           const upstreamAuthUrl = upstream.forge.git.authenticatedCloneUrl(
             upstream.remoteOwner,
@@ -39,7 +38,6 @@ export function gitTool() {
           }
         }
 
-        // Default: use the internal Forgejo forge for auth
         const authUrl = rewriteForSandbox(forge.git.authenticatedCloneUrl(repoOwner, repoName));
         const plainUrl = rewriteForSandbox(forge.git.plainCloneUrl(repoOwner, repoName));
 

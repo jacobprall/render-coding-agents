@@ -2,8 +2,8 @@
 
 import { getSession } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
-import { userPreferences } from "@openforge/db/schema";
-import type { UserPreferencesData } from "@openforge/db/schema";
+import { userPreferences } from "@coding-agents/db/schema";
+import type { UserPreferencesData } from "@coding-agents/db/schema";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { randomUUID } from "crypto";

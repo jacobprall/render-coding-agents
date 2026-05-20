@@ -1,7 +1,7 @@
 /**
  * Barrel export for forge types and interfaces.
  *
- * Implementation code (adapters, factories) lives in @openforge/platform/forge.
+ * Implementation code (adapters, factories) lives in @coding-agents/platform/forge.
  */
 
 export type {

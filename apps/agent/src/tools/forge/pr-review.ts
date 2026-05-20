@@ -1,9 +1,9 @@
-import { tool } from "ai";
+import { defineTool } from "../define-tool";
 import { z } from "zod";
 import { withForgeContext } from "../tool-helpers";
 
 export function addPrCommentTool() {
-  return tool({
+  return defineTool({
     description: "Add a general PR comment on the forge (issue comment on the PR).",
     inputSchema: z.object({
       number: z.number().int().positive(),
@@ -17,7 +17,7 @@ export function addPrCommentTool() {
 }
 
 export function requestReviewTool() {
-  return tool({
+  return defineTool({
     description: "Request review from one or more forge users.",
     inputSchema: z.object({
       number: z.number().int().positive(),
@@ -31,7 +31,7 @@ export function requestReviewTool() {
 }
 
 export function approvePrTool() {
-  return tool({
+  return defineTool({
     description: "Submit an approving PR review.",
     inputSchema: z.object({
       number: z.number().int().positive(),
@@ -52,7 +52,7 @@ const inlineNoteSchema = z.object({
 });
 
 export function reviewPrTool() {
-  return tool({
+  return defineTool({
     description:
       "Submit a pull request review (COMMENT) on the forge. Optionally attach inline file comments.",
     inputSchema: z.object({

@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
-import { sessions } from "@openforge/db";
-import type { PlatformDb } from "@openforge/platform";
+import { sessions } from "@coding-agents/db";
+import type { PlatformDb } from "@coding-agents/platform";
 
 interface SessionForDelivery {
   prNumber: number | null;

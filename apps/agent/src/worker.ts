@@ -1,6 +1,6 @@
 import Redis from "ioredis";
 import { eq } from "drizzle-orm";
-import { agentRuns, chats } from "@openforge/db";
+import { agentRuns, chats } from "@coding-agents/db";
 import {
   ensureConsumerGroup,
   readOneJob,
@@ -9,7 +9,7 @@ import {
   createPlatform,
   type PlatformContainer,
   type ValidatedAgentJob,
-} from "@openforge/platform";
+} from "@coding-agents/platform";
 import { runAgentTurn } from "./agent";
 import { fetchAvailableModels } from "./models";
 

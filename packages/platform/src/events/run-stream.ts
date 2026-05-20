@@ -1,5 +1,5 @@
 import type Redis from "ioredis";
-import { RedisStreamError } from "@openforge/shared";
+import { RedisStreamError } from "@coding-agents/shared";
 
 const STREAM_FIELD = "e";
 const STREAM_MAXLEN = "2000";

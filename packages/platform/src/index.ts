@@ -131,16 +131,21 @@ export type {
   SandboxPermissions,
   CostGuardState,
   CostGuardDecision,
+  CanDispatchResult,
   ToolFilterDecision,
+  ModelPricing,
 } from "./policy";
 export {
   DEFAULT_POLICY,
   resolvePolicy,
   evaluateCost,
+  canDispatch,
   evaluateTool,
   filterTools,
   redactCredentials,
   containsCredentials,
+  MODEL_PRICING,
+  calculateCost,
 } from "./policy";
 
 // Agent run state machine

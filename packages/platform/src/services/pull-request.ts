@@ -1,4 +1,4 @@
-import { ValidationError } from "@openforge/shared";
+import { ValidationError } from "@coding-agents/shared";
 import type { AuthContext } from "../interfaces/auth";
 import { getForgeProviderForAuth } from "../forge/factory";
 import type {

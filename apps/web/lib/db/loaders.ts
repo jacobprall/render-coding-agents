@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { getDb } from "@/lib/db";
-import { userPreferences } from "@openforge/db";
+import { userPreferences } from "@coding-agents/db";
 import { eq } from "drizzle-orm";
 
 export const getUserPreferences = cache(async (userId: string) => {

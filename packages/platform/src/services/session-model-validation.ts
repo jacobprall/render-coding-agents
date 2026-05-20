@@ -1,4 +1,4 @@
-import { MODEL_DEFS } from "@openforge/shared";
+import { MODEL_DEFS } from "@coding-agents/shared";
 
 /**
  * Validate that a model ID is known and the user has credentials for its provider.

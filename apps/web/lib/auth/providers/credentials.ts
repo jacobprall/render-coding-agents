@@ -2,7 +2,7 @@ import Credentials from "next-auth/providers/credentials";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { getDb } from "@/lib/db";
-import { users } from "@openforge/db/schema";
+import { users } from "@coding-agents/db/schema";
 
 export const credentialsProvider = Credentials({
   id: "credentials",
@@ -24,8 +24,8 @@ export const credentialsProvider = Credentials({
       .select({
         id: users.id,
         passwordHash: users.passwordHash,
-        forgejoUserId: users.forgejoUserId,
-        forgejoUsername: users.forgejoUsername,
+        externalProviderId: users.externalProviderId,
+        externalUsername: users.externalUsername,
         email: users.email,
         name: users.name,
         image: users.image,
@@ -45,8 +45,8 @@ export const credentialsProvider = Credentials({
       email: user.email,
       name: user.name,
       image: user.image,
-      forgejoUserId: user.forgejoUserId ?? undefined,
-      forgejoUsername: user.forgejoUsername ?? undefined,
+      externalProviderId: user.externalProviderId ?? undefined,
+      externalUsername: user.externalUsername ?? undefined,
       isAdmin: user.isAdmin,
     };
   },

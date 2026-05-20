@@ -2,14 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { User, Key, Link2, Wrench, Building2 } from "lucide-react";
+import { User, Key } from "lucide-react";
 
 const settingsLinks = [
   { label: "Profile", href: "/settings", icon: User, exact: true },
   { label: "API Keys", href: "/settings/api-keys", icon: Key },
-  { label: "Connections", href: "/settings/connections", icon: Link2 },
-  { label: "Skills", href: "/settings/skills", icon: Wrench },
-  { label: "Organization", href: "/settings/organization", icon: Building2 },
 ];
 
 export default function SettingsLayout({

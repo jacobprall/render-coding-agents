@@ -6,8 +6,8 @@
  * pool.
  */
 
-import { createPlatformFromInstances, type PlatformContainer } from "@openforge/platform/container";
-import type { AuthContext } from "@openforge/platform";
+import { createPlatformFromInstances, type PlatformContainer } from "@coding-agents/platform/container";
+import type { AuthContext } from "@coding-agents/platform";
 import { getDb } from "@/lib/db";
 import { getSharedRedisClient } from "@/lib/redis";
 import { auth } from "@/lib/auth";

@@ -98,7 +98,7 @@ export function SessionWorkspace({
 
   const handleTitleChange = useCallback((newTitle: string) => {
     setTitle(newTitle);
-    document.title = `${newTitle} | OpenForge`;
+    document.title = `${newTitle} | Coding Agents`;
     const tabs = (window as unknown as Record<string, { updateTab?: (id: string, u: Partial<SessionTab>) => void }>).__sessionTabs;
     if (tabs?.updateTab) {
       tabs.updateTab(session.id, { title: newTitle });

@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
-import { sessions, usageEvents, orgs, users } from "@openforge/db";
-import type { Org } from "@openforge/db";
+import { sessions, usageEvents, orgs, users } from "@coding-agents/db";
+import type { Org } from "@coding-agents/db";
 import type { ForgeOrg, ForgeOrgMember } from "../forge/types";
 import type { PlatformDb } from "../interfaces/database";
 import type { AuthContext } from "../interfaces/auth";

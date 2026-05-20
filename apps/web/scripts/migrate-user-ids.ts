@@ -16,7 +16,7 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { eq, sql } from "drizzle-orm";
-import * as schema from "@openforge/db/schema";
+import * as schema from "@coding-agents/db/schema";
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
@@ -114,7 +114,7 @@ async function main() {
     const [existing] = await db
       .select()
       .from(schema.users)
-      .where(eq(schema.users.forgejoUserId, forgejoId))
+      .where(eq(schema.users.externalProviderId, forgejoId))
       .limit(1);
 
     if (existing) {
@@ -131,8 +131,8 @@ async function main() {
       name: forgejoUser?.full_name || forgejoUser?.login || `user-${forgejoIdStr}`,
       email: forgejoUser?.email || `forgejo-${forgejoIdStr}@migration.local`,
       image: forgejoUser?.avatar_url || null,
-      forgejoUserId: forgejoId,
-      forgejoUsername: forgejoUser?.login || null,
+      externalProviderId: forgejoId,
+      externalUsername: forgejoUser?.login || null,
     });
 
     mapping.set(forgejoIdStr, newId);

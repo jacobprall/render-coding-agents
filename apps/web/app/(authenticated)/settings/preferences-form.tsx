@@ -6,7 +6,7 @@ import { useTheme } from "next-themes";
 import { savePreferencesAction } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Moon, Sun } from "lucide-react";
-import type { UserPreferencesData } from "@openforge/db/schema";
+import type { UserPreferencesData } from "@coding-agents/db/schema";
 
 interface ModelOption {
   id: string;

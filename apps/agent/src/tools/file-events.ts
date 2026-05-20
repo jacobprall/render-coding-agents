@@ -211,13 +211,13 @@ export function generateUnifiedDiff(path: string, before: string, after: string)
 }
 
 export async function notifyFileChanged(
-  experimental_context: unknown,
+  context: unknown,
   path: string,
   before: string,
   after: string,
 ): Promise<void> {
-  if (!isForgeAgentContext(experimental_context)) return;
-  const cb = experimental_context.onFileChanged;
+  if (!isForgeAgentContext(context)) return;
+  const cb = context.onFileChanged;
   if (!cb) return;
 
   const { additions, deletions } = countDiff(before, after);

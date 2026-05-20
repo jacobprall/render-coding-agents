@@ -1,11 +1,11 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
-import { syncConnections } from "@openforge/db";
+import { syncConnections } from "@coding-agents/db";
 import type { GatewayEnv } from "../middleware/auth";
 import { getPlatform } from "../platform";
-import { getForgeProviderForAuth, createForgeProvider, type ForgeProviderType } from "@openforge/platform/forge";
-import { decryptTokenSafe } from "@openforge/shared/lib/encryption";
+import { getForgeProviderForAuth, createForgeProvider, type ForgeProviderType } from "@coding-agents/platform/forge";
+import { decryptTokenSafe } from "@coding-agents/shared/lib/encryption";
 import { formatZodError } from "../middleware/validation";
 
 export const sessionRoutes = new Hono<GatewayEnv>();
@@ -15,7 +15,7 @@ export const sessionRoutes = new Hono<GatewayEnv>();
  * falling back to the auth-context forge. This avoids depending on Forgejo when
  * the user has a GitHub/GitLab sync connection.
  */
-async function resolveForgeForUser(auth: { userId: string; forgeToken: string; forgeType?: "forgejo" | "github" | "gitlab" }): Promise<ReturnType<typeof getForgeProviderForAuth>> {
+async function resolveForgeForUser(auth: { userId: string; forgeToken: string; forgeType?: "github" | "gitlab" }): Promise<ReturnType<typeof getForgeProviderForAuth>> {
   const db = getPlatform().db;
   const [conn] = await db
     .select({ provider: syncConnections.provider, accessToken: syncConnections.accessToken })
@@ -40,7 +40,7 @@ const CreateSessionSchema = z.object({
   branch: z.string().optional(),
   baseBranch: z.string().optional(),
   title: z.string().optional(),
-  forgeType: z.enum(["forgejo", "github", "gitlab"]).optional(),
+  forgeType: z.enum(["github", "gitlab"]).optional(),
   activeSkills: z
     .array(z.object({ source: z.enum(["builtin", "user", "repo"]), slug: z.string() }))
     .optional(),

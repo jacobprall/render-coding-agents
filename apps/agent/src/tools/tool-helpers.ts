@@ -1,4 +1,4 @@
-import type { ToolExecutionOptions } from "ai";
+import type { ToolExecutionOptions } from "./define-tool";
 import { isForgeAgentContext, type ForgeAgentContext } from "../context/agent-context";
 
 export function toErrorResult(e: unknown): { success: false; error: string } {
@@ -18,11 +18,11 @@ export function withForgeContext<TInput, TResult>(
     input: TInput,
     options: ToolExecutionOptions,
   ): Promise<TResult | { success: false; error: string }> => {
-    if (!isForgeAgentContext(options.experimental_context)) {
+    if (!isForgeAgentContext(options.context)) {
       return { success: false as const, error: "Agent context not available" };
     }
     try {
-      return await fn(input, options.experimental_context);
+      return await fn(input, options.context);
     } catch (e) {
       return toErrorResult(e);
     }

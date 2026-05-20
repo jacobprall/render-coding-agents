@@ -11,7 +11,7 @@ import {
 import { useEventSource } from "@/hooks/use-event-source";
 import { STREAM_EVENT } from "@/lib/stream-events";
 import { apiFetch } from "@/lib/api-fetch";
-import type { StreamEvent } from "@openforge/shared";
+import type { StreamEvent } from "@coding-agents/shared";
 import {
   chatReducer,
   initialChatState,

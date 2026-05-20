@@ -4,11 +4,8 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  FolderOpen,
-  Layers,
   MessageCircle,
   List,
-  GitPullRequest,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -16,9 +13,6 @@ import {
   Code,
   User,
   Key,
-  Link2,
-  Wrench,
-  Building2,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 
@@ -33,9 +27,6 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: "Chat", href: "/sessions/new", icon: MessageCircle },
   { label: "Sessions", href: "/sessions", icon: List, exact: true },
-  { label: "Projects", href: "/projects", icon: Layers },
-  { label: "Repos", href: "/repos", icon: FolderOpen },
-  { label: "Pull Requests", href: "/pulls", icon: GitPullRequest },
   {
     label: "Settings",
     href: "/settings",
@@ -43,9 +34,6 @@ const navItems: NavItem[] = [
     children: [
       { label: "Profile", href: "/settings", icon: User, exact: true },
       { label: "API Keys", href: "/settings/api-keys", icon: Key },
-      { label: "Connections", href: "/settings/connections", icon: Link2 },
-      { label: "Skills", href: "/settings/skills", icon: Wrench },
-      { label: "Organization", href: "/settings/organization", icon: Building2 },
     ],
   },
 ];
@@ -119,7 +107,7 @@ export function Sidebar({ user, mobileOpen, onMobileClose }: SidebarProps) {
             <Code className="h-5 w-5 shrink-0 text-accent" />
             {!collapsed && (
               <span className="truncate text-[14px] font-semibold tracking-tight text-text-primary">
-                OpenForge
+                Coding Agents
               </span>
             )}
           </div>

@@ -10,7 +10,7 @@ import { auth } from "@/lib/auth";
  */
 export interface UserSession {
   forgeToken: string;
-  forgeType: "forgejo" | "github" | "gitlab";
+  forgeType: "github" | "gitlab";
   userId: string;
   username: string;
   email: string;

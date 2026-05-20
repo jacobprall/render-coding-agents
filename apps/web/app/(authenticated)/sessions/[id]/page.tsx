@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { getSession } from "@/lib/auth/session";
 import { redirect, notFound } from "next/navigation";
 import { getDb } from "@/lib/db";
-import { sessions, chats, chatMessages, userPreferences } from "@openforge/db";
+import { sessions, chats, chatMessages, userPreferences } from "@coding-agents/db";
 import { eq, and, desc } from "drizzle-orm";
 import { SessionWorkspace } from "@/components/session/session-workspace";
 import { DEFAULT_MODEL_ID } from "@/lib/model-defaults";

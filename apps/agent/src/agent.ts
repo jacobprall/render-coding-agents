@@ -1,4 +1,3 @@
-import { generateText, stepCountIs, type LanguageModel, type ModelMessage, type ToolSet } from "ai";
 import type Redis from "ioredis";
 import { eq } from "drizzle-orm";
 import { agentRuns, chats, sessions, prEvents, projects, projectRepos } from "@openforge/db";
@@ -6,7 +5,8 @@ import { AppError } from "@openforge/shared";
 import { resolveLlmApiKeys, type ResolvedLlmKeys, type PlatformContainer, type PlatformDb, type EventBus } from "@openforge/platform";
 import type { SandboxAdapter } from "@openforge/sandbox";
 import type { ForgeAgentContext } from "./context/agent-context";
-import { jobMessagesToModelMessages, sanitizeMessages } from "./messages";
+import type { LLMMessage } from "./llm";
+import { jobMessagesToLLMMessages, sanitizeMessages } from "./messages";
 import { buildAgentSystemPrompt, FORGE_LABELS } from "./system-prompt";
 import { getModel, getModelDef } from "./models";
 import type { AgentJob, StreamEvent, AssistantPart } from "./types";
@@ -15,6 +15,7 @@ import { rewriteForSandbox } from "./sandbox-url";
 import { getForgeProvider, getForgeProviderForSession, resolveUpstreamMirror, getAdapter, triggerMirrorSync } from "./providers";
 import { buildToolSet } from "./tool-registry";
 import { publishEvent, expireRunStream, mergeToolResults, persistAssistantMessage, updateRunStatus } from "./run-persistence";
+import { agentLoop } from "./loop";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -38,32 +39,24 @@ async function isAborted(events: EventBus, runId: string): Promise<boolean> {
 
 // ─── Message building ────────────────────────────────────────────────────────
 
-function buildModelMessages(job: AgentJob): ModelMessage[] {
+function buildModelMessages(job: AgentJob): LLMMessage[] {
   const raw = job.modelMessages?.length
-    ? (job.modelMessages as ModelMessage[])
-    : jobMessagesToModelMessages(job.messages);
+    ? (job.modelMessages as LLMMessage[])
+    : jobMessagesToLLMMessages(job.messages);
   return sanitizeMessages(raw, job.chatId);
 }
 
 // ─── System prompt & context ─────────────────────────────────────────────────
 
-function buildProviderOptions(job: AgentJob, llmKeys: ResolvedLlmKeys) {
+function buildThinkingParams(job: AgentJob) {
   const modelDef = getModelDef(job.modelId);
   const isAnthropic = modelDef.provider === "anthropic";
   const thinkingType = isAnthropic ? modelDef.thinkingType : undefined;
 
   if (!thinkingType) return undefined;
   return thinkingType === "adaptive"
-    ? {
-        anthropic: {
-          thinking: { type: "adaptive" as const, budgetTokens: 16000 },
-        },
-      }
-    : {
-        anthropic: {
-          thinking: { type: "enabled" as const, budgetTokens: 8000 },
-        },
-      };
+    ? { type: "adaptive" as const, budgetTokens: 16000 }
+    : { type: "enabled" as const, budgetTokens: 8000 };
 }
 
 function buildSystemPromptForJob(job: AgentJob, forgeType?: string, isScratch = false): string {
@@ -271,18 +264,16 @@ async function runTurn(params: {
 }): Promise<{
   text: string;
   assistantParts: AssistantPart[];
-  responseMessages: ModelMessage[];
+  responseMessages: LLMMessage[];
   usage: { promptTokens?: number; completionTokens?: number };
   hitStepLimit: boolean;
 }> {
   const { job, redis, events, db, adapter, llmKeys } = params;
-  const model = getModel(job.modelId, llmKeys);
-  const thinkingOptions = buildProviderOptions(job, llmKeys);
+  const { provider, modelId } = getModel(job.modelId, llmKeys);
+  const thinkingParams = buildThinkingParams(job);
 
   const reqId = job.requestId;
-  let accumulatedText = "";
   const assistantParts: AssistantPart[] = [];
-  let stepCount = 0;
 
   const { forgeContext, sessionRow } = await buildForgeContext({ job, db, events, adapter, assistantParts });
 
@@ -299,12 +290,11 @@ async function runTurn(params: {
     systemPrompt = `${systemPrompt}\n\n${projectBlock}`;
   }
 
-
   const skillsSuffix = !isScratch && job.resolvedSkills.length > 0
     ? `## Important notes\n- All git operations target the forge. Authentication is automatic.\n- When creating a PR, push your branch first with the git tool, then use create_pull_request.\n- The repository is already cloned in your workspace. Use glob/grep to explore it.`
     : "";
 
-  const tools = buildToolSet(events, redis, db, job, model, skillsSuffix, !isScratch);
+  const tools = buildToolSet(events, redis, db, job, provider, modelId, forgeContext, skillsSuffix, !isScratch);
   const inputMessages = buildModelMessages(job);
 
   console.log(
@@ -316,62 +306,61 @@ async function runTurn(params: {
 
   let result;
   try {
-  result = await generateText({
-    model,
-    system: systemPrompt,
-    messages: inputMessages,
-    tools,
-    stopWhen: stepCountIs(MAX_STEPS),
-    experimental_context: forgeContext,
-    providerOptions: thinkingOptions,
-    abortSignal: abortController.signal,
-    onStepFinish: async ({ text, toolCalls, toolResults }) => {
-      stepCount++;
-      if (await isAborted(events, job.runId)) {
-        throw new AbortError(assistantParts);
-      }
+    result = await agentLoop({
+      provider,
+      model: modelId,
+      system: systemPrompt,
+      messages: inputMessages,
+      tools,
+      maxSteps: MAX_STEPS,
+      signal: abortController.signal,
+      thinking: thinkingParams,
+      shouldAbort: async () => {
+        if (await isAborted(events, job.runId)) {
+          throw new AbortError(assistantParts);
+        }
+        return false;
+      },
+      onToken: (token) => {
+        publishEvent(events, job.runId, { type: "token", token }, reqId).catch(() => {});
+      },
+      onStep: async ({ text, toolCalls, toolResults, usage }) => {
+        if (text) {
+          assistantParts.push({ type: "text", text });
+        }
 
-      if (text) {
-        accumulatedText += text;
-        const ev: StreamEvent = { type: "token", token: text };
-        assistantParts.push({ type: "text", text });
-        await publishEvent(events, job.runId, ev, reqId);
-      }
+        for (const tc of toolCalls) {
+          const ev: StreamEvent = { type: "tool_call", toolName: tc.toolName, toolCallId: tc.toolCallId, args: tc.input };
+          assistantParts.push({ type: "tool_call", toolName: tc.toolName, toolCallId: tc.toolCallId, args: tc.input });
+          await publishEvent(events, job.runId, ev, reqId);
+        }
 
-      for (const tc of toolCalls ?? []) {
-        const ev: StreamEvent = { type: "tool_call", toolName: tc.toolName, toolCallId: tc.toolCallId, args: tc.input };
-        assistantParts.push({ type: "tool_call", toolName: tc.toolName, toolCallId: tc.toolCallId, args: tc.input });
-        await publishEvent(events, job.runId, ev, reqId);
-      }
-
-      for (const tr of toolResults ?? []) {
-        const ev: StreamEvent = { type: "tool_result", toolCallId: tr.toolCallId, result: tr.output };
-        assistantParts.push({ type: "tool_result", toolCallId: tr.toolCallId, result: tr.output });
-        await publishEvent(events, job.runId, ev, reqId);
-      }
-    },
-  });
+        for (const tr of toolResults) {
+          const ev: StreamEvent = { type: "tool_result", toolCallId: tr.toolCallId, result: tr.output };
+          assistantParts.push({ type: "tool_result", toolCallId: tr.toolCallId, result: tr.output });
+          await publishEvent(events, job.runId, ev, reqId);
+        }
+      },
+    });
   } finally {
     clearTimeout(timeout);
   }
 
-  const hitStepLimit = stepCount >= MAX_STEPS;
-
-  if (hitStepLimit) {
+  if (result.hitStepLimit) {
     const limitMsg = `Reached the maximum step limit (${MAX_STEPS}). Send another message to continue where I left off.`;
     assistantParts.push({ type: "text", text: limitMsg });
     await publishEvent(events, job.runId, { type: "token", token: limitMsg }, reqId);
   }
 
   return {
-    text: accumulatedText || result.text,
+    text: result.text,
     assistantParts: mergeToolResults(assistantParts),
-    responseMessages: result.response.messages as ModelMessage[],
+    responseMessages: result.messages,
     usage: {
-      promptTokens: result.usage?.inputTokens,
-      completionTokens: result.usage?.outputTokens,
+      promptTokens: result.totalUsage.inputTokens,
+      completionTokens: result.totalUsage.outputTokens,
     },
-    hitStepLimit,
+    hitStepLimit: result.hitStepLimit,
   };
 }
 

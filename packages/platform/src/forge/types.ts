@@ -1,1 +1,1 @@
-export * from "@openforge/shared/lib/forge/types";
+export * from "@coding-agents/shared/lib/forge/types";

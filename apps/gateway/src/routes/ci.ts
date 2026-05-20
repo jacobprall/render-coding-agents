@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { ciResultPayloadSchema } from "@openforge/platform/services";
+import { ciResultPayloadSchema } from "@coding-agents/platform/services";
 import { getPlatform } from "../platform";
 import { formatZodError } from "../middleware/validation";
 

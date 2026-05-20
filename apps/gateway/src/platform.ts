@@ -2,7 +2,7 @@ import Redis from "ioredis";
 import {
   createPlatform,
   type PlatformContainer,
-} from "@openforge/platform/container";
+} from "@coding-agents/platform/container";
 
 let _platform: PlatformContainer | undefined;
 let _redis: Redis | undefined;

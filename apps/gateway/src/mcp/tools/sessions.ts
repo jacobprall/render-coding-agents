@@ -11,7 +11,7 @@ export const registerSessionTools: ToolRegistrar = (server, p, auth) => {
       branch: z.string().optional().describe("Git branch name"),
       baseBranch: z.string().optional().describe("Base branch to diverge from"),
       title: z.string().optional().describe("Session title"),
-      forgeType: z.enum(["forgejo", "github", "gitlab"]).optional(),
+      forgeType: z.enum(["github", "gitlab"]).optional(),
       firstMessage: z.string().optional().describe("Send an initial message immediately"),
       modelId: z.string().optional().describe("LLM model to use"),
       projectId: z.string().optional().describe("Attach to an existing project"),

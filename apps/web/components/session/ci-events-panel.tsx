@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Badge } from "@/components/primitives/badge";
-import type { CiEvent } from "@openforge/db/schema";
+import type { CiEvent } from "@coding-agents/db/schema";
 
 interface Props {
   events: CiEvent[];

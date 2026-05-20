@@ -11,7 +11,7 @@ export const SANDBOX_SESSION_SECRET = process.env.SANDBOX_SESSION_SECRET;
 
 export const DEFAULT_GIT_USER_NAME = process.env.SANDBOX_GIT_USER_NAME ?? "Forge Agent";
 export const DEFAULT_GIT_USER_EMAIL =
-  process.env.SANDBOX_GIT_USER_EMAIL ?? "agent@openforge.dev";
+  process.env.SANDBOX_GIT_USER_EMAIL ?? "agent@coding-agents.dev";
 
 export const MAX_READ_BYTES = 5 * 1024 * 1024;
 export const MAX_OUTPUT_BYTES = MAX_READ_BYTES;

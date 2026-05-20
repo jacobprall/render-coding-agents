@@ -1,6 +1,6 @@
 import type { AssistantPart } from "@/lib/ui";
 import { appendStreamEvent } from "@/lib/ui";
-import type { StreamEvent } from "@openforge/shared";
+import type { StreamEvent } from "@coding-agents/shared";
 
 export const MAX_NO_RUN_RETRIES = 30;
 

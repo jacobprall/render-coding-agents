@@ -10,7 +10,7 @@ import {
 import { users } from "./auth";
 
 // ---------------------------------------------------------------------------
-// Orgs — single row per deployment (the team using this OpenForge instance)
+// Orgs — single row per deployment (the team using this Coding Agents instance)
 // ---------------------------------------------------------------------------
 
 export const orgs = pgTable("orgs", {
@@ -69,7 +69,7 @@ export const projectRepos = pgTable(
       .references(() => projects.id, { onDelete: "cascade" }),
     repoPath: text("repo_path").notNull(),
     forgeType: text("forge_type", {
-      enum: ["forgejo", "github", "gitlab"],
+      enum: ["github", "gitlab"],
     }),
     defaultBranch: text("default_branch").default("main"),
     isPrimary: boolean("is_primary").notNull().default(false),

@@ -18,8 +18,8 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "OpenForge",
-    template: "%s | OpenForge",
+    default: "Coding Agents",
+    template: "%s | Coding Agents",
   },
   description: "Self-hosted agentic forge",
 };

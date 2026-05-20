@@ -3,7 +3,7 @@
  *
  * Resolves a Bearer token to a platform AuthContext by looking up
  * the hashed key in the `api_keys` table, then loading the user's
- * Forgejo token from the linked account.
+ * forge token from the linked account.
  *
  * Routes that don't need auth (health, webhooks) skip this middleware.
  */
@@ -12,9 +12,9 @@ import { createMiddleware } from "hono/factory";
 import type { Context } from "hono";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { users, accounts, apiKeys, syncConnections } from "@openforge/db";
-import type { AuthContext } from "@openforge/platform";
-import { decryptTokenSafe } from "@openforge/shared/lib/encryption";
+import { users, accounts, apiKeys, syncConnections } from "@coding-agents/db";
+import type { AuthContext } from "@coding-agents/platform";
+import { decryptTokenSafe } from "@coding-agents/shared/lib/encryption";
 import { getPlatform } from "../platform";
 
 export type GatewayEnv = {
@@ -60,7 +60,7 @@ export const requireApiAuth = createMiddleware<GatewayEnv>(async (c, next) => {
   const gatewaySecret = process.env.GATEWAY_API_SECRET;
 
   if (gatewaySecret && safeEqual(token, gatewaySecret)) {
-    const impersonateUserId = c.req.header("X-OpenForge-User-Id");
+    const impersonateUserId = c.req.header("X-CodingAgents-User-Id");
     const auth = impersonateUserId
       ? await resolveUserAuth(impersonateUserId)
       : await resolveAdminAuth();
@@ -87,7 +87,7 @@ async function resolveAdminAuth(): Promise<AuthContext | null> {
   const [admin] = await db
     .select({
       id: users.id,
-      forgejoUsername: users.forgejoUsername,
+      externalUsername: users.externalUsername,
       isAdmin: users.isAdmin,
     })
     .from(users)
@@ -101,7 +101,7 @@ async function resolveAdminAuth(): Promise<AuthContext | null> {
 
   return {
     userId: admin.id,
-    username: admin.forgejoUsername ?? "admin",
+    username: admin.externalUsername ?? "admin",
     forgeToken: forgeInfo.token,
     forgeType: forgeInfo.forgeType,
     isAdmin: true,
@@ -113,7 +113,7 @@ async function resolveUserAuth(userId: string): Promise<AuthContext | null> {
   const [user] = await db
     .select({
       id: users.id,
-      forgejoUsername: users.forgejoUsername,
+      externalUsername: users.externalUsername,
       isAdmin: users.isAdmin,
     })
     .from(users)
@@ -127,7 +127,7 @@ async function resolveUserAuth(userId: string): Promise<AuthContext | null> {
 
   return {
     userId: user.id,
-    username: user.forgejoUsername ?? "unknown",
+    username: user.externalUsername ?? "unknown",
     forgeToken: forgeInfo.token,
     forgeType: forgeInfo.forgeType,
     isAdmin: user.isAdmin ?? false,
@@ -155,7 +155,7 @@ async function resolveApiKeyAuth(
   const [user] = await db
     .select({
       id: users.id,
-      forgejoUsername: users.forgejoUsername,
+      externalUsername: users.externalUsername,
       isAdmin: users.isAdmin,
     })
     .from(users)
@@ -167,7 +167,6 @@ async function resolveApiKeyAuth(
   const forgeInfo = await resolveForgeTokenInfo(db, user.id);
   if (!forgeInfo) return null;
 
-  // Update last_used_at in background
   db.update(apiKeys)
     .set({ lastUsedAt: new Date() })
     .where(eq(apiKeys.hashedKey, hashed))
@@ -175,7 +174,7 @@ async function resolveApiKeyAuth(
 
   return {
     userId: user.id,
-    username: user.forgejoUsername ?? "unknown",
+    username: user.externalUsername ?? "unknown",
     forgeToken: forgeInfo.token,
     forgeType: forgeInfo.forgeType,
     isAdmin: user.isAdmin ?? false,
@@ -184,13 +183,12 @@ async function resolveApiKeyAuth(
 
 type ForgeTokenInfo = {
   token: string;
-  forgeType: "forgejo" | "github" | "gitlab";
+  forgeType: "github" | "gitlab";
 };
 
 /**
  * Look up a forge access token for a user.
- * Checks GitHub/GitLab OAuth accounts first, then sync connections,
- * and only falls back to Forgejo as a last resort.
+ * Checks GitHub/GitLab OAuth accounts first, then sync connections.
  */
 async function resolveForgeTokenInfo(
   db: ReturnType<typeof getPlatform>["db"],
@@ -215,7 +213,5 @@ async function resolveForgeTokenInfo(
     const conn = connRows.find((r) => r.provider === provider);
     if (conn?.accessToken) return { token: decryptTokenSafe(conn.accessToken), forgeType: provider };
   }
-  const forgejo = accountRows.find((r) => r.provider === "forgejo");
-  if (forgejo?.accessToken) return { token: decryptTokenSafe(forgejo.accessToken), forgeType: "forgejo" };
   return null;
 }

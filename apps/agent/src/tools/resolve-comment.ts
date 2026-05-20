@@ -1,9 +1,9 @@
-import { tool } from "ai";
+import { defineTool } from "./define-tool";
 import { z } from "zod";
 import { withForgeContext } from "./tool-helpers";
 
 export function resolveCommentTool() {
-  return tool({
+  return defineTool({
     description:
       "Resolve (or unresolve) a PR review comment by its numeric comment ID. Marks a review thread as addressed.",
     inputSchema: z.object({

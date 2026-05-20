@@ -1,4 +1,4 @@
-import type { ToolSet } from "ai";
+import type { ToolConfig } from "./tools/define-tool";
 import type Redis from "ioredis";
 
 /**
@@ -7,10 +7,10 @@ import type Redis from "ioredis";
  * Kept as an extension point for future gated tools.
  */
 export function applyTrustTiers(
-  tools: ToolSet,
+  tools: Record<string, ToolConfig>,
   _runId: string,
   _duplicateRedis: () => Redis,
   _publishFn: (event: Record<string, unknown>) => Promise<void>,
-): ToolSet {
+): Record<string, ToolConfig> {
   return tools;
 }

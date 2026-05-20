@@ -44,5 +44,3 @@ export type { FormFieldProps } from "./form-field";
 
 export { ListRow } from "./list-row";
 export type { ListRowProps } from "./list-row";
-
-export { CostBadge } from "./cost-badge";

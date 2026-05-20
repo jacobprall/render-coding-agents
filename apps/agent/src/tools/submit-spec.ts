@@ -1,4 +1,4 @@
-import { tool } from "ai";
+import { defineTool } from "./define-tool";
 import { z } from "zod";
 import type { StreamEvent } from "../types";
 
@@ -19,7 +19,7 @@ export function submitSpecTool(
   publish: (event: StreamEvent) => Promise<void>,
   persistSpec: (spec: SubmitSpecInput) => Promise<void>,
 ) {
-  return tool({
+  return defineTool({
     description:
       "Submit a structured implementation specification for human approval before coding.",
     inputSchema: submitSpecInputSchema,

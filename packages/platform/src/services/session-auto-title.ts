@@ -1,5 +1,5 @@
 import { and, asc, eq } from "drizzle-orm";
-import { chatMessages, chats, sessions } from "@openforge/db";
+import { chatMessages, chats, sessions } from "@coding-agents/db";
 import type { PlatformDb } from "../interfaces/database";
 import { resolveLlmApiKeys } from "../auth/api-key-resolver";
 

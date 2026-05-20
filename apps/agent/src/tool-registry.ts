@@ -1,9 +1,13 @@
-import type { LanguageModel, ToolSet } from "ai";
 import type Redis from "ioredis";
 import { desc, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { specs } from "@openforge/db";
 import type { PlatformDb, EventBus } from "@openforge/platform";
+import type { LLMProvider } from "./llm";
+import type { ToolConfig } from "./tools/define-tool";
+import type { AgentTool } from "./loop";
+import type { ForgeAgentContext } from "./context/agent-context";
+import { zodToJsonSchema } from "./zod-to-json-schema";
 import {
   bashTool,
   readFileTool,
@@ -35,9 +39,11 @@ import type { AgentJob, StreamEvent } from "./types";
 import { publishEvent } from "./run-persistence";
 import { applyTrustTiers } from "./trust-tiers";
 
-// ─── Tool registry ───────────────────────────────────────────────────────────
+// ─── Tool config registries ──────────────────────────────────────────────────
 
-function coreTools(): ToolSet {
+type ToolConfigSet = Record<string, ToolConfig>;
+
+function coreTools(): ToolConfigSet {
   return {
     bash: bashTool(),
     read_file: readFileTool(),
@@ -49,17 +55,42 @@ function coreTools(): ToolSet {
   };
 }
 
-function repoTools(): ToolSet {
+function repoTools(): ToolConfigSet {
   return {
     git: gitTool(),
     create_pull_request: createPullRequestTool(),
   };
 }
 
-export function buildSubagentToolSet(hasRepo = true): ToolSet {
+export function buildSubagentToolConfigs(hasRepo = true): ToolConfigSet {
   return hasRepo
     ? { ...coreTools(), ...repoTools() }
     : coreTools();
+}
+
+/**
+ * Convert a set of ToolConfig objects into a Map<string, AgentTool> for the
+ * agent loop, injecting the provided context into each tool's execute.
+ */
+export function toolConfigsToAgentTools(
+  configs: ToolConfigSet,
+  context: unknown,
+): Map<string, AgentTool> {
+  const tools = new Map<string, AgentTool>();
+  for (const [name, cfg] of Object.entries(configs)) {
+    tools.set(name, {
+      definition: {
+        name,
+        description: cfg.description,
+        input_schema: zodToJsonSchema(cfg.inputSchema),
+      },
+      execute: (input) => {
+        const parsed = cfg.inputSchema.parse(input);
+        return cfg.execute(parsed, { context });
+      },
+    });
+  }
+  return tools;
 }
 
 export function buildToolSet(
@@ -67,28 +98,33 @@ export function buildToolSet(
   redis: Redis,
   db: PlatformDb,
   job: AgentJob,
-  model: LanguageModel,
+  provider: LLMProvider,
+  modelId: string,
+  forgeContext: ForgeAgentContext,
   skillsPromptSuffix: string,
   hasRepo = true,
-): ToolSet {
+): Map<string, AgentTool> {
   const reqId = job.requestId;
-  const makeSubTools = () => buildSubagentToolSet(hasRepo);
+  const makeSubToolConfigs = () => buildSubagentToolConfigs(hasRepo);
   const publishFn = async (event: Record<string, unknown>) => {
     await publishEvent(events, job.runId, event as unknown as StreamEvent, reqId);
   };
-  const baseTools = applyTrustTiers(
-    makeSubTools(),
+
+  const baseConfigs = applyTrustTiers(
+    makeSubToolConfigs(),
     job.runId,
     () => redis.duplicate(),
     publishFn,
   );
 
-  const tools: ToolSet = {
-    ...baseTools,
+  const allConfigs: ToolConfigSet = {
+    ...baseConfigs,
     task: taskTool(
       publishFn,
-      makeSubTools,
-      model,
+      makeSubToolConfigs,
+      provider,
+      modelId,
+      forgeContext,
       skillsPromptSuffix,
     ),
     todo_write: todoWriteTool(),
@@ -96,21 +132,21 @@ export function buildToolSet(
   };
 
   if (!hasRepo) {
-    tools.attach_repo = attachRepoTool(db, job.sessionId);
+    allConfigs.attach_repo = attachRepoTool(db, job.sessionId);
   }
 
   if (hasRepo) {
-    tools.merge_pr = mergePrTool();
-    tools.close_pr = closePrTool();
-    tools.add_pr_comment = addPrCommentTool();
-    tools.request_review = requestReviewTool();
-    tools.approve_pr = approvePrTool();
-    tools.create_repo = createRepoTool();
-    tools.read_build_log = readBuildLogTool();
-    tools.pull_request_diff = pullRequestDiffTool();
-    tools.review_pr = reviewPrTool();
-    tools.resolve_comment = resolveCommentTool();
-    tools.submit_spec = submitSpecTool(
+    allConfigs.merge_pr = mergePrTool();
+    allConfigs.close_pr = closePrTool();
+    allConfigs.add_pr_comment = addPrCommentTool();
+    allConfigs.request_review = requestReviewTool();
+    allConfigs.approve_pr = approvePrTool();
+    allConfigs.create_repo = createRepoTool();
+    allConfigs.read_build_log = readBuildLogTool();
+    allConfigs.pull_request_diff = pullRequestDiffTool();
+    allConfigs.review_pr = reviewPrTool();
+    allConfigs.resolve_comment = resolveCommentTool();
+    allConfigs.submit_spec = submitSpecTool(
       async (event) => {
         await publishEvent(events, job.runId, event, reqId);
       },
@@ -120,7 +156,7 @@ export function buildToolSet(
     );
   }
 
-  return tools;
+  return toolConfigsToAgentTools(allConfigs, forgeContext);
 }
 
 async function persistSubmittedSpec(db: PlatformDb, sessionId: string, spec: SubmitSpecInput): Promise<void> {

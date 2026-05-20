@@ -32,7 +32,7 @@ export async function gatewayFetch(
     headers.set("Authorization", `Bearer ${GATEWAY_SECRET}`);
   }
   if (userId) {
-    headers.set("X-OpenForge-User-Id", userId);
+    headers.set("X-CodingAgents-User-Id", userId);
   }
   if (!headers.has("Accept")) {
     headers.set("Accept", "application/json");

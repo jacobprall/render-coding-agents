@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { eq } from "drizzle-orm";
-import { mirrors, sessions } from "@openforge/db";
-import { logger, ValidationError } from "@openforge/shared";
+import { mirrors, sessions } from "@coding-agents/db";
+import { logger, ValidationError } from "@coding-agents/shared";
 import type { WebhookDeps } from "./shared";
 
 // ---------------------------------------------------------------------------

@@ -177,7 +177,7 @@ async function createForgejoAdmin(forgejoUrl: string): Promise<void> {
     console.log("  Direct admin creation failed, trying basic install endpoint...");
     // Fallback: the admin needs to be created via CLI in the container shell.
     // Print instructions but don't fail — the caller (agent) can handle it.
-    console.log(`  ⚠ Create admin manually via Render Shell on openforge-forgejo:`);
+    console.log(`  ⚠ Create admin manually via Render Shell on coding-agents-forgejo:`);
     console.log(`    su -c 'forgejo admin user create --admin --username ${FORGEJO_ADMIN_USER} --password <password> --email ${FORGEJO_ADMIN_EMAIL}' git`);
     throw new Error("Admin user creation requires Render Shell access");
   }
@@ -277,7 +277,7 @@ async function registerOAuth2App(
       Authorization: `token ${adminToken}`,
     },
     body: JSON.stringify({
-      name: "openforge-web",
+      name: "coding-agents-web",
       redirect_uris: [`${redirectUrl}/api/auth/callback`],
       confidential_client: true,
     }),
@@ -300,16 +300,16 @@ async function registerOAuth2App(
 
 async function main() {
   console.log("╔══════════════════════════════════════╗");
-  console.log("║   OpenForge → Render Deploy Script   ║");
+  console.log("║   Coding Agents → Render Deploy Script   ║");
   console.log("╚══════════════════════════════════════╝\n");
 
   // Step 1: Discover services
   console.log("Step 1: Discovering services...");
   const allServices = await listServices();
-  const web = findService(allServices, "openforge-web");
-  const agent = findService(allServices, "openforge-agent");
-  const gateway = findService(allServices, "openforge-gateway");
-  const forgejo = findService(allServices, "openforge-forgejo");
+  const web = findService(allServices, "coding-agents-web");
+  const agent = findService(allServices, "coding-agents-agent");
+  const gateway = findService(allServices, "coding-agents-gateway");
+  const forgejo = findService(allServices, "coding-agents-forgejo");
 
   const forgejoUrl = getServiceUrl(forgejo);
   const webUrl = getServiceUrl(web);
@@ -356,7 +356,7 @@ async function main() {
     await createForgejoAdmin(forgejoUrl);
   } catch (err) {
     console.log(`\n⚠ Admin creation failed via API.`);
-    console.log(`  Open the Render Shell for openforge-forgejo and run:`);
+    console.log(`  Open the Render Shell for coding-agents-forgejo and run:`);
     console.log(`  su -c 'forgejo admin user create --admin --username ${FORGEJO_ADMIN_USER} --password <password> --email ${FORGEJO_ADMIN_EMAIL}' git`);
     console.log(`\n  Then re-run this script.\n`);
     process.exit(1);
@@ -366,8 +366,8 @@ async function main() {
   console.log("  ✓ Admin token created");
 
   const agentPassword = crypto.randomUUID();
-  await createForgejoUser(forgejoUrl, adminToken, "openforge-agent", agentPassword, "agent@openforge.local", true);
-  const agentToken = await createForgejoToken(forgejoUrl, "openforge-agent", agentPassword, "agent-service");
+  await createForgejoUser(forgejoUrl, adminToken, "coding-agents-agent", agentPassword, "agent@coding-agents.local", true);
+  const agentToken = await createForgejoToken(forgejoUrl, "coding-agents-agent", agentPassword, "agent-service");
   console.log(`  ✓ Agent token: ${agentToken}`);
 
   const oauth = await registerOAuth2App(forgejoUrl, adminToken, webUrl);

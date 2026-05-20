@@ -1,5 +1,5 @@
 import { and, desc, eq } from "drizzle-orm";
-import { sessions } from "@openforge/db";
+import { sessions } from "@coding-agents/db";
 import type { PlatformDb } from "../../interfaces/database";
 import type { QueueAdapter } from "../../interfaces/queue";
 import type { EventBus } from "../../interfaces/events";

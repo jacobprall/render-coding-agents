@@ -5,4 +5,4 @@ export {
   encryptToken,
   decryptToken,
   decryptTokenSafe,
-} from "@openforge/shared/lib/encryption";
+} from "@coding-agents/shared/lib/encryption";

@@ -1,9 +1,8 @@
-import { tool } from "ai";
+import { defineTool } from "./define-tool";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
-import { sessions } from "@openforge/db";
-import type { PlatformDb } from "@openforge/platform";
-import { isForgeAgentContext } from "../context/agent-context";
+import { sessions } from "@coding-agents/db";
+import type { PlatformDb } from "@coding-agents/platform";
 
 const attachRepoInputSchema = z.object({
   repoPath: z
@@ -19,7 +18,7 @@ export function attachRepoTool(
   db: PlatformDb,
   sessionId: string,
 ) {
-  return tool({
+  return defineTool({
     description:
       "Attach a repository to this scratch session. Once attached, your next turn will have the full tool set: git, PRs, deploy, and Render tools. The repo will be cloned automatically.",
     inputSchema: attachRepoInputSchema,

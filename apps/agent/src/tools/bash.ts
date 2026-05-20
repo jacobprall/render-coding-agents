@@ -1,4 +1,4 @@
-import { tool } from "ai";
+import { defineTool } from "./define-tool";
 import { z } from "zod";
 import { getSandboxContext } from "../context/agent-context";
 import { truncateLargeString, MAX_BASH_STREAM_CHARS } from "./truncation";
@@ -13,11 +13,11 @@ function bashInvokesRemoteGit(command: string): boolean {
 }
 
 export function bashTool() {
-  return tool({
+  return defineTool({
     description:
       "Execute a bash command in the session workspace (repo root). Each invocation starts in the same working directory — `cd` does not persist between calls. Use relative paths. Do not use this for `git push`, `git fetch`, or `git pull` — use the git tool for those so forge authentication is applied.",
     inputSchema: bashInputSchema,
-    execute: async ({ command, timeoutMs }, { experimental_context }) => {
+    execute: async ({ command, timeoutMs }, { context }) => {
       if (bashInvokesRemoteGit(command)) {
         return {
           stdout: "",
@@ -27,7 +27,7 @@ export function bashTool() {
           timedOut: false,
         };
       }
-      const { adapter, sessionId } = getSandboxContext(experimental_context);
+      const { adapter, sessionId } = getSandboxContext(context);
       const result = await adapter.exec(sessionId, command, timeoutMs);
       const stdout = truncateLargeString(result.stdout, MAX_BASH_STREAM_CHARS);
       const stderr = truncateLargeString(result.stderr, MAX_BASH_STREAM_CHARS);

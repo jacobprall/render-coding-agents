@@ -1,4 +1,4 @@
-import { tool } from "ai";
+import { defineTool } from "./define-tool";
 import { z } from "zod";
 import { getSandboxContext } from "../context/agent-context";
 import { notifyFileChanged } from "./file-events";
@@ -9,18 +9,18 @@ const writeFileInputSchema = z.object({
 });
 
 export function writeFileTool() {
-  return tool({
+  return defineTool({
     description: "Write content to a file in the session workspace.",
     inputSchema: writeFileInputSchema,
-    execute: async ({ path, content }, { experimental_context }) => {
-      const { adapter, sessionId } = getSandboxContext(experimental_context);
+    execute: async ({ path, content }, { context }) => {
+      const { adapter, sessionId } = getSandboxContext(context);
       let before = "";
       try {
         const file = await adapter.readFile(sessionId, path);
         if (file.exists) before = file.content;
       } catch {}
       await adapter.writeFile(sessionId, path, content);
-      await notifyFileChanged(experimental_context, path, before, content);
+      await notifyFileChanged(context, path, before, content);
       return { ok: true };
     },
   });

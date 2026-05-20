@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * OpenForge CLI — interact with the gateway from the terminal.
+ * Coding Agents CLI — interact with the gateway from the terminal.
  *
  * Usage:
  *   forge config set apiUrl http://localhost:4100
@@ -28,7 +28,7 @@ const program = new Command();
 
 program
   .name("forge")
-  .description("OpenForge CLI — interact with agent sessions from the terminal")
+  .description("Coding Agents CLI — interact with agent sessions from the terminal")
   .version("0.1.0");
 
 // ─────────────────────────────────────────────────────────────────────────────

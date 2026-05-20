@@ -1,8 +1,8 @@
 import { timingSafeEqual } from "crypto";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { ciEvents, sessions } from "@openforge/db";
-import { logger, ValidationError } from "@openforge/shared";
+import { ciEvents, sessions } from "@coding-agents/db";
+import { logger, ValidationError } from "@coding-agents/shared";
 import type { PlatformDb } from "../interfaces/database";
 import type { QueueAdapter } from "../interfaces/queue";
 import {

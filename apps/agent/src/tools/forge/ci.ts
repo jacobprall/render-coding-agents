@@ -1,4 +1,4 @@
-import { tool } from "ai";
+import { defineTool } from "../define-tool";
 import { z } from "zod";
 import { withForgeContext } from "../tool-helpers";
 import { truncateLargeString } from "../truncation";
@@ -13,7 +13,7 @@ function clampMaxChars(value: number | undefined, floor: number): number {
 }
 
 export function readBuildLogTool() {
-  return tool({
+  return defineTool({
     description: "Fetch plaintext CI job logs for diagnosing failures.",
     inputSchema: z.object({
       job_id: z.union([z.string(), z.number()]),
@@ -29,7 +29,7 @@ export function readBuildLogTool() {
 }
 
 export function pullRequestDiffTool() {
-  return tool({
+  return defineTool({
     description:
       "Fetch unified diff text for an open PR (large results are truncated). Use before posting a review.",
     inputSchema: z.object({

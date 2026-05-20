@@ -1,4 +1,4 @@
-import { tool } from "ai";
+import { defineTool } from "./define-tool";
 import { z } from "zod";
 import { getSandboxContext } from "../context/agent-context";
 
@@ -7,11 +7,11 @@ const globInputSchema = z.object({
 });
 
 export function globTool() {
-  return tool({
+  return defineTool({
     description: "Find files matching a glob pattern in the session workspace.",
     inputSchema: globInputSchema,
-    execute: async ({ pattern }, { experimental_context }) => {
-      const { adapter, sessionId } = getSandboxContext(experimental_context);
+    execute: async ({ pattern }, { context }) => {
+      const { adapter, sessionId } = getSandboxContext(context);
       const { files, truncated } = await adapter.glob(sessionId, pattern);
       return { files, ...(truncated ? { truncated } : {}) };
     },

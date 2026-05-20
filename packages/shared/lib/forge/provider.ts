@@ -184,7 +184,7 @@ export interface GitOperations {
 
 // ─── The Provider ────────────────────────────────────────────────────────────
 
-export type ForgeProviderType = "forgejo" | "github" | "gitlab";
+export type ForgeProviderType = "github" | "gitlab";
 
 export interface ForgeProvider {
   readonly type: ForgeProviderType;

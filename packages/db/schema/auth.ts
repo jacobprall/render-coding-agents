@@ -22,8 +22,8 @@ export const users = pgTable("users", {
   emailVerified: timestamp("email_verified", { mode: "date" }),
   image: text("image"),
 
-  forgejoUserId: integer("forgejo_user_id").unique(),
-  forgejoUsername: text("forgejo_username"),
+  externalProviderId: integer("forgejo_user_id").unique(),
+  externalUsername: text("forgejo_username"),
 
   /** Set when the user completes invite password setup; bcrypt hash. */
   passwordHash: text("password_hash"),
@@ -91,7 +91,7 @@ export const invites = pgTable(
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID()),
     email: text("email"),
-    forgejoUsername: text("forgejo_username"),
+    externalUsername: text("forgejo_username"),
     /** Pre-provisioned app user row (no password until invite is accepted). */
     invitedUserId: text("invited_user_id")
       .notNull()

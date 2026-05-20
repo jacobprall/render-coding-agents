@@ -14,7 +14,7 @@ set -euo pipefail
 
 FORGEJO_URL="${FORGEJO_URL:-http://localhost:3000}"
 ADMIN_TOKEN="${FORGEJO_ADMIN_TOKEN:?Set FORGEJO_ADMIN_TOKEN to an admin API token}"
-RUNNER_NAME="${RUNNER_NAME:-openforge-runner}"
+RUNNER_NAME="${RUNNER_NAME:-coding-agents-runner}"
 LABELS="${RUNNER_LABELS:-ubuntu-latest:docker://node:20,ubuntu-22.04:docker://ubuntu:22.04}"
 
 echo "==> Requesting registration token from ${FORGEJO_URL}…"

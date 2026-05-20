@@ -1,9 +1,9 @@
-import { tool } from "ai";
+import { defineTool } from "../define-tool";
 import { z } from "zod";
 import { withForgeContext } from "../tool-helpers";
 
 export function createRepoTool() {
-  return tool({
+  return defineTool({
     description:
       "Create a new repository under the authenticated user namespace (requires permissions).",
     inputSchema: z.object({

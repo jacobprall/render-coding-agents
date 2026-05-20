@@ -56,3 +56,9 @@ export type {
   ModelSummary,
   ListModelsResult,
 } from "./model";
+
+export { CostService } from "./cost";
+export type {
+  UsageSummary,
+  SpendCheckResult,
+} from "./cost";

@@ -1,4 +1,4 @@
-import { tool } from "ai";
+import { defineTool } from "./define-tool";
 import { z } from "zod";
 
 const todoWriteInputSchema = z.object({
@@ -36,7 +36,7 @@ export class TodoStore {
 }
 
 export function todoWriteTool(store = new TodoStore()) {
-  return tool({
+  return defineTool({
     description: "Manage a structured task list for the current session.",
     inputSchema: todoWriteInputSchema,
     execute: async ({ todos: incoming, merge }) => {

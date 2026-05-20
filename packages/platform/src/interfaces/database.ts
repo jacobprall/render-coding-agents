@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import * as schema from "@openforge/db/schema";
+import * as schema from "@coding-agents/db/schema";
 
 /**
  * The Drizzle database instance type used throughout the platform.

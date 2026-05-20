@@ -1,4 +1,4 @@
-import type { StreamEvent } from "@openforge/shared";
+import type { StreamEvent } from "@coding-agents/shared";
 import type { ResolvedSkill } from "./skills";
 
 export type { StreamEvent, ResolvedSkill };

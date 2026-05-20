@@ -1,5 +1,5 @@
 {
-  "name": "@openforge/web",
+  "name": "@coding-agents/web",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -14,9 +14,9 @@
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.2",
-    "@openforge/db": "workspace:*",
-    "@openforge/platform": "workspace:*",
-    "@openforge/shared": "workspace:*",
+    "@coding-agents/db": "workspace:*",
+    "@coding-agents/platform": "workspace:*",
+    "@coding-agents/shared": "workspace:*",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-select": "^2.2.6",

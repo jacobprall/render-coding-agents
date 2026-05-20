@@ -1,5 +1,5 @@
 import type Redis from "ioredis";
-import { tool } from "ai";
+import { defineTool } from "./define-tool";
 import { z } from "zod";
 import { nanoid } from "nanoid";
 import { askUserReplyQueueKey } from "@openforge/platform";
@@ -20,7 +20,7 @@ export function askUserQuestionTool(
     86_400,
   );
 
-  return tool({
+  return defineTool({
     description: "Ask the user a clarifying question and wait for their answer.",
     inputSchema: askUserInputSchema,
     execute: async ({ question, options }, execOptions) => {

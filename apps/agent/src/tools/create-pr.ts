@@ -1,4 +1,4 @@
-import { tool } from "ai";
+import { defineTool } from "./define-tool";
 import { z } from "zod";
 import { withForgeContext } from "./tool-helpers";
 
@@ -17,7 +17,7 @@ const createPrInputSchema = z.object({
 });
 
 export function createPullRequestTool() {
-  return tool({
+  return defineTool({
     description:
       "Create a pull request from the current branch. If the repo is a pull mirror, the PR is created on the upstream provider (e.g. GitHub). Push your branch with the git tool first. Returns the PR URL and number on success.",
     inputSchema: createPrInputSchema,
@@ -40,7 +40,6 @@ export function createPullRequestTool() {
 
       const prTitle = sanitizePrTitle(title, "Update");
 
-      // If the repo has an upstream mirror, create the PR there
       const targetForge = upstream?.forge ?? forge;
       const targetOwner = upstream?.remoteOwner ?? repoOwner;
       const targetRepo = upstream?.remoteRepo ?? repoName;

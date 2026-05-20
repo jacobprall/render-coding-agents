@@ -1,11 +1,11 @@
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { llmApiKeys, apiKeys } from "@openforge/db/schema";
+import { llmApiKeys, apiKeys } from "@coding-agents/db/schema";
 import {
   InsufficientPermissionsError,
   SessionNotFoundError,
   ValidationError,
-} from "@openforge/shared";
+} from "@coding-agents/shared";
 import type { PlatformDb } from "../interfaces/database";
 import type { AuthContext } from "../interfaces/auth";
 import { encryptLlmApiKey, isLlmKeyEncryptionConfigured } from "../auth/encryption";

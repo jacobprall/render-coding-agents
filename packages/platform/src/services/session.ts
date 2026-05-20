@@ -11,13 +11,13 @@ import {
   sessions,
   specs,
   userPreferences,
-} from "@openforge/db";
-import type { CiEvent, SessionPhase } from "@openforge/db";
+} from "@coding-agents/db";
+import type { CiEvent, SessionPhase } from "@coding-agents/db";
 import {
   SessionNotFoundError,
   ValidationError,
   logger,
-} from "@openforge/shared";
+} from "@coding-agents/shared";
 import { normalizeActiveSkills, type ActiveSkillRef } from "./session-skills";
 import type { PlatformDb } from "../interfaces/database";
 import type { AuthContext } from "../interfaces/auth";
@@ -52,7 +52,7 @@ export interface CreateSessionParams {
   branch?: string;
   baseBranch?: string;
   title?: string;
-  forgeType?: "forgejo" | "github" | "gitlab";
+  forgeType?: "github" | "gitlab";
   activeSkills?: Array<{ source: "builtin" | "user" | "repo"; slug: string }>;
   firstMessage?: string;
   modelId?: string;
@@ -135,7 +135,7 @@ export class SessionService {
 
     let resolvedBaseBranch: string | null = null;
     let resolvedBranch: string | null = null;
-    let resolvedForgeType: "forgejo" | "github" | "gitlab" | null = null;
+    let resolvedForgeType: "github" | "gitlab" | null = null;
 
     if (!isScratch) {
       resolvedBranch = branch || "main";
@@ -1119,9 +1119,9 @@ export class SessionService {
     const { description, repoUrl, branch, model, metadata } = params;
 
     // Resolve user — use provided userId or fall back to system user
-    const userId = params.userId ?? process.env.OPENFORGE_SYSTEM_USER_ID;
+    const userId = params.userId ?? process.env.CODING_AGENTS_SYSTEM_USER_ID;
     if (!userId) {
-      logger.warn("generic webhook: no userId and no OPENFORGE_SYSTEM_USER_ID", {});
+      logger.warn("generic webhook: no userId and no CODING_AGENTS_SYSTEM_USER_ID", {});
       return null;
     }
 

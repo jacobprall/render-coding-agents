@@ -1,12 +1,12 @@
 /**
- * Context passed to agent tools via AI SDK's experimental_context.
+ * Context passed to agent tools via the tool execution options.
  *
  * Uses the forge-agnostic ForgeProvider interface so the agent is
  * decoupled from any specific forge implementation.
  */
 
-import type { ForgeProvider, ForgeProviderType } from "@openforge/platform/forge";
-import type { SandboxAdapter } from "@openforge/sandbox";
+import type { ForgeProvider, ForgeProviderType } from "@coding-agents/platform/forge";
+import type { SandboxAdapter } from "@coding-agents/sandbox";
 
 export type { SandboxAdapter };
 

@@ -1,11 +1,11 @@
-import { tool } from "ai";
+import { defineTool } from "../define-tool";
 import { z } from "zod";
 import { withForgeContext } from "../tool-helpers";
 
 const methodSchema = z.enum(["merge", "rebase", "squash"]).optional();
 
 export function mergePrTool() {
-  return tool({
+  return defineTool({
     description:
       "Merge an open pull request on the forge. Branch protection applies on the server.",
     inputSchema: z.object({
@@ -20,7 +20,7 @@ export function mergePrTool() {
 }
 
 export function closePrTool() {
-  return tool({
+  return defineTool({
     description: "Close a pull request without merging.",
     inputSchema: z.object({
       number: z.number().int().positive(),

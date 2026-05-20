@@ -2,4 +2,4 @@ export {
   validateAnthropicApiKey,
   validateOpenAiApiKey,
   llmKeyHint,
-} from "@openforge/shared/lib/llm-key-validation";
+} from "@coding-agents/shared/lib/llm-key-validation";

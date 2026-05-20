@@ -13,7 +13,7 @@ export interface SessionTab {
   repoPath: string | null;
 }
 
-const STORAGE_KEY = "openforge-session-tabs";
+const STORAGE_KEY = "coding-agents-session-tabs";
 
 function getStoredTabs(): SessionTab[] {
   if (typeof window === "undefined") return [];

@@ -1,4 +1,4 @@
-import { tool } from "ai";
+import { defineTool } from "./define-tool";
 import { z } from "zod";
 import { getSandboxContext } from "../context/agent-context";
 import { toErrorResult } from "./tool-helpers";
@@ -12,11 +12,11 @@ const editFileInputSchema = z.object({
 });
 
 export function editFileTool() {
-  return tool({
+  return defineTool({
     description: `Perform exact string replacement in a file. Read the file first, then supply the exact text to replace (including whitespace). Use replaceAll: true to replace every occurrence.`,
     inputSchema: editFileInputSchema,
-    execute: async ({ path: filePath, oldString, newString, replaceAll = false }, { experimental_context }) => {
-      const { adapter, sessionId } = getSandboxContext(experimental_context);
+    execute: async ({ path: filePath, oldString, newString, replaceAll = false }, { context }) => {
+      const { adapter, sessionId } = getSandboxContext(context);
 
       if (oldString === newString) {
         return { success: false, error: "oldString and newString must differ" };
@@ -45,7 +45,7 @@ export function editFileTool() {
           : content.replace(oldString, newString);
 
         await adapter.writeFile(sessionId, filePath, newContent);
-        await notifyFileChanged(experimental_context, filePath, content, newContent);
+        await notifyFileChanged(context, filePath, content, newContent);
         return { success: true, path: filePath, replacements: replaceAll ? occurrences : 1 };
       } catch (err) {
         return toErrorResult(err);

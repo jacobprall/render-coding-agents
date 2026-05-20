@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { getForgeProviderForAuth } from "@openforge/platform/forge";
+import { getForgeProviderForAuth } from "@coding-agents/platform/forge";
 import type { ToolRegistrar } from "./helpers";
 import { textResult } from "./helpers";
 

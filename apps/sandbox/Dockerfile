@@ -33,7 +33,7 @@ RUN useradd -r -u 10001 -m -d /home/sandbox sandbox \
   && mkdir -p /workspace/snapshots /app \
   && chown -R sandbox:sandbox /workspace /app
 
-RUN su sandbox -s /bin/bash -c 'git config --global user.email "agent@openforge.dev" \
+RUN su sandbox -s /bin/bash -c 'git config --global user.email "agent@coding-agents.dev" \
   && git config --global user.name "Forge Agent" \
   && git config --global init.defaultBranch main'
 

@@ -128,7 +128,7 @@ export function NewChatView({
         { method: "POST" },
       ).then(({ ok: titleOk, data: titleData }) => {
         if (titleOk && titleData.title) {
-          document.title = `${titleData.title} | OpenForge`;
+          document.title = `${titleData.title} | Coding Agents`;
         }
       }).catch(() => {});
     } catch (err) {

@@ -62,7 +62,7 @@ const mockAuth = {
   userId: "user-1",
   username: "testuser",
   forgeToken: "tok_test",
-  forgeType: "forgejo" as const,
+  forgeType: "github" as const,
   isAdmin: false,
 };
 
@@ -76,7 +76,7 @@ const mockForgeProvider = {
   },
 };
 
-mock.module("@openforge/platform/forge", () => ({
+mock.module("@coding-agents/platform/forge", () => ({
   getForgeProviderForAuth: () => mockForgeProvider,
 }));
 

@@ -3,6 +3,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   text,
   timestamp,
@@ -23,7 +24,7 @@ export type SessionPhase =
 
 export type WorkflowMode = "full" | "standard" | "fast" | "yolo" | "autonomous";
 
-export type ForgeType = "forgejo" | "github" | "gitlab";
+export type ForgeType = "github" | "gitlab";
 
 export const sessions = pgTable(
   "sessions",
@@ -45,7 +46,7 @@ export const sessions = pgTable(
     // Repo binding (forge-agnostic) — nullable for scratch/workbench sessions
     repoPath: text("repo_path"),
     forgeType: text("forge_type", {
-      enum: ["forgejo", "github", "gitlab"],
+      enum: ["github", "gitlab"],
     }),
     branch: text("branch"),
     baseBranch: text("base_branch").default("main"),
@@ -163,7 +164,7 @@ export const agentRuns = pgTable(
     totalDurationMs: integer("total_duration_ms"),
     promptTokens: integer("prompt_tokens"),
     completionTokens: integer("completion_tokens"),
-    costUsd: text("cost_usd"),
+    costUsd: numeric("cost_usd", { precision: 10, scale: 6 }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [

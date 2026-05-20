@@ -1,14 +1,14 @@
 import { Hono } from "hono";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { webhookDeliveries } from "@openforge/db";
-import { ValidationError, logger } from "@openforge/shared";
+import { webhookDeliveries } from "@coding-agents/db";
+import { ValidationError, logger } from "@coding-agents/shared";
 import {
   githubWebhookToInboundEvent,
   forgejoWebhookToInboundEvent,
   gitlabWebhookToInboundEvent,
   renderWebhookToInboundEvent,
-} from "@openforge/platform";
+} from "@coding-agents/platform";
 import { getPlatform } from "../platform";
 
 // ---------------------------------------------------------------------------
@@ -383,12 +383,12 @@ webhookRoutes.post("/generic", async (c) => {
     // Check if it's the gateway secret for impersonation
     const gatewaySecret = process.env.GATEWAY_API_SECRET;
     if (gatewaySecret && token.length === gatewaySecret.length && timingSafeEqual(Buffer.from(token), Buffer.from(gatewaySecret))) {
-      callerUserId = c.req.header("X-OpenForge-User-Id") ?? undefined;
+      callerUserId = c.req.header("X-CodingAgents-User-Id") ?? undefined;
     } else {
       // Look up API key
       const { createHash } = await import("node:crypto");
       const hashed = createHash("sha256").update(token).digest("hex");
-      const { apiKeys } = await import("@openforge/db");
+      const { apiKeys } = await import("@coding-agents/db");
       const [keyRow] = await platform.db
         .select({ userId: apiKeys.userId })
         .from(apiKeys)

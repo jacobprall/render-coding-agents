@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { AuthContext } from "@openforge/platform";
-import type { PlatformContainer } from "@openforge/platform/container";
+import type { AuthContext } from "@coding-agents/platform";
+import type { PlatformContainer } from "@coding-agents/platform/container";
 
 export type ToolRegistrar = (
   server: McpServer,

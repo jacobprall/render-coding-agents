@@ -9,11 +9,11 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import Redis from "ioredis";
 import { eq, and, desc, sql } from "drizzle-orm";
-import { sessions, chats, prEvents } from "@openforge/db";
+import { sessions, chats, prEvents } from "@coding-agents/db";
 import {
   readRunEventHistoryDetailed,
   readRunEventEntriesAfterId,
-} from "@openforge/platform";
+} from "@coding-agents/platform";
 import type { GatewayEnv } from "../middleware/auth";
 import { getPlatform } from "../platform";
 
