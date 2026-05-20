@@ -1,40 +1,44 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth, ensureSyncConnection } from "@/lib/auth";
 
+function publicUrl(path: string): string {
+  const base = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  return `${base}${path}`;
+}
+
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
-    return NextResponse.redirect(new URL("/", req.url));
+    return NextResponse.redirect(publicUrl("/"));
   }
 
   const code = req.nextUrl.searchParams.get("code");
   const state = req.nextUrl.searchParams.get("state");
 
   if (!code || !state) {
-    return NextResponse.redirect(new URL("/settings/connections?error=missing_params", req.url));
+    return NextResponse.redirect(publicUrl("/settings/connections?error=missing_params"));
   }
 
   let statePayload: { userId: string; ts: number };
   try {
     statePayload = JSON.parse(Buffer.from(state, "base64url").toString());
   } catch {
-    return NextResponse.redirect(new URL("/settings/connections?error=invalid_state", req.url));
+    return NextResponse.redirect(publicUrl("/settings/connections?error=invalid_state"));
   }
 
   if (statePayload.userId !== session.user.id) {
-    return NextResponse.redirect(new URL("/settings/connections?error=state_mismatch", req.url));
+    return NextResponse.redirect(publicUrl("/settings/connections?error=state_mismatch"));
   }
 
   const MAX_STATE_AGE_MS = 10 * 60 * 1000;
   if (Date.now() - statePayload.ts > MAX_STATE_AGE_MS) {
-    return NextResponse.redirect(new URL("/settings/connections?error=state_expired", req.url));
+    return NextResponse.redirect(publicUrl("/settings/connections?error=state_expired"));
   }
 
   try {
     const clientId = process.env.GITHUB_OAUTH_CLIENT_ID!;
     const clientSecret = process.env.GITHUB_OAUTH_CLIENT_SECRET!;
-    const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    const redirectUri = `${baseUrl}/api/oauth/github/callback`;
+    const redirectUri = publicUrl("/api/oauth/github/callback");
 
     const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
       method: "POST",
@@ -52,7 +56,7 @@ export async function GET(req: NextRequest) {
 
     const tokenData = await tokenRes.json();
     if (!tokenData.access_token) {
-      return NextResponse.redirect(new URL("/settings/connections?error=token_exchange_failed", req.url));
+      return NextResponse.redirect(publicUrl("/settings/connections?error=token_exchange_failed"));
     }
 
     const userRes = await fetch("https://api.github.com/user", {
@@ -67,8 +71,8 @@ export async function GET(req: NextRequest) {
       ghUser.login ?? "",
     );
 
-    return NextResponse.redirect(new URL("/settings/connections?connected=github", req.url));
+    return NextResponse.redirect(publicUrl("/settings/connections?connected=github"));
   } catch {
-    return NextResponse.redirect(new URL("/settings/connections?error=oauth_failed", req.url));
+    return NextResponse.redirect(publicUrl("/settings/connections?error=oauth_failed"));
   }
 }
