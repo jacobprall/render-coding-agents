@@ -263,6 +263,18 @@ export class ExeDevSandboxAdapter implements SandboxAdapter {
     return results;
   }
 
+  async cleanup(sessionId: string): Promise<void> {
+    const cwd = this.sessionCwd(sessionId);
+    const result = await this.sshExecFn(
+      this.vmHost,
+      `rm -rf '${shellEscape(cwd)}'`,
+      { sshKeyPath: this.sshKeyPath, timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS },
+    );
+    if (result.exitCode !== 0) {
+      throw new Error(`cleanup failed: ${result.stderr.trim()}`);
+    }
+  }
+
   private resolvePath(sessionId: string, userPath: string): string {
     const sessionRoot = path.posix.normalize(this.sessionCwd(sessionId));
     const resolved = path.posix.resolve(sessionRoot, userPath);

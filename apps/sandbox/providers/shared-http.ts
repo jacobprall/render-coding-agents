@@ -29,7 +29,10 @@ export class SharedHttpSandboxProvider implements SandboxProvider {
     return this.adapter;
   }
 
-  async deprovision(_sessionId: string): Promise<void> {}
+  async deprovision(sessionId: string): Promise<void> {
+    const adapter = await this.provision(sessionId);
+    await adapter.cleanup(sessionId);
+  }
 
   async health(_sessionId: string): Promise<SandboxHealth> {
     try {

@@ -261,11 +261,30 @@ export class SessionService {
       .limit(1);
 
     if (!row) throw new SessionNotFoundError();
-    if (row.status === "running") {
-      throw new ValidationError("Cannot archive a running session");
-    }
     if (row.status === "archived") {
       throw new ValidationError("Session is already archived");
+    }
+
+    // If session is still "running", check whether there's actually an active run
+    if (row.status === "running") {
+      const [activeChat] = await this.db
+        .select({ activeRunId: chats.activeRunId })
+        .from(chats)
+        .where(eq(chats.sessionId, sessionId))
+        .orderBy(desc(chats.createdAt))
+        .limit(1);
+
+      if (activeChat?.activeRunId) {
+        const [activeRun] = await this.db
+          .select({ status: agentRuns.status })
+          .from(agentRuns)
+          .where(eq(agentRuns.id, activeChat.activeRunId))
+          .limit(1);
+
+        if (activeRun && (activeRun.status === "running" || activeRun.status === "queued")) {
+          throw new ValidationError("Cannot archive a session with an active run — stop it first");
+        }
+      }
     }
 
     await this.db
@@ -461,7 +480,7 @@ export class SessionService {
       }),
     ]);
 
-    // Update chat active run and session activity timestamp
+    // Update chat active run and session status back to running
     await Promise.all([
       this.db
         .update(chats)
@@ -469,7 +488,7 @@ export class SessionService {
         .where(eq(chats.id, chatRow.id)),
       this.db
         .update(sessions)
-        .set({ lastActivityAt: new Date(), updatedAt: new Date() })
+        .set({ status: "running", lastActivityAt: new Date(), updatedAt: new Date() })
         .where(eq(sessions.id, sessionId)),
     ]);
 

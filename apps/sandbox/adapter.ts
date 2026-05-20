@@ -156,4 +156,20 @@ export class HttpSandboxAdapter implements SandboxAdapter {
   async verify(sessionId: string, checks: VerifyCheck[]): Promise<VerifyResult[]> {
     return this.request<VerifyResult[]>("/verify", sessionId, { checks }, EXEC_REQUEST_TIMEOUT_MS);
   }
+
+  async cleanup(sessionId: string): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/cleanup`, {
+      method: "POST",
+      headers: {
+        "X-Session-Id": sessionId,
+        ...this.authHeaders,
+        ...this.sessionHeaders(sessionId),
+      },
+      signal: AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "unknown error");
+      throw new Error(`Cleanup failed (${res.status}): ${text}`);
+    }
+  }
 }

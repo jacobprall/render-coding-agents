@@ -20,4 +20,5 @@ export interface SandboxAdapter {
   restore(sessionId: string, snapshotId: string): Promise<void>;
   cloneWorkspace(fromSessionId: string, toSessionId: string): Promise<void>;
   verify(sessionId: string, checks: VerifyCheck[]): Promise<VerifyResult[]>;
+  cleanup(sessionId: string): Promise<void>;
 }

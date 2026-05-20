@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Archive } from "lucide-react";
 import type { Session } from "@coding-agents/db/schema";
@@ -23,7 +23,6 @@ const statusDot: Record<string, string> = {
   completed: "bg-accent",
   failed: "bg-danger",
   archived: "bg-text-tertiary",
-  idle: "bg-text-tertiary",
 };
 
 function formatRelativeTime(date: Date | null): string {
@@ -46,13 +45,17 @@ interface SessionCardProps {
 
 export function SessionCard({ session, onArchive }: SessionCardProps) {
   const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
 
   function handleArchive(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
+    setError(null);
     startTransition(async () => {
       const result = await archiveSessionAction(session.id);
-      if (!result.error) {
+      if (result.error) {
+        setError(result.error);
+      } else {
         onArchive?.(session.id);
       }
     });
@@ -72,6 +75,7 @@ export function SessionCard({ session, onArchive }: SessionCardProps) {
         </p>
         <p className="truncate text-[11px] font-mono text-text-tertiary">
           {session.repoPath ?? "scratch"}
+          {error && <span className="ml-2 text-danger">{error}</span>}
         </p>
       </div>
       <span

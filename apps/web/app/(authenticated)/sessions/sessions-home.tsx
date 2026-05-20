@@ -45,7 +45,7 @@ const STATUS_OPTIONS = [
   { value: "running", label: "Running" },
   { value: "completed", label: "Completed" },
   { value: "failed", label: "Failed" },
-  { value: "idle", label: "Idle" },
+  { value: "archived", label: "Archived" },
 ];
 
 export function SessionsHome({

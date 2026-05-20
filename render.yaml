@@ -61,6 +61,13 @@ services:
         generateValue: true # use same value in GitHub Actions (or other callers) for POST /api/ci/results
       - key: CI_CALLBACK_URL
         sync: false
+      - key: SANDBOX_SERVICE_HOST
+        sync: false
+      - key: SANDBOX_SHARED_SECRET
+        fromService:
+          name: sandbox
+          type: web
+          envVarKey: SANDBOX_SHARED_SECRET
       - key: NODE_ENV
         value: production
 

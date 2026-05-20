@@ -3,7 +3,7 @@ import { getSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
 import { sessions, projects, syncConnections } from "@coding-agents/db";
-import { eq, desc, inArray } from "drizzle-orm";
+import { and, eq, ne, desc, inArray } from "drizzle-orm";
 import { getUserPreferences } from "@/lib/db/loaders";
 import { decryptTokenSafe } from "@coding-agents/shared/lib/encryption";
 import { createForgeProvider } from "@coding-agents/platform/forge";
@@ -36,7 +36,11 @@ export default async function SessionsPage({
         createdAt: sessions.createdAt,
       })
       .from(sessions)
-      .where(eq(sessions.userId, userId))
+      .where(
+        params.status === "archived"
+          ? and(eq(sessions.userId, userId), eq(sessions.status, "archived"))
+          : and(eq(sessions.userId, userId), ne(sessions.status, "archived")),
+      )
       .orderBy(desc(sessions.createdAt)),
     (async () => {
       try {

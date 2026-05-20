@@ -93,5 +93,10 @@ export async function updateRunStatus(
     .where(eq(agentRuns.id, job.runId));
 
   await db.update(chats).set({ activeRunId: null, updatedAt: new Date() }).where(eq(chats.id, job.chatId));
-  await db.update(sessions).set({ lastActivityAt: finishedAt, updatedAt: finishedAt }).where(eq(sessions.id, job.sessionId));
+
+  const sessionStatus = status === "failed" ? "failed" : "completed";
+  await db
+    .update(sessions)
+    .set({ status: sessionStatus, lastActivityAt: finishedAt, updatedAt: finishedAt })
+    .where(eq(sessions.id, job.sessionId));
 }

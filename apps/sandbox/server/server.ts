@@ -6,6 +6,7 @@ import { startSnapshotCleanupCron } from "./lib/disk-usage";
 import { getRequestId, jsonError } from "./lib/http-response";
 import { logger } from "./lib/logger";
 import { assertProductionSecretsOrExit, checkAuth, checkSessionBinding } from "./middleware/auth";
+import { handleCleanup } from "./handlers/cleanup";
 import { handleCloneWorkspace } from "./handlers/clone";
 import { handleExec } from "./handlers/exec-http";
 import { handleGlob, handleGrep, handleRead, handleWrite } from "./handlers/files";
@@ -67,6 +68,9 @@ const server = Bun.serve({
       if (sessionErr) return sessionErr;
 
       try {
+        if (method === "POST" && path === "/cleanup") {
+          return handleCleanup(req);
+        }
         if (method === "POST" && path === "/clone-workspace") {
           const body = asRecordBody(await parseLimitedJsonBody(req, MAX_REQUEST_BODY_BYTES));
           return handleCloneWorkspace(req, body);
