@@ -55,10 +55,14 @@ export function createAnthropicProvider(apiKey: string): LLMProvider {
       }
 
       if (thinking) {
-        body.thinking = {
-          type: thinking.type,
-          budget_tokens: thinking.budgetTokens,
-        };
+        if (thinking.type === "adaptive") {
+          body.thinking = { type: "adaptive" };
+        } else {
+          body.thinking = {
+            type: thinking.type,
+            budget_tokens: thinking.budgetTokens,
+          };
+        }
       }
 
       const res = await fetch(API_URL, {

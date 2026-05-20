@@ -6,8 +6,8 @@ import { revalidatePath } from "next/cache";
 export async function archiveSessionAction(sessionId: string): Promise<{ error?: string }> {
   try {
     const userId = await requireUserId();
-    const res = await gatewayFetch(`/api/sessions/${sessionId}/archive`, {
-      method: "POST",
+    const res = await gatewayFetch(`/sessions/${sessionId}`, {
+      method: "DELETE",
       userId,
     });
     if (!res.ok) {

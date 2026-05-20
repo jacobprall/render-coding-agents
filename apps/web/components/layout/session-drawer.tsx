@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Search, Plus, X } from "lucide-react";
-import useSWR from "swr";
+import { Search, Plus, X, Archive } from "lucide-react";
+import useSWR, { useSWRConfig } from "swr";
 import { cn } from "@/lib/utils";
 
 interface DrawerSession {
@@ -94,12 +94,37 @@ export function SessionDrawer({ open, onClose }: SessionDrawerProps) {
     return () => document.removeEventListener("keydown", handleKey);
   }, [open, onClose]);
 
+  const { mutate } = useSWRConfig();
+  const [archivingId, setArchivingId] = useState<string | null>(null);
+
   const handleSelect = useCallback(
     (id: string) => {
       router.push(`/sessions/${id}`);
       onClose();
     },
     [router, onClose],
+  );
+
+  const handleArchive = useCallback(
+    async (e: React.MouseEvent, id: string) => {
+      e.stopPropagation();
+      setArchivingId(id);
+      try {
+        const { archiveSessionAction } = await import(
+          "@/app/(authenticated)/sessions/actions"
+        );
+        const result = await archiveSessionAction(id);
+        if (!result.error) {
+          void mutate("/api/sessions?limit=50");
+          if (id === activeSessionId) {
+            router.push("/sessions");
+          }
+        }
+      } finally {
+        setArchivingId(null);
+      }
+    },
+    [mutate, activeSessionId, router],
   );
 
   if (!open) return null;
@@ -170,12 +195,14 @@ export function SessionDrawer({ open, onClose }: SessionDrawerProps) {
             <div className="py-1">
               {filtered.map((s) => {
                 const isActive = s.id === activeSessionId;
+                const isArchiving = archivingId === s.id;
                 return (
                   <button
                     key={s.id}
                     onClick={() => handleSelect(s.id)}
                     className={cn(
-                      "flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors",
+                      "group flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors",
+                      isArchiving && "opacity-40 pointer-events-none",
                       isActive
                         ? "bg-primary/10 text-foreground"
                         : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
@@ -196,10 +223,19 @@ export function SessionDrawer({ open, onClose }: SessionDrawerProps) {
                       </p>
                     </div>
                     <span
-                      className="shrink-0 text-[10px] tabular-nums opacity-50"
+                      className="shrink-0 text-[10px] tabular-nums opacity-50 group-hover:hidden"
                       suppressHydrationWarning
                     >
                       {relativeTime(s.lastActivityAt ?? s.createdAt)}
+                    </span>
+                    <span
+                      role="button"
+                      tabIndex={-1}
+                      title="Archive session"
+                      onClick={(e) => void handleArchive(e, s.id)}
+                      className="hidden shrink-0 p-0.5 opacity-50 transition-opacity hover:opacity-100 group-hover:inline-flex"
+                    >
+                      <Archive className="h-3 w-3" />
                     </span>
                   </button>
                 );

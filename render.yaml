@@ -27,17 +27,6 @@ services:
         sync: false
       - key: GITHUB_WEBHOOK_SECRET
         sync: false
-      # Forgejo (optional — only needed if using self-hosted git)
-      - key: FORGEJO_INTERNAL_URL
-        sync: false
-      - key: FORGEJO_EXTERNAL_URL
-        sync: false
-      - key: FORGEJO_OAUTH_CLIENT_ID
-        sync: false
-      - key: FORGEJO_OAUTH_CLIENT_SECRET
-        sync: false
-      - key: FORGEJO_AGENT_TOKEN
-        sync: false
       - key: AUTH_SECRET
         generateValue: true
       - key: CSRF_SECRET

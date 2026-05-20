@@ -20,6 +20,8 @@ interface ChatPanelProps {
   autoStream?: boolean;
   /** Run ID to pass when auto-starting the stream */
   autoStreamRunId?: string;
+  /** Optional slot rendered above the chat input */
+  aboveInput?: React.ReactNode;
 }
 
 export function ChatPanel({
@@ -32,6 +34,7 @@ export function ChatPanel({
   onTitleChange,
   autoStream,
   autoStreamRunId,
+  aboveInput,
 }: ChatPanelProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -109,6 +112,7 @@ export function ChatPanel({
           <div ref={messagesEndRef} />
         </div>
       </div>
+      {aboveInput}
       <ChatInput
         isStreaming={isStreaming}
         onSend={(content) => void chat.sendMessage(content)}

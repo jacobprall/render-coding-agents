@@ -117,45 +117,7 @@ export function SessionWorkspace({
   return (
     <div className="absolute inset-0 flex flex-col">
       <header className="shrink-0 border-b border-stroke-subtle">
-        <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-2 pb-1">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
-            {session.repoPath ? (
-              <span className="font-mono text-text-tertiary truncate">
-                {session.repoPath}
-                {session.branch ? (
-                  <span className="text-text-tertiary"> : {session.branch}</span>
-                ) : null}
-              </span>
-            ) : null}
-            <span className="flex items-center gap-1.5 text-text-tertiary">
-              <span className={`h-1.5 w-1.5 rounded-full ${statusDot[session.status] ?? "bg-text-tertiary"}`} />
-              {session.status}
-            </span>
-            {headerPrHref ? (
-              <a
-                href={headerPrHref}
-                {...(headerPrHref.startsWith("http://") || headerPrHref.startsWith("https://")
-                  ? { target: "_blank", rel: "noopener noreferrer" }
-                  : {})}
-                className="text-blue-400 hover:text-blue-300 font-mono"
-              >
-                PR #{session.prNumber}
-              </a>
-            ) : null}
-            {hasLineStats ? (
-              <span className="inline-flex items-center font-mono tabular-nums leading-none">
-                <span className="text-accent-text/70">+{session.linesAdded ?? 0}</span>
-                <span className="text-text-tertiary mx-0.5">/</span>
-                <span className="text-danger/70">&minus;{session.linesRemoved ?? 0}</span>
-              </span>
-            ) : null}
-          </div>
-          <div className="shrink-0">
-            <ModelSelector value={modelId} onChange={setModelId} compact />
-          </div>
-        </div>
-
-        <div className="flex items-center gap-0.5 px-4 -mb-px">
+        <div className="flex items-center gap-0.5 px-4">
           <TabButton
             active={activeView === "chat"}
             onClick={() => startTransition(() => setActiveView("chat"))}
@@ -197,6 +159,45 @@ export function SessionWorkspace({
             onTitleChange={handleTitleChange}
             autoStream={activeRunId != null}
             autoStreamRunId={activeRunId ?? undefined}
+            aboveInput={
+              <div className="shrink-0 border-t border-stroke-subtle px-(--of-space-md) py-1.5">
+                <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px]">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                    {session.repoPath ? (
+                      <span className="font-mono text-text-tertiary truncate">
+                        {session.repoPath}
+                        {session.branch ? (
+                          <span className="text-text-tertiary"> : {session.branch}</span>
+                        ) : null}
+                      </span>
+                    ) : null}
+                    <span className="flex items-center gap-1.5 text-text-tertiary">
+                      <span className={`h-1.5 w-1.5 rounded-full ${statusDot[session.status] ?? "bg-text-tertiary"}`} />
+                      {session.status}
+                    </span>
+                    {headerPrHref ? (
+                      <a
+                        href={headerPrHref}
+                        {...(headerPrHref.startsWith("http://") || headerPrHref.startsWith("https://")
+                          ? { target: "_blank", rel: "noopener noreferrer" }
+                          : {})}
+                        className="text-blue-400 hover:text-blue-300 font-mono"
+                      >
+                        PR #{session.prNumber}
+                      </a>
+                    ) : null}
+                    {hasLineStats ? (
+                      <span className="inline-flex items-center font-mono tabular-nums leading-none">
+                        <span className="text-accent-text/70">+{session.linesAdded ?? 0}</span>
+                        <span className="text-text-tertiary mx-0.5">/</span>
+                        <span className="text-danger/70">&minus;{session.linesRemoved ?? 0}</span>
+                      </span>
+                    ) : null}
+                  </div>
+                  <ModelSelector value={modelId} onChange={setModelId} compact />
+                </div>
+              </div>
+            }
           />
         </div>
         <div className={activeView === "files" ? "h-full" : "hidden"}>

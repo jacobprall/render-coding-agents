@@ -65,6 +65,7 @@ export function SessionsHome({
   const [projectFilter, setProjectFilter] = useState(initialProjectFilter ?? "");
   const [statusFilter, setStatusFilter] = useState(initialStatusFilter ?? "");
 
+  const [archivedIds, setArchivedIds] = useState<Set<string>>(new Set());
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [repoBranch, setRepoBranch] = useState<{ repo: string; branch: string } | null>(
@@ -84,7 +85,7 @@ export function SessionsHome({
   }, [sessions]);
 
   const filtered = useMemo(() => {
-    let result = sessions;
+    let result = sessions.filter((s) => !archivedIds.has(s.id));
     if (projectFilter) {
       result = result.filter((s) => s.projectId === projectFilter);
     }
@@ -92,7 +93,11 @@ export function SessionsHome({
       result = result.filter((s) => s.status === statusFilter);
     }
     return result;
-  }, [sessions, projectFilter, statusFilter]);
+  }, [sessions, archivedIds, projectFilter, statusFilter]);
+
+  const handleArchive = useCallback((id: string) => {
+    setArchivedIds((prev) => new Set(prev).add(id));
+  }, []);
 
   function updateFilter(key: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -256,7 +261,7 @@ export function SessionsHome({
               ) : (
                 <div className="divide-y divide-stroke-subtle border border-stroke-subtle bg-surface-0">
                   {filtered.map((s) => (
-                    <SessionCard key={s.id} session={s} />
+                    <SessionCard key={s.id} session={s} onArchive={handleArchive} />
                   ))}
                 </div>
               )}

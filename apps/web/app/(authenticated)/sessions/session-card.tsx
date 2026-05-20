@@ -1,7 +1,10 @@
 "use client";
 
+import { useTransition } from "react";
 import Link from "next/link";
+import { Archive } from "lucide-react";
 import type { Session } from "@coding-agents/db/schema";
+import { archiveSessionAction } from "./actions";
 
 export type SessionCardSession = Pick<
   Session,
@@ -36,11 +39,29 @@ function formatRelativeTime(date: Date | null): string {
   return `${days}d ago`;
 }
 
-export function SessionCard({ session }: { session: SessionCardSession }) {
+interface SessionCardProps {
+  session: SessionCardSession;
+  onArchive?: (id: string) => void;
+}
+
+export function SessionCard({ session, onArchive }: SessionCardProps) {
+  const [isPending, startTransition] = useTransition();
+
+  function handleArchive(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    startTransition(async () => {
+      const result = await archiveSessionAction(session.id);
+      if (!result.error) {
+        onArchive?.(session.id);
+      }
+    });
+  }
+
   return (
     <Link
       href={`/sessions/${session.id}`}
-      className="content-auto flex items-center gap-3 px-(--of-space-md) py-(--of-space-sm) transition-colors duration-(--of-duration-instant) hover:bg-surface-1"
+      className={`group content-auto flex items-center gap-3 px-(--of-space-md) py-(--of-space-sm) transition-colors duration-(--of-duration-instant) hover:bg-surface-1 ${isPending ? "opacity-40 pointer-events-none" : ""}`}
     >
       <span
         className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusDot[session.status] ?? "bg-text-tertiary"}`}
@@ -59,6 +80,14 @@ export function SessionCard({ session }: { session: SessionCardSession }) {
       >
         {formatRelativeTime(session.lastActivityAt ?? session.createdAt)}
       </span>
+      <button
+        type="button"
+        onClick={handleArchive}
+        title="Archive session"
+        className="shrink-0 p-1 text-text-tertiary opacity-0 transition-opacity duration-(--of-duration-instant) hover:text-text-secondary group-hover:opacity-100"
+      >
+        <Archive className="h-3.5 w-3.5" />
+      </button>
     </Link>
   );
 }
