@@ -1,5 +1,5 @@
 {
-  "name": "@openforge/agent",
+  "name": "@coding-agents/agent",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -10,10 +10,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@openforge/db": "workspace:*",
-    "@openforge/sandbox": "workspace:*",
-    "@openforge/platform": "workspace:*",
-    "@openforge/shared": "workspace:*",
+    "@coding-agents/db": "workspace:*",
+    "@coding-agents/sandbox": "workspace:*",
+    "@coding-agents/platform": "workspace:*",
+    "@coding-agents/shared": "workspace:*",
     "drizzle-orm": "^0.45.1",
     "ioredis": "^5.9.2",
     "nanoid": "^5.1.6",

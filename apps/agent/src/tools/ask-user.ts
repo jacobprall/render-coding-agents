@@ -2,7 +2,7 @@ import type Redis from "ioredis";
 import { defineTool } from "./define-tool";
 import { z } from "zod";
 import { nanoid } from "nanoid";
-import { askUserReplyQueueKey } from "@openforge/platform";
+import { askUserReplyQueueKey } from "@coding-agents/platform";
 import { abortableBlpop } from "../lib/abortable-blpop";
 
 const askUserInputSchema = z.object({

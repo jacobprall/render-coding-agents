@@ -1,8 +1,8 @@
 import type Redis from "ioredis";
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { agentRuns, chats, chatMessages, sessions } from "@openforge/db";
-import type { PlatformDb, EventBus } from "@openforge/platform";
+import { agentRuns, chats, chatMessages, sessions } from "@coding-agents/db";
+import type { PlatformDb, EventBus } from "@coding-agents/platform";
 import type { LLMMessage } from "./llm";
 import type { AgentJob, StreamEvent, AssistantPart } from "./types";
 

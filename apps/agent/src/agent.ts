@@ -1,9 +1,9 @@
 import type Redis from "ioredis";
 import { eq } from "drizzle-orm";
-import { agentRuns, chats, sessions, prEvents, projects, projectRepos } from "@openforge/db";
-import { AppError } from "@openforge/shared";
-import { resolveLlmApiKeys, type ResolvedLlmKeys, type PlatformContainer, type PlatformDb, type EventBus } from "@openforge/platform";
-import type { SandboxAdapter } from "@openforge/sandbox";
+import { agentRuns, chats, sessions, prEvents, projects, projectRepos } from "@coding-agents/db";
+import { AppError } from "@coding-agents/shared";
+import { resolveLlmApiKeys, type ResolvedLlmKeys, type PlatformContainer, type PlatformDb, type EventBus } from "@coding-agents/platform";
+import type { SandboxAdapter } from "@coding-agents/sandbox";
 import type { ForgeAgentContext } from "./context/agent-context";
 import type { LLMMessage } from "./llm";
 import { jobMessagesToLLMMessages, sanitizeMessages } from "./messages";

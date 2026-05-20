@@ -1,8 +1,8 @@
 import type Redis from "ioredis";
 import { desc, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { specs } from "@openforge/db";
-import type { PlatformDb, EventBus } from "@openforge/platform";
+import { specs } from "@coding-agents/db";
+import type { PlatformDb, EventBus } from "@coding-agents/platform";
 import type { LLMProvider } from "./llm";
 import type { ToolConfig } from "./tools/define-tool";
 import type { AgentTool } from "./loop";
