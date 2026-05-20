@@ -1,7 +1,7 @@
 services:
   # Web Application (Next.js)
   - type: web
-    name: coding-agents-web
+    name: openforge-web
     runtime: node
     plan: starter
     autoDeploy: true
@@ -11,11 +11,11 @@ services:
     envVars:
       - key: DATABASE_URL
         fromDatabase:
-          name: coding-agents-db
+          name: openforge-db
           property: connectionString
       - key: REDIS_URL
         fromService:
-          name: coding-agents-redis
+          name: openforge-redis
           type: keyvalue
           property: connectionString
       # GitHub OAuth (primary forge provider)
@@ -53,10 +53,10 @@ services:
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: GATEWAY_INTERNAL_URL
-        value: http://coding-agents-gateway:4100
+        value: http://openforge-gateway:4100
       - key: GATEWAY_API_SECRET
         fromService:
-          name: coding-agents-gateway
+          name: openforge-gateway
           type: web
           envVarKey: GATEWAY_API_SECRET
       - key: ENCRYPTION_KEY
@@ -74,7 +74,7 @@ services:
 
   # Agent Worker
   - type: worker
-    name: coding-agents-agent
+    name: openforge-agent
     runtime: node
     plan: starter
     autoDeploy: false
@@ -83,11 +83,11 @@ services:
     envVars:
       - key: DATABASE_URL
         fromDatabase:
-          name: coding-agents-db
+          name: openforge-db
           property: connectionString
       - key: REDIS_URL
         fromService:
-          name: coding-agents-redis
+          name: openforge-redis
           type: keyvalue
           property: connectionString
       # GitHub
@@ -108,25 +108,25 @@ services:
         sync: false
       - key: ENCRYPTION_KEY
         fromService:
-          name: coding-agents-web
+          name: openforge-web
           type: web
           envVarKey: ENCRYPTION_KEY
       - key: SANDBOX_SERVICE_HOST
-        value: coding-agents-sandbox:3001
+        value: openforge-sandbox:3001
       - key: SANDBOX_SHARED_SECRET
         fromService:
-          name: coding-agents-sandbox
+          name: openforge-sandbox
           type: web
           envVarKey: SANDBOX_SHARED_SECRET
       - key: SANDBOX_SESSION_SECRET
         fromService:
-          name: coding-agents-sandbox
+          name: openforge-sandbox
           type: web
           envVarKey: SANDBOX_SESSION_SECRET
 
   # Sandbox (isolated execution environment)
   - type: web
-    name: coding-agents-sandbox
+    name: openforge-sandbox
     runtime: docker
     plan: standard
     autoDeploy: false
@@ -149,7 +149,7 @@ services:
 
   # Gateway (headless REST + MCP API)
   - type: web
-    name: coding-agents-gateway
+    name: openforge-gateway
     runtime: docker
     plan: starter
     autoDeploy: false
@@ -159,11 +159,11 @@ services:
     envVars:
       - key: DATABASE_URL
         fromDatabase:
-          name: coding-agents-db
+          name: openforge-db
           property: connectionString
       - key: REDIS_URL
         fromService:
-          name: coding-agents-redis
+          name: openforge-redis
           type: keyvalue
           property: connectionString
       - key: GATEWAY_API_SECRET
@@ -182,12 +182,12 @@ services:
         sync: false
       - key: CI_RUNNER_SECRET
         fromService:
-          name: coding-agents-web
+          name: openforge-web
           type: web
           envVarKey: CI_RUNNER_SECRET
       - key: ENCRYPTION_KEY
         fromService:
-          name: coding-agents-web
+          name: openforge-web
           type: web
           envVarKey: ENCRYPTION_KEY
       - key: ANTHROPIC_API_KEY
@@ -199,12 +199,12 @@ services:
 
   # Redis (job queue + streaming)
   - type: keyvalue
-    name: coding-agents-redis
+    name: openforge-redis
     plan: starter
     ipAllowList: []
     maxmemoryPolicy: allkeys-lru
 
 databases:
-  - name: coding-agents-db
+  - name: openforge-db
     plan: basic-256mb
     postgresMajorVersion: "16"

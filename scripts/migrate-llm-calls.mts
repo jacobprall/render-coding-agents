@@ -38,7 +38,23 @@ try {
   }
 
   const [budgets] = await sql`SELECT to_regclass('budgets') as exists`;
-  console.log("budgets table exists:", !!budgets.exists);
+  if (budgets.exists) {
+    console.log("budgets table already exists, skipping.");
+  } else {
+    await sql`
+      CREATE TABLE "budgets" (
+        "id" text PRIMARY KEY NOT NULL,
+        "user_id" text,
+        "org_id" text,
+        "monthly_limit_usd" numeric(10, 2) NOT NULL,
+        "created_at" timestamp DEFAULT now() NOT NULL,
+        "updated_at" timestamp DEFAULT now() NOT NULL
+      )
+    `;
+    await sql`CREATE INDEX "budgets_user_id_idx" ON "budgets" USING btree ("user_id")`;
+    await sql`CREATE INDEX "budgets_org_id_idx" ON "budgets" USING btree ("org_id")`;
+    console.log("Created budgets table with indexes.");
+  }
 
   console.log("Migration complete.");
 } catch (e) {
