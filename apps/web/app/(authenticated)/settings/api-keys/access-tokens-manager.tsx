@@ -259,9 +259,9 @@ export function AccessTokensManager() {
 {`{
   "mcpServers": {
     "forge": {
-      "url": "https://<gateway-host>/mcp",
+      "url": "${process.env.NEXT_PUBLIC_GATEWAY_URL || "https://<gateway-host>"}/mcp",
       "headers": {
-        "Authorization": "Bearer <your-token>"
+        "Authorization": "Bearer ${newToken || "<your-token>"}"
       }
     }
   }

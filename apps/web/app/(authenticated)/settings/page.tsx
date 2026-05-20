@@ -4,8 +4,10 @@ import { Suspense } from "react";
 import { getSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import { getUserPreferences } from "@/lib/db/loaders";
+import { Disclosure } from "@/components/primitives/disclosure";
 import { PreferencesForm } from "./preferences-form";
 import { GitHubConnection } from "./github-connection";
+import { AccessTokensManager } from "./api-keys/access-tokens-manager";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -22,52 +24,51 @@ export default async function SettingsPage() {
   }
 
   return (
-    <div className="space-y-8">
-      {/* Profile section */}
-      <section>
-        <h2 className="mb-4 text-lg font-semibold text-text-primary">Profile</h2>
-        <div className="border border-stroke-subtle bg-surface-1 p-6">
-          <div className="flex items-center gap-4">
-            {session.avatarUrl ? (
-              <Image
-                src={session.avatarUrl}
-                alt={session.username}
-                width={64}
-                height={64}
-                className="h-16 w-16 rounded-full border-2 border-stroke-default"
-              />
-            ) : (
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-surface-2 text-xl font-bold text-text-tertiary">
-                {session.username.charAt(0).toUpperCase()}
-              </div>
-            )}
-            <div>
-              <h3 className="text-lg font-semibold text-text-primary">{session.username}</h3>
-              <p className="text-sm text-text-tertiary">{session.email}</p>
+    <div className="space-y-4">
+      <Disclosure title="Profile" defaultOpen>
+        <div className="flex items-center gap-4">
+          {session.avatarUrl ? (
+            <Image
+              src={session.avatarUrl}
+              alt={session.username}
+              width={64}
+              height={64}
+              className="h-16 w-16 rounded-full border-2 border-stroke-default"
+            />
+          ) : (
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-surface-2 text-xl font-bold text-text-tertiary">
+              {session.username.charAt(0).toUpperCase()}
             </div>
+          )}
+          <div>
+            <h3 className="text-lg font-semibold text-text-primary">{session.username}</h3>
+            <p className="text-sm text-text-tertiary">{session.email}</p>
           </div>
-          <p className="mt-3 text-xs text-text-tertiary">
-            Profile information is synced from your connected forge account.
-          </p>
         </div>
-      </section>
+        <p className="mt-3 text-xs text-text-tertiary">
+          Profile information is synced from your connected forge account.
+        </p>
+      </Disclosure>
 
-      {/* GitHub connection */}
-      <section>
-        <h2 className="mb-4 text-lg font-semibold text-text-primary">GitHub Connection</h2>
+      <Disclosure title="GitHub Connection" defaultOpen>
         <p className="mb-4 text-sm text-text-secondary">
           Connect your GitHub account to access repositories and create sessions.
         </p>
         <Suspense fallback={<div className="text-sm text-text-tertiary">Loading…</div>}>
           <GitHubConnection />
         </Suspense>
-      </section>
+      </Disclosure>
 
-      {/* Preferences section */}
-      <section>
-        <h2 className="mb-4 text-lg font-semibold text-text-primary">Preferences</h2>
+      <Disclosure title="MCP Access Tokens" defaultOpen>
+        <p className="mb-4 text-sm text-text-secondary">
+          Generate tokens for authenticating MCP clients (Cursor, Claude Desktop) or API integrations.
+        </p>
+        <AccessTokensManager />
+      </Disclosure>
+
+      <Disclosure title="Preferences" defaultOpen>
         <PreferencesForm prefs={prefs} />
-      </section>
+      </Disclosure>
     </div>
   );
 }
