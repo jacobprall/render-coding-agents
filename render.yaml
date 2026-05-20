@@ -6,7 +6,7 @@ services:
     plan: starter
     autoDeploy: true
     buildCommand: bun install && npx turbo build --filter=@coding-agents/web
-    startCommand: cd apps/web && bun run start
+    startCommand: cd apps/web && next start --port ${PORT:-4000} --hostname 0.0.0.0
     healthCheckPath: /api/health
     envVars:
       - key: DATABASE_URL
