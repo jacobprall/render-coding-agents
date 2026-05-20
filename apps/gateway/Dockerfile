@@ -14,14 +14,9 @@ COPY package.json bun.lock ./
 COPY apps/gateway/package.json apps/gateway/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY apps/agent/package.json apps/agent/package.json
-COPY apps/cli/package.json apps/cli/package.json
 COPY packages/platform/package.json packages/platform/package.json
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/db/package.json packages/db/package.json
-COPY packages/skills/package.json packages/skills/package.json
-COPY packages/sandbox/package.json packages/sandbox/package.json
-COPY packages/render-client/package.json packages/render-client/package.json
-COPY packages/ui/package.json packages/ui/package.json
 
 RUN bun install --frozen-lockfile --production
 
@@ -39,7 +34,6 @@ COPY apps/gateway apps/gateway
 COPY packages/platform packages/platform
 COPY packages/shared packages/shared
 COPY packages/db packages/db
-COPY packages/skills packages/skills
 
 ENV NODE_ENV=production
 ENV GATEWAY_PORT=4100

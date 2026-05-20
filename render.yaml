@@ -130,7 +130,7 @@ services:
     runtime: docker
     plan: standard
     autoDeploy: false
-    dockerfilePath: packages/sandbox/Dockerfile
+    dockerfilePath: apps/sandbox/Dockerfile
     dockerContext: .
     healthCheckPath: /health
     disk:
