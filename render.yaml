@@ -93,18 +93,7 @@ services:
       # GitHub
       - key: GITHUB_TOKEN
         sync: false
-      # Forgejo (optional — only needed if using self-hosted git)
-      - key: FORGEJO_INTERNAL_URL
-        sync: false
-      - key: FORGEJO_SANDBOX_URL
-        sync: false
-      - key: FORGEJO_AGENT_TOKEN
-        sync: false
       - key: ANTHROPIC_API_KEY
-        sync: false
-      - key: RENDER_API_KEY
-        sync: false
-      - key: RENDER_OWNER_ID
         sync: false
       - key: ENCRYPTION_KEY
         fromService:
