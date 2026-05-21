@@ -16,6 +16,7 @@ import { getForgeProviderForSession, getAdapter } from "./providers";
 import { buildToolSet } from "./tool-registry";
 import { publishEvent, expireRunStream, mergeToolResults, persistAssistantMessage, updateRunStatus } from "./run-persistence";
 import { agentLoop } from "./loop";
+import { ObservabilityRecorder } from "./observability";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -248,6 +249,7 @@ async function runTurn(params: {
   job: AgentJob;
   redis: Redis;
   events: EventBus;
+  platform: PlatformContainer;
   db: PlatformDb;
   adapter: SandboxAdapter;
   llmKeys: ResolvedLlmKeys;
@@ -258,12 +260,18 @@ async function runTurn(params: {
   usage: { promptTokens?: number; completionTokens?: number };
   hitStepLimit: boolean;
 }> {
-  const { job, redis, events, db, adapter, llmKeys } = params;
+  const { job, redis, events, db, adapter, llmKeys, platform } = params;
   const { provider, modelId } = getModel(job.modelId, llmKeys);
   const thinkingParams = buildThinkingParams(job);
 
   const reqId = job.requestId;
   const assistantParts: AssistantPart[] = [];
+  const recorder = new ObservabilityRecorder({
+    platform,
+    sessionId: job.sessionId,
+    runId: job.runId,
+    userId: job.userId,
+  });
 
   const { forgeContext, sessionRow } = await buildForgeContext({ job, db, events, adapter, assistantParts });
 
@@ -304,6 +312,7 @@ async function runTurn(params: {
       signal: abortController.signal,
       thinking: thinkingParams,
       resultStore,
+      recorder,
       shouldAbort: async () => {
         if (await isAborted(events, job.runId)) {
           throw new AbortError(assistantParts);
@@ -335,6 +344,7 @@ async function runTurn(params: {
     });
   } finally {
     clearTimeout(timeout);
+    await recorder.close();
   }
 
   if (result.hitStepLimit) {
@@ -458,6 +468,7 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
       job,
       redis,
       events,
+      platform,
       db,
       adapter,
       llmKeys,

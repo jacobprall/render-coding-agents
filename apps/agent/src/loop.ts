@@ -1,4 +1,5 @@
 import type { LLMProvider, LLMMessage, LLMResponse, ContentBlock, ToolDefinition } from "./llm";
+import type { ObservabilityRecorder } from "./observability";
 
 export interface AgentTool {
   definition: ToolDefinition;
@@ -7,7 +8,15 @@ export interface AgentTool {
 
 export interface AgentStep {
   text: string;
-  toolCalls: Array<{ toolCallId: string; toolName: string; input: unknown }>;
+  toolCalls: Array<{
+    toolCallId: string;
+    toolName: string;
+    input: unknown;
+    durationMs?: number;
+    startedAt?: Date;
+    endedAt?: Date;
+    status?: "success" | "error";
+  }>;
   toolResults: Array<{ toolCallId: string; output: unknown }>;
   usage: { inputTokens: number; outputTokens: number; cacheCreationInputTokens?: number; cacheReadInputTokens?: number };
 }
@@ -83,6 +92,7 @@ export async function agentLoop(params: {
   shouldAbort?: () => Promise<boolean>;
   onToken?: (token: string) => void;
   resultStore?: Map<string, string>;
+  recorder?: ObservabilityRecorder;
 }): Promise<AgentLoopResult> {
   const {
     provider,
@@ -97,6 +107,7 @@ export async function agentLoop(params: {
     shouldAbort,
     onToken,
     resultStore = new Map<string, string>(),
+    recorder,
   } = params;
 
   const allMessages = [...initialMessages];
@@ -118,15 +129,39 @@ export async function agentLoop(params: {
       compactStaleToolResults(allMessages, resultStore, steps);
     }
 
-    const response: LLMResponse = await provider.chat({
+    const llmHandle = recorder?.startEvent("llm_request", {
       model,
-      system,
-      messages: allMessages,
-      tools: toolDefs,
-      signal,
-      thinking,
-      onToken,
+      step: steps + 1,
+      messageCount: allMessages.length,
+      toolCount: toolDefs.length,
     });
+    let response: LLMResponse;
+    try {
+      response = await provider.chat({
+        model,
+        system,
+        messages: allMessages,
+        tools: toolDefs,
+        signal,
+        thinking,
+        onToken,
+      });
+      recorder?.endEvent(llmHandle ?? null, "success", {
+        model: response.model,
+        stopReason: response.stopReason,
+        tokens: {
+          input: response.usage.inputTokens,
+          output: response.usage.outputTokens,
+          cacheCreation: response.usage.cacheCreationInputTokens ?? 0,
+          cacheRead: response.usage.cacheReadInputTokens ?? 0,
+        },
+      });
+    } catch (error) {
+      recorder?.endEvent(llmHandle ?? null, "error", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
 
     totalInputTokens += response.usage.inputTokens;
     totalOutputTokens += response.usage.outputTokens;
@@ -164,12 +199,37 @@ export async function agentLoop(params: {
       const toolCallId = block.id!;
       const toolName = block.name!;
       const input = block.input;
+      const startedAt = new Date();
+      const toolHandle = recorder?.startEvent(
+        "tool_call",
+        { toolName, input },
+        llmHandle?.id,
+      );
 
       stepToolCalls.push({ toolCallId, toolName, input });
 
       const tool = tools.get(toolName);
       if (!tool) {
         const errorResult = { error: `Unknown tool: ${toolName}` };
+        const endedAt = new Date();
+        const durationMs = Math.max(0, endedAt.getTime() - startedAt.getTime());
+        stepToolCalls[stepToolCalls.length - 1] = {
+          ...stepToolCalls[stepToolCalls.length - 1],
+          startedAt,
+          endedAt,
+          durationMs,
+          status: "error",
+        };
+        recorder?.endEvent(toolHandle ?? null, "error", {
+          toolCallId,
+          durationMs,
+          error: errorResult.error,
+        });
+        recorder?.maybeRecordSandboxEvent(toolHandle?.id, toolName, "error", {
+          toolCallId,
+          durationMs,
+          error: errorResult.error,
+        });
         stepToolResults.push({ toolCallId, output: errorResult });
         resultBlocks.push({
           type: "tool_result",
@@ -182,6 +242,24 @@ export async function agentLoop(params: {
 
       try {
         const output = await tool.execute(input, toolCallId);
+        const endedAt = new Date();
+        const durationMs = Math.max(0, endedAt.getTime() - startedAt.getTime());
+        stepToolCalls[stepToolCalls.length - 1] = {
+          ...stepToolCalls[stepToolCalls.length - 1],
+          startedAt,
+          endedAt,
+          durationMs,
+          status: "success",
+        };
+        recorder?.endEvent(toolHandle ?? null, "success", {
+          toolCallId,
+          durationMs,
+          output,
+        });
+        recorder?.maybeRecordSandboxEvent(toolHandle?.id, toolName, "success", {
+          toolCallId,
+          durationMs,
+        });
         const serialized = typeof output === "string" ? output : JSON.stringify(output);
         stepToolResults.push({ toolCallId, output });
         resultBlocks.push({
@@ -192,6 +270,25 @@ export async function agentLoop(params: {
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
         const errorResult = { error: errorMsg };
+        const endedAt = new Date();
+        const durationMs = Math.max(0, endedAt.getTime() - startedAt.getTime());
+        stepToolCalls[stepToolCalls.length - 1] = {
+          ...stepToolCalls[stepToolCalls.length - 1],
+          startedAt,
+          endedAt,
+          durationMs,
+          status: "error",
+        };
+        recorder?.endEvent(toolHandle ?? null, "error", {
+          toolCallId,
+          durationMs,
+          error: errorMsg,
+        });
+        recorder?.maybeRecordSandboxEvent(toolHandle?.id, toolName, "error", {
+          toolCallId,
+          durationMs,
+          error: errorMsg,
+        });
         stepToolResults.push({ toolCallId, output: errorResult });
         resultBlocks.push({
           type: "tool_result",

@@ -6,3 +6,4 @@ export * from "./infra";
 export * from "./platform";
 export * from "./org";
 export * from "./webhooks";
+export * from "./observability";

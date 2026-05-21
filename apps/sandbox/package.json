@@ -10,11 +10,7 @@
     "./types": "./types.ts",
     "./interface": "./interface.ts",
     "./provider": "./provider.ts",
-    "./session-token": "./session-token.ts",
-    "./adapters/exedev": "./adapters/exedev.ts",
-    "./providers/exedev": "./providers/exedev.ts",
-    "./lib/exedev-auth": "./lib/exedev-auth.ts",
-    "./lib/exedev-ssh": "./lib/exedev-ssh.ts"
+    "./session-token": "./session-token.ts"
   },
   "dependencies": {},
   "devDependencies": {

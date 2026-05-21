@@ -86,6 +86,21 @@ export type {
   AutoTitleResult,
   AgentTrigger,
 } from "./services/session";
+export {
+  ObservabilityService,
+} from "./services/observability";
+export type {
+  EventQueryOptions,
+  NewAgentEventInput,
+  UsageAggregateOptions,
+  UsageAggregateResult,
+} from "./services/observability";
+export {
+  OtlpExporter,
+} from "./observability/otel-exporter";
+export type {
+  OtlpSpanEvent,
+} from "./observability/otel-exporter";
 
 // Object storage
 export type {
@@ -173,3 +188,6 @@ export { InboundRouter, InboundDispatcher, DEFAULT_ROUTES } from "./inbound";
 export {
   githubWebhookToInboundEvent,
 } from "./inbound";
+
+// Jobs
+export { startObservabilityRetentionLoop } from "./jobs/retention";

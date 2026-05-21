@@ -7,6 +7,7 @@ import {
   ackJob,
   reclaimStalePending,
   createPlatform,
+  startObservabilityRetentionLoop,
   type PlatformContainer,
   type ValidatedAgentJob,
 } from "@coding-agents/platform";
@@ -188,6 +189,7 @@ async function main() {
 
   void heartbeat(heartbeatRedis).catch((err) => console.error("Heartbeat failed", err));
   void reclaimLoop(redis, platform).catch((err) => console.error("Reclaim loop failed", err));
+  const stopRetentionLoop = startObservabilityRetentionLoop(platform);
 
   while (true) {
     if (shuttingDown && active === 0) break;
@@ -230,6 +232,7 @@ async function main() {
     console.warn(`[worker] Drain timed out with ${active} active run(s)`);
   }
 
+  stopRetentionLoop();
   redis.disconnect();
   heartbeatRedis.disconnect();
   process.exit(0);

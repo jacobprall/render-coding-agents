@@ -12,7 +12,7 @@ An open-source AI coding agent platform. Connect your GitHub repos, describe wha
 4. **Deploy to Render** — Preview environments spin up for every PR. Merge and ship to production.
 
 ## Architecture
-
+ <PROJECT_NAME> 
 ```mermaid
 graph LR
     subgraph Clients
@@ -217,6 +217,29 @@ Get the external connection string from the `db` database page in the Render Das
 Redeploy all services, then check:
 - `https://<web-url>/api/health` should return `{"status":"healthy"}`
 - Sign in with GitHub at `https://<web-url>`
+
+## Agent Observability
+
+The platform records structured events for every agent session — LLM calls, tool executions, and sandbox interactions. Events are stored in Postgres with configurable retention (default 30 days) and are queryable through both the web API and gateway.
+
+### Configuration
+
+All observability settings are optional. See `.env.example` for the full list:
+
+| Variable | Default | Description |
+|---|---|---|
+| `OBSERVABILITY_EVENT_CAP` | `10000` | Max events per session before capping |
+| `OBSERVABILITY_RETENTION_DAYS` | `30` | Days before events are purged |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | — | Enable OTel export to an external collector |
+| `OTEL_SERVICE_NAME` | `render-coding-agents-agent` | Service name in OTel spans |
+| `OTEL_EXPORTER_OTLP_HEADERS` | — | Auth headers for OTLP endpoint |
+
+### API Endpoints
+
+- `GET /api/sessions/:id/events` — Paginated event timeline for a session
+- `GET /api/observability/usage` — Aggregated token usage and cost breakdown
+
+Both endpoints support `?from=`, `?to=` (ISO 8601), and `?groupBy=model|session` query parameters with Zod validation.
 
 ## Documentation
 

@@ -7,7 +7,6 @@ import {
   type SandboxAdapter,
   type SandboxSessionAuth,
 } from "@coding-agents/sandbox";
-import { exeDevProviderFromEnv } from "@coding-agents/sandbox/providers/exedev";
 import type { SandboxProvider } from "@coding-agents/sandbox/provider";
 import { decryptTokenSafe } from "@coding-agents/shared/lib/encryption";
 
@@ -38,8 +37,6 @@ export async function getForgeProviderForSession(
 
 // ─── Sandbox provider ────────────────────────────────────────────────────────
 
-const SANDBOX_PROVIDER_TYPE = process.env.SANDBOX_PROVIDER ?? "shared-http";
-
 let _sandboxProvider: SandboxProvider | null = null;
 let _sandboxProviderCreatedAt = 0;
 const SANDBOX_PROVIDER_MAX_AGE_MS = 10 * 60 * 1000;
@@ -61,12 +58,7 @@ function getSandboxProvider(): SandboxProvider {
     return _sandboxProvider;
   }
 
-  if (SANDBOX_PROVIDER_TYPE === "exedev") {
-    _sandboxProvider = exeDevProviderFromEnv();
-  } else {
-    _sandboxProvider = buildSharedHttpProvider();
-  }
-
+  _sandboxProvider = buildSharedHttpProvider();
   _sandboxProviderCreatedAt = now;
   return _sandboxProvider;
 }

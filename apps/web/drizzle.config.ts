@@ -37,5 +37,7 @@ export default defineConfig({
     "webhook_deliveries",
     "budgets",
     "llm_calls",
+    "event_series",
+    "agent_events",
   ],
 });

@@ -63,6 +63,14 @@ export type {
   SpendCheckResult,
 } from "./cost";
 
+export { ObservabilityService } from "./observability";
+export type {
+  EventQueryOptions,
+  NewAgentEventInput,
+  UsageAggregateOptions,
+  UsageAggregateResult,
+} from "./observability";
+
 export { InviteService } from "./invite";
 export type {
   CreateInviteParams,

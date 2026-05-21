@@ -16,6 +16,7 @@ import { webhookRoutes } from "./routes/webhooks";
 import { ciRoutes } from "./routes/ci";
 import { modelRoutes } from "./routes/models";
 import { streamRoutes } from "./routes/stream";
+import { observabilityRoutes } from "./routes/observability";
 import { handleMcpRequest } from "./mcp/server";
 
 const app = new Hono<GatewayEnv>();
@@ -40,6 +41,7 @@ app.route("/api/org", orgSingularRoutes);
 app.route("/api/settings", settingsRoutes);
 app.route("/api/models", modelRoutes);
 app.route("/api/stream", streamRoutes);
+app.route("/api/observability", observabilityRoutes);
 
 // --- MCP endpoint (authenticated) ---
 app.use("/mcp", requireApiAuth);
