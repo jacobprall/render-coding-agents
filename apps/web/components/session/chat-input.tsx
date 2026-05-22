@@ -95,7 +95,6 @@ export function ChatInput({ isStreaming, modelId, onModelChange, onSend, onStop 
             aria-label="Send a message"
             rows={1}
             className="max-h-36 flex-1 resize-none bg-transparent px-2 py-1.5 text-[15px] text-text-primary placeholder-text-tertiary outline-none"
-            disabled={isStreaming}
           />
 
           <div className="flex shrink-0 items-center gap-2">
