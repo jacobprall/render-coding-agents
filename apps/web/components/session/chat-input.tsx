@@ -29,6 +29,13 @@ export function ChatInput({ isStreaming, modelId, onModelChange, onSend, onStop 
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 192)}px`;
+  }, [input]);
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!input.trim() || isStreaming) return;
@@ -94,7 +101,7 @@ export function ChatInput({ isStreaming, modelId, onModelChange, onSend, onStop 
             placeholder="Message the agent…"
             aria-label="Send a message"
             rows={1}
-            className="max-h-36 flex-1 resize-none bg-transparent px-2 py-1.5 text-[15px] text-text-primary placeholder-text-tertiary outline-none"
+            className="max-h-48 flex-1 resize-none overflow-y-auto bg-transparent px-2 py-1.5 text-[15px] text-text-primary placeholder-text-tertiary outline-none"
           />
 
           <div className="flex shrink-0 items-center gap-2">

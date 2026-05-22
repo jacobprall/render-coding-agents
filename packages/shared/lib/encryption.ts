@@ -70,6 +70,8 @@ export function decryptTokenSafe(value: string): string {
   try {
     return decryptToken(value);
   } catch {
-    return value;
+    // Return a safe placeholder rather than the raw encrypted blob,
+    // which could leak into git URLs and error logs
+    return "DECRYPTION_FAILED";
   }
 }
