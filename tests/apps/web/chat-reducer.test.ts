@@ -52,22 +52,17 @@ describe("chatReducer", () => {
       expect(next.messages[0]!.parts[0]).toEqual({ type: "text", text: "hello", id: "text-0" });
     });
 
-    test("is a no-op when status is idle (double-flush guard)", () => {
-      const state = makeState({ status: "idle" });
-      const next = chatReducer(state, { type: "FINISH_STREAMING" });
-      expect(next).toBe(state);
-    });
-
-    test("is a no-op when status is done (double-flush guard)", () => {
-      const state = makeState({ status: "done" });
-      const next = chatReducer(state, { type: "FINISH_STREAMING" });
-      expect(next).toBe(state);
-    });
-
-    test("is a no-op when status is error (double-flush guard)", () => {
-      const state = makeState({ status: "error" });
-      const next = chatReducer(state, { type: "FINISH_STREAMING" });
-      expect(next).toBe(state);
+    test("flushes from any state (guard removed for stop-preserves-work)", () => {
+      for (const status of ["idle", "done", "error"] as const) {
+        const state = makeState({
+          status,
+          streamingParts: [{ type: "text", text: "partial", id: "text-0" }],
+        });
+        const next = chatReducer(state, { type: "FINISH_STREAMING" });
+        expect(next.status).toBe("done");
+        expect(next.streamingParts).toEqual([]);
+        expect(next.messages).toHaveLength(1);
+      }
     });
 
     test("does not create an empty assistant message when parts are empty", () => {
@@ -285,6 +280,88 @@ describe("chatReducer", () => {
       const next = chatReducer(state, { type: "CLEAR_ERROR" });
       expect(next.error).toBeNull();
       expect(next.status).toBe("streaming");
+    });
+  });
+
+  describe("STREAM_EVENT - terminalReason and stepLimitReached", () => {
+    test("done event with terminalReason='step_limit' sets stepLimitReached", () => {
+      const state = makeState({ status: "streaming" });
+      const event: StreamEvent = { type: "done", terminalReason: "step_limit" };
+      const next = chatReducer(state, { type: "STREAM_EVENT", event });
+      expect(next.stepLimitReached).toBe(true);
+      expect(next.terminalReason).toBe("step_limit");
+    });
+
+    test("done event with terminalReason='end_turn' does not set stepLimitReached", () => {
+      const state = makeState({ status: "streaming" });
+      const event: StreamEvent = { type: "done", terminalReason: "end_turn" };
+      const next = chatReducer(state, { type: "STREAM_EVENT", event });
+      expect(next.stepLimitReached).toBe(false);
+      expect(next.terminalReason).toBe("end_turn");
+    });
+
+    test("aborted event with terminalReason='stopped' sets terminalReason", () => {
+      const state = makeState({ status: "streaming" });
+      const event: StreamEvent = { type: "aborted", terminalReason: "stopped" };
+      const next = chatReducer(state, { type: "STREAM_EVENT", event });
+      expect(next.status).toBe("done");
+      expect(next.terminalReason).toBe("stopped");
+    });
+
+    test("error event with terminalReason='provider_transient' sets terminalReason", () => {
+      const state = makeState({ status: "streaming" });
+      const event: StreamEvent = { type: "error", message: "Rate limited", terminalReason: "provider_transient" };
+      const next = chatReducer(state, { type: "STREAM_EVENT", event });
+      expect(next.status).toBe("error");
+      expect(next.terminalReason).toBe("provider_transient");
+    });
+
+    test("terminal event uses server assistantParts when streamingParts is empty", () => {
+      const state = makeState({ status: "streaming", streamingParts: [] });
+      const event: StreamEvent = {
+        type: "done",
+        assistantParts: [{ type: "text", text: "server content" }],
+      };
+      const next = chatReducer(state, { type: "STREAM_EVENT", event });
+      expect(next.messages).toHaveLength(1);
+      expect(next.messages[0]!.parts[0]).toMatchObject({ type: "text", text: "server content" });
+    });
+  });
+
+  describe("SET_ERROR flushes streaming parts", () => {
+    test("flushes parts before setting error", () => {
+      const state = makeState({
+        status: "streaming",
+        streamingParts: [{ type: "text", text: "partial", id: "text-0" }],
+      });
+      const next = chatReducer(state, { type: "SET_ERROR", error: "Connection lost" });
+      expect(next.status).toBe("error");
+      expect(next.error).toBe("Connection lost");
+      expect(next.streamingParts).toEqual([]);
+      expect(next.messages).toHaveLength(1);
+    });
+  });
+
+  describe("NO_ACTIVE_RUN flushes on exhaustion", () => {
+    test("flushes parts when max retries exceeded", () => {
+      const state = makeState({
+        status: "waitingForRun",
+        noRunRetries: MAX_NO_RUN_RETRIES - 1,
+        streamingParts: [{ type: "text", text: "partial", id: "text-0" }],
+      });
+      const next = chatReducer(state, { type: "NO_ACTIVE_RUN" });
+      expect(next.status).toBe("error");
+      expect(next.streamingParts).toEqual([]);
+      expect(next.messages).toHaveLength(1);
+    });
+  });
+
+  describe("START_STREAMING resets stepLimitReached and terminalReason", () => {
+    test("resets stepLimitReached and terminalReason", () => {
+      const state = makeState({ stepLimitReached: true, terminalReason: "step_limit" });
+      const next = chatReducer(state, { type: "START_STREAMING" });
+      expect(next.stepLimitReached).toBe(false);
+      expect(next.terminalReason).toBeNull();
     });
   });
 

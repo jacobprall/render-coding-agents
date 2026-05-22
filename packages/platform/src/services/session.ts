@@ -560,7 +560,7 @@ export class SessionService {
   // stop — POST /api/sessions/[id]/stop
   // -------------------------------------------------------------------------
 
-  async stop(auth: AuthContext, sessionId: string): Promise<{ runId: string }> {
+  async stop(auth: AuthContext, sessionId: string): Promise<{ runId: string; acknowledged: boolean }> {
     const [sessionRow] = await this.db
       .select()
       .from(sessions)
@@ -578,18 +578,14 @@ export class SessionService {
 
     const runId = chatRow?.activeRunId;
     if (!runId) {
-      throw new ValidationError("No active run");
+      return { runId: "", acknowledged: true };
     }
 
     await this.events.setKey(`run:${runId}:abort`, "1", 3600);
 
-    logger.warn("session.stop.signal_not_enforced", {
-      runId,
-      message:
-        "Abort signal written to Redis but agent worker does not yet consume it",
-    });
+    logger.info("session.stop.abort_signal_set", { runId });
 
-    return { runId };
+    return { runId, acknowledged: true };
   }
 
   // -------------------------------------------------------------------------

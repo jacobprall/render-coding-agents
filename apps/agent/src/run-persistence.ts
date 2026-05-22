@@ -2,7 +2,7 @@ import type Redis from "ioredis";
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { agentRuns, chats, chatMessages, sessions } from "@coding-agents/db";
-import type { PlatformDb, EventBus } from "@coding-agents/platform";
+import type { PlatformDb, EventBus, TerminalReason } from "@coding-agents/platform";
 import type { LLMMessage } from "./llm";
 import type { AgentJob, StreamEvent, AssistantPart } from "./types";
 
@@ -69,11 +69,62 @@ export async function persistAssistantMessage(
   return id;
 }
 
+export async function upsertAssistantMessage(
+  db: PlatformDb,
+  events: EventBus,
+  job: AgentJob,
+  parts: AssistantPart[],
+  responseMessages: LLMMessage[],
+  existingMessageId?: string,
+  requestId?: string,
+): Promise<string> {
+  const mergedParts = mergeToolResults(parts);
+
+  if (existingMessageId) {
+    await db
+      .update(chatMessages)
+      .set({
+        parts: mergedParts as unknown as Record<string, unknown>[],
+        modelMessages: responseMessages as unknown as Record<string, unknown>[],
+      })
+      .where(eq(chatMessages.id, existingMessageId));
+
+    await publishEvent(events, job.runId, {
+      type: "step_persisted",
+      step: mergedParts.length,
+      partCount: mergedParts.length,
+      assistantMessageId: existingMessageId,
+    }, requestId);
+
+    return existingMessageId;
+  }
+
+  const id = nanoid();
+  await db.insert(chatMessages).values({
+    id,
+    chatId: job.chatId,
+    role: "assistant",
+    parts: mergedParts as unknown as Record<string, unknown>[],
+    modelMessages: responseMessages as unknown as Record<string, unknown>[],
+    runId: job.runId,
+  });
+
+  await publishEvent(events, job.runId, {
+    type: "step_persisted",
+    step: mergedParts.length,
+    partCount: mergedParts.length,
+    assistantMessageId: id,
+  }, requestId);
+
+  return id;
+}
+
 export async function updateRunStatus(
   db: PlatformDb,
   job: AgentJob,
-  status: "completed" | "failed" | "aborted",
+  status: "completed" | "failed" | "aborted" | "error",
   usage?: { promptTokens?: number; completionTokens?: number },
+  terminalReason?: TerminalReason,
 ): Promise<void> {
   const finishedAt = new Date();
   const [row] = await db
@@ -86,6 +137,7 @@ export async function updateRunStatus(
   const updateData: Record<string, unknown> = { status, finishedAt, totalDurationMs };
   if (usage?.promptTokens != null) updateData.promptTokens = usage.promptTokens;
   if (usage?.completionTokens != null) updateData.completionTokens = usage.completionTokens;
+  if (terminalReason) updateData.terminalReason = terminalReason;
 
   await db
     .update(agentRuns)
@@ -94,9 +146,23 @@ export async function updateRunStatus(
 
   await db.update(chats).set({ activeRunId: null, updatedAt: new Date() }).where(eq(chats.id, job.chatId));
 
-  const sessionStatus = status === "failed" ? "failed" : "completed";
+  const sessionStatus = (status === "failed" || status === "error") ? "failed" : "completed";
   await db
     .update(sessions)
     .set({ status: sessionStatus, lastActivityAt: finishedAt, updatedAt: finishedAt })
     .where(eq(sessions.id, job.sessionId));
+}
+
+export async function updateHeartbeat(
+  db: PlatformDb,
+  runId: string,
+): Promise<void> {
+  try {
+    await db
+      .update(agentRuns)
+      .set({ lastHeartbeatAt: new Date() })
+      .where(eq(agentRuns.id, runId));
+  } catch (err) {
+    console.warn("[agent] Failed to update heartbeat:", err);
+  }
 }

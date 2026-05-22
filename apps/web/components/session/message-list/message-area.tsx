@@ -7,6 +7,30 @@ import { AskUserCard } from "../ask-user-card";
 import { AssistantParts } from "./assistant-parts";
 import { MessageBubble } from "./message-bubble";
 
+function TerminalBadge({ reason }: { reason: string }) {
+  const labels: Record<string, { text: string; className: string }> = {
+    stopped: { text: "Stopped", className: "bg-yellow-500/10 text-yellow-600 border-yellow-500/20" },
+    step_limit: { text: "Step limit reached", className: "bg-blue-500/10 text-blue-600 border-blue-500/20" },
+    timeout: { text: "Timed out", className: "bg-orange-500/10 text-orange-600 border-orange-500/20" },
+    max_tokens: { text: "Max tokens reached", className: "bg-purple-500/10 text-purple-600 border-purple-500/20" },
+    empty_response: { text: "No response from model", className: "bg-red-500/10 text-red-600 border-red-500/20" },
+    provider_transient: { text: "Provider error", className: "bg-red-500/10 text-red-600 border-red-500/20" },
+    provider_fatal: { text: "Provider error", className: "bg-red-500/10 text-red-600 border-red-500/20" },
+    tool_fatal: { text: "Tool error", className: "bg-red-500/10 text-red-600 border-red-500/20" },
+    worker_lost: { text: "Connection lost", className: "bg-red-500/10 text-red-600 border-red-500/20" },
+    internal: { text: "Internal error", className: "bg-red-500/10 text-red-600 border-red-500/20" },
+  };
+
+  const label = labels[reason] ?? { text: reason, className: "bg-gray-500/10 text-gray-600 border-gray-500/20" };
+
+  return (
+    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium border rounded-full ${label.className}`}>
+      <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60" />
+      {label.text}
+    </div>
+  );
+}
+
 export function MessageArea({
   messages,
   streamingParts,
@@ -16,6 +40,9 @@ export function MessageArea({
   onAskUserResponse,
   onViewFiles,
   error,
+  terminalReason,
+  stepLimitReached,
+  onContinue,
 }: {
   messages: Message[];
   streamingParts: AssistantPart[];
@@ -25,6 +52,9 @@ export function MessageArea({
   onAskUserResponse: (answer: string) => void;
   onViewFiles?: () => void;
   error: string | null;
+  terminalReason?: string | null;
+  stepLimitReached?: boolean;
+  onContinue?: () => void;
 }) {
   const [filesPanelOpen, setFilesPanelOpen] = useState(true);
 
@@ -99,9 +129,9 @@ export function MessageArea({
         messages.map((msg) => <MessageBubble key={msg.id} message={msg} />)
       )}
 
-      {isStreaming && streamingParts.length > 0 ? (
+      {streamingParts.length > 0 ? (
         <div className="[content-visibility:auto]">
-          <AssistantParts parts={streamingParts} streaming />
+          <AssistantParts parts={streamingParts} streaming={isStreaming} />
         </div>
       ) : null}
 
@@ -123,6 +153,27 @@ export function MessageArea({
       {error ? (
         <div className="border border-danger/20 bg-danger/5 p-(--of-space-md)">
           <p className="text-[15px] text-danger">{error}</p>
+        </div>
+      ) : null}
+
+      {terminalReason && terminalReason !== "end_turn" ? (
+        <div className="flex justify-center py-(--of-space-sm)">
+          <TerminalBadge reason={terminalReason} />
+        </div>
+      ) : null}
+
+      {stepLimitReached && onContinue ? (
+        <div className="flex justify-center py-(--of-space-md)">
+          <button
+            type="button"
+            onClick={onContinue}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-accent-text bg-accent-bg border border-accent/20 rounded-lg transition-colors duration-(--of-duration-instant) hover:bg-accent/10 hover:border-accent/30"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" />
+            </svg>
+            Continue
+          </button>
         </div>
       ) : null}
     </>

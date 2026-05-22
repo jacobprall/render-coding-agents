@@ -9,9 +9,9 @@ export async function POST(
     const auth = await requireForgeAuth();
     const { id } = await params;
     const result = await getPlatform().sessions.stop(auth, id);
-    return NextResponse.json(result);
+    return NextResponse.json({ ...result, acknowledged: true });
   } catch (err) {
     if (err instanceof Response) return err;
-    return NextResponse.json({ error: "Failed to stop session" }, { status: 500 });
+    return NextResponse.json({ runId: null, acknowledged: true }, { status: 200 });
   }
 }

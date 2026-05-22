@@ -12,6 +12,7 @@ export type AssistantToolCallPart = {
   toolCallId: string;
   args?: unknown;
   result?: unknown;
+  status?: "interrupted";
   id?: string;
 };
 
@@ -184,6 +185,10 @@ export function appendStreamEvent(
         },
       ];
     }
+
+    case "heartbeat":
+    case "step_persisted":
+      return parts;
 
     default:
       return parts;

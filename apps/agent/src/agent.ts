@@ -1,6 +1,6 @@
 import type Redis from "ioredis";
 import { eq } from "drizzle-orm";
-import { agentRuns, sessions, prEvents, projects, projectRepos } from "@coding-agents/db";
+import { agentRuns, chatMessages, sessions, prEvents, projects, projectRepos } from "@coding-agents/db";
 import { AppError } from "@coding-agents/shared";
 import { resolveLlmApiKeys, type ResolvedLlmKeys, type PlatformContainer, type PlatformDb, type EventBus } from "@coding-agents/platform";
 import type { SandboxAdapter } from "@coding-agents/sandbox";
@@ -14,7 +14,7 @@ import type { AgentJob, StreamEvent, AssistantPart } from "./types";
 import { isDeliverComplete, transitionToComplete } from "./lib/deliver";
 import { getForgeProviderForSession, getAdapter } from "./providers";
 import { buildToolSet } from "./tool-registry";
-import { publishEvent, expireRunStream, mergeToolResults, persistAssistantMessage, updateRunStatus } from "./run-persistence";
+import { publishEvent, expireRunStream, mergeToolResults, updateRunStatus, upsertAssistantMessage, updateHeartbeat } from "./run-persistence";
 import { agentLoop } from "./loop";
 import { ObservabilityRecorder } from "./observability";
 
@@ -46,6 +46,36 @@ function isTimeoutAbort(error: unknown): boolean {
 async function isAborted(events: EventBus, runId: string): Promise<boolean> {
   const val = await events.getKey(`run:${runId}:abort`);
   return val === "1";
+}
+
+export function createMergedAbortController(
+  events: EventBus,
+  runId: string,
+  timeoutMs: number,
+): { controller: AbortController; cleanup: () => void } {
+  const controller = new AbortController();
+
+  const timeout = setTimeout(() => {
+    if (!controller.signal.aborted) {
+      controller.abort(new DOMException("Turn timeout", "TimeoutError"));
+    }
+  }, timeoutMs);
+
+  const pollInterval = setInterval(async () => {
+    try {
+      const val = await events.getKey(`run:${runId}:abort`);
+      if (val === "1" && !controller.signal.aborted) {
+        controller.abort(new DOMException("User stopped", "AbortError"));
+      }
+    } catch {}
+  }, 500);
+
+  const cleanup = () => {
+    clearTimeout(timeout);
+    clearInterval(pollInterval);
+  };
+
+  return { controller, cleanup };
 }
 
 // ─── Message building ────────────────────────────────────────────────────────
@@ -259,6 +289,8 @@ async function runTurn(params: {
   responseMessages: LLMMessage[];
   usage: { promptTokens?: number; completionTokens?: number };
   hitStepLimit: boolean;
+  terminationReason?: string;
+  assistantMessageId?: string;
 }> {
   const { job, redis, events, db, adapter, llmKeys, platform } = params;
   const { provider, modelId } = getModel(job.modelId, llmKeys);
@@ -266,12 +298,24 @@ async function runTurn(params: {
 
   const reqId = job.requestId;
   const assistantParts: AssistantPart[] = [];
+  let assistantMessageId: string | undefined;
   const recorder = new ObservabilityRecorder({
     platform,
     sessionId: job.sessionId,
     runId: job.runId,
     userId: job.userId,
   });
+
+  let currentActivity = "idle";
+  const heartbeatInterval = setInterval(async () => {
+    await updateHeartbeat(db, job.runId);
+    publishEvent(events, job.runId, {
+      type: "heartbeat",
+      timestamp: new Date().toISOString(),
+      activity: currentActivity,
+      step: 0,
+    }, reqId).catch(() => {});
+  }, 15_000);
 
   const { forgeContext, sessionRow } = await buildForgeContext({ job, db, events, adapter, assistantParts });
 
@@ -297,8 +341,7 @@ async function runTurn(params: {
     `[agent] runId=${job.runId} skills=${job.resolvedSkills.map((s) => s.slug).join(",")} messages=${inputMessages.length}`,
   );
 
-  const abortController = new AbortController();
-  const timeout = setTimeout(() => abortController.abort(), TURN_TIMEOUT_MS);
+  const { controller: abortController, cleanup: cleanupAbort } = createMergedAbortController(events, job.runId, TURN_TIMEOUT_MS);
 
   let result;
   try {
@@ -320,11 +363,14 @@ async function runTurn(params: {
         return false;
       },
       onToken: (token) => {
+        currentActivity = "llm_call";
         publishEvent(events, job.runId, { type: "token", token }, reqId).catch((err) => {
           console.warn("[agent] Failed to publish token event:", err);
         });
       },
       onStep: async ({ text, toolCalls, toolResults }) => {
+        currentActivity = "tool_execution";
+
         if (text) {
           assistantParts.push({ type: "text", text });
         }
@@ -340,10 +386,19 @@ async function runTurn(params: {
           assistantParts.push({ type: "tool_result", toolCallId: tr.toolCallId, result: tr.output });
           await publishEvent(events, job.runId, ev, reqId);
         }
+
+        try {
+          assistantMessageId = await upsertAssistantMessage(
+            db, events, job, assistantParts, [], assistantMessageId, reqId
+          );
+        } catch (err) {
+          console.warn("[agent] Incremental persist failed:", err);
+        }
       },
     });
   } finally {
-    clearTimeout(timeout);
+    cleanupAbort();
+    clearInterval(heartbeatInterval);
     await recorder.close();
   }
 
@@ -362,6 +417,8 @@ async function runTurn(params: {
       completionTokens: result.totalUsage.outputTokens,
     },
     hitStepLimit: result.hitStepLimit,
+    terminationReason: result.terminationReason,
+    assistantMessageId,
   };
 }
 
@@ -454,6 +511,35 @@ async function ensureRepoCloned(db: PlatformDb, job: AgentJob, adapter: SandboxA
 
 export async function runAgentTurn(job: AgentJob, redis: Redis, platform: PlatformContainer): Promise<void> {
   const { db, events } = platform;
+
+  // Idempotency guard: skip if run is already terminal or already has work
+  const [existingRun] = await db
+    .select({ status: agentRuns.status })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, job.runId))
+    .limit(1);
+
+  if (existingRun) {
+    const terminalStatuses = new Set(["completed", "aborted", "failed", "error"]);
+    if (terminalStatuses.has(existingRun.status)) {
+      console.info(`[agent] Skipping already-terminal run ${job.runId} (status=${existingRun.status})`);
+      return;
+    }
+
+    if (existingRun.status === "running") {
+      const [existingMsg] = await db
+        .select({ id: chatMessages.id })
+        .from(chatMessages)
+        .where(eq(chatMessages.runId, job.runId))
+        .limit(1);
+
+      if (existingMsg) {
+        console.info(`[agent] Skipping duplicate run ${job.runId} (already running with assistant message)`);
+        return;
+      }
+    }
+  }
+
   const adapter = await getAdapter(job.sessionId);
 
   try {
@@ -464,7 +550,7 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
 
     const llmKeys = await resolveLlmApiKeys(db, job.userId);
 
-    const { assistantParts, responseMessages, usage } = await runTurn({
+    const { assistantParts, responseMessages, usage, hitStepLimit, assistantMessageId } = await runTurn({
       job,
       redis,
       events,
@@ -474,17 +560,19 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
       llmKeys,
     });
 
-    let assistantMessageId: string | undefined;
+    let finalMessageId = assistantMessageId;
     if (assistantParts.length > 0) {
-      assistantMessageId = await persistAssistantMessage(db, job, assistantParts, responseMessages);
+      finalMessageId = await upsertAssistantMessage(db, events, job, assistantParts, responseMessages, assistantMessageId, job.requestId);
     }
 
-    await updateRunStatus(db, job, "completed", usage);
+    const terminalReason = hitStepLimit ? "step_limit" : "end_turn";
+    console.info("[agent] run_terminal", { runId: job.runId, sessionId: job.sessionId, terminalReason, status: "completed" });
+    await updateRunStatus(db, job, "completed", usage, terminalReason);
 
     await publishEvent(
       events,
       job.runId,
-      { type: "done", assistantMessageId, assistantParts: assistantParts as unknown[] },
+      { type: "done", assistantMessageId: finalMessageId, assistantParts: assistantParts as unknown[], terminalReason },
       job.requestId,
     );
     await events.setKey(`run:${job.runId}:status`, "completed", RUN_STATUS_TTL);
@@ -502,14 +590,9 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
   } catch (error) {
     // Handle user-initiated abort
     if (error instanceof AbortError) {
-      const mergedParts = mergeToolResults(error.parts);
-      if (mergedParts.length > 0) {
-        await persistAssistantMessage(db, job, mergedParts, []).catch((e) =>
-          console.error("[agent] Failed to persist partial abort work:", e),
-        );
-      }
-      await updateRunStatus(db, job, "aborted");
-      await publishEvent(events, job.runId, { type: "aborted" }, job.requestId);
+      console.info("[agent] run_terminal", { runId: job.runId, sessionId: job.sessionId, terminalReason: "stopped", status: "aborted" });
+      await updateRunStatus(db, job, "aborted", undefined, "stopped");
+      await publishEvent(events, job.runId, { type: "aborted", terminalReason: "stopped" }, job.requestId);
       await events.setKey(`run:${job.runId}:status`, "aborted", RUN_STATUS_TTL);
       await expireRunStream(redis, job.runId);
       return;
@@ -517,14 +600,17 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
 
     // Handle turn timeout (native AbortError from fetch/signal)
     if (isTimeoutAbort(error)) {
-      await updateRunStatus(db, job, "aborted");
-      await publishEvent(events, job.runId, { type: "aborted" }, job.requestId);
+      console.info("[agent] run_terminal", { runId: job.runId, sessionId: job.sessionId, terminalReason: "timeout", status: "aborted" });
+      await updateRunStatus(db, job, "aborted", undefined, "timeout");
+      await publishEvent(events, job.runId, { type: "aborted", terminalReason: "timeout" }, job.requestId);
       await events.setKey(`run:${job.runId}:status`, "aborted", RUN_STATUS_TTL);
       await expireRunStream(redis, job.runId);
       return;
     }
 
-    await updateRunStatus(db, job, "failed");
+    const terminalReason = error instanceof AppError && error.retryable ? "provider_transient" : "internal";
+    console.info("[agent] run_terminal", { runId: job.runId, sessionId: job.sessionId, terminalReason, status: "failed", error: error instanceof Error ? error.message : String(error) });
+    await updateRunStatus(db, job, "failed", undefined, terminalReason);
     await publishEvent(
       events,
       job.runId,
@@ -534,6 +620,7 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
         code: error instanceof AppError ? error.code : "INTERNAL_ERROR",
         requestId: job.requestId,
         retryable: error instanceof AppError ? error.retryable : false,
+        terminalReason,
       },
       job.requestId,
     );

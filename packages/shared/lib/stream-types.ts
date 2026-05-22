@@ -13,7 +13,9 @@ export interface StreamEvent {
     | "task_start"
     | "task_done"
     | "task_error"
-    | "file_changed";
+    | "file_changed"
+    | "heartbeat"
+    | "step_persisted";
   token?: string;
   toolName?: string;
   toolCallId?: string;
@@ -38,4 +40,12 @@ export interface StreamEvent {
   additions?: number;
   deletions?: number;
   unifiedDiffPreview?: string;
+  // Heartbeat fields
+  timestamp?: string;
+  activity?: string;
+  step?: number;
+  // Step persisted fields
+  partCount?: number;
+  // Terminal reason field
+  terminalReason?: string;
 }

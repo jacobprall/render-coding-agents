@@ -131,6 +131,7 @@ export const chatMessages = pgTable("chat_messages", {
   }).notNull(),
   parts: jsonb("parts").notNull(),
   modelMessages: jsonb("model_messages"),
+  runId: text("run_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -165,6 +166,8 @@ export const agentRuns = pgTable(
     promptTokens: integer("prompt_tokens"),
     completionTokens: integer("completion_tokens"),
     costUsd: numeric("cost_usd", { precision: 10, scale: 6 }),
+    terminalReason: text("terminal_reason"),
+    lastHeartbeatAt: timestamp("last_heartbeat_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [

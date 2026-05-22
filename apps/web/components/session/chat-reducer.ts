@@ -35,6 +35,8 @@ export interface ChatState {
   askUserPrompt: AskUserPrompt | null;
   activeRunId: string | null;
   noRunRetries: number;
+  stepLimitReached: boolean;
+  terminalReason: string | null;
   _seqCounter: number;
 }
 
@@ -83,7 +85,11 @@ function isTerminalStreamEvent(event: StreamEvent): boolean {
   return event.type === "done" || event.type === "aborted" || event.type === "error";
 }
 
-export function initialChatState(initialMessages: Message[]): ChatState {
+export function initialChatState(
+  initialMessages: Message[],
+  opts?: { terminalReason?: string | null },
+): ChatState {
+  const terminalReason = opts?.terminalReason ?? null;
   return {
     messages: initialMessages,
     streamingParts: [],
@@ -93,6 +99,8 @@ export function initialChatState(initialMessages: Message[]): ChatState {
     askUserPrompt: null,
     activeRunId: null,
     noRunRetries: 0,
+    stepLimitReached: terminalReason === "step_limit",
+    terminalReason,
     _seqCounter: 0,
   };
 }
@@ -108,11 +116,12 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         error: null,
         activeRunId: action.runId ?? null,
         noRunRetries: 0,
+        stepLimitReached: false,
+        terminalReason: null,
         _seqCounter: 0,
       };
 
     case "FINISH_STREAMING": {
-      if (state.status !== "streaming") return state;
       const flushed = flushStreamingToMessages(state.messages, state.streamingParts);
       return {
         ...state,
@@ -123,8 +132,10 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       };
     }
 
-    case "SET_ERROR":
-      return { ...state, error: action.error, status: "error" };
+    case "SET_ERROR": {
+      const flushed = flushStreamingToMessages(state.messages, state.streamingParts);
+      return { ...state, ...flushed, error: action.error, status: "error" };
+    }
 
     case "CLEAR_ERROR":
       return {
@@ -142,8 +153,10 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case "NO_ACTIVE_RUN": {
       const noRunRetries = state.noRunRetries + 1;
       if (noRunRetries >= MAX_NO_RUN_RETRIES) {
+        const flushed = flushStreamingToMessages(state.messages, state.streamingParts);
         return {
           ...state,
+          ...flushed,
           noRunRetries,
           error: "Agent job did not start. Try sending another message.",
           status: "error",
@@ -165,7 +178,16 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       const { event } = action;
 
       if (isTerminalStreamEvent(event)) {
-        const flushed = flushStreamingToMessages(state.messages, state.streamingParts);
+        let partsToFlush = state.streamingParts;
+        if (partsToFlush.length === 0 && event.assistantParts && Array.isArray(event.assistantParts)) {
+          partsToFlush = event.assistantParts as AssistantPart[];
+        }
+        const flushed = flushStreamingToMessages(state.messages, partsToFlush);
+        const terminalReason =
+          "terminalReason" in event && typeof event.terminalReason === "string"
+            ? event.terminalReason
+            : null;
+        const isStepLimit = terminalReason === "step_limit";
         if (event.type === "error") {
           return {
             ...state,
@@ -174,6 +196,8 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
             status: "error",
             liveFileChanges: [],
             askUserPrompt: null,
+            stepLimitReached: isStepLimit,
+            terminalReason,
           };
         }
         return {
@@ -182,6 +206,8 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
           status: "done",
           liveFileChanges: [],
           askUserPrompt: null,
+          stepLimitReached: isStepLimit,
+          terminalReason,
         };
       }
 

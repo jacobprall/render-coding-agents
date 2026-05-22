@@ -1,5 +1,5 @@
 import Redis from "ioredis";
-import { eq } from "drizzle-orm";
+import { and, eq, lt } from "drizzle-orm";
 import { agentRuns, chats } from "@coding-agents/db";
 import {
   ensureConsumerGroup,
@@ -42,7 +42,7 @@ let shuttingDown = false;
 
 for (const sig of ["SIGTERM", "SIGINT"] as const) {
   process.on(sig, () => {
-    console.info(`[worker] Received ${sig}, draining active runs…`);
+    console.info(`[worker] Received ${sig}, draining ${active} active run(s)…`);
     shuttingDown = true;
   });
 }
@@ -79,7 +79,7 @@ async function finalizeDeadLetter(platform: PlatformContainer, job: ValidatedAge
 
   await db
     .update(agentRuns)
-    .set({ status: "failed", finishedAt, totalDurationMs })
+    .set({ status: "error", finishedAt, totalDurationMs, terminalReason: "worker_lost" })
     .where(eq(agentRuns.id, job.runId));
 
   await db
@@ -93,9 +93,66 @@ async function finalizeDeadLetter(platform: PlatformContainer, job: ValidatedAge
     message: "Job exceeded maximum retry attempts",
     requestId: job.requestId,
     retryable: false,
+    terminalReason: "worker_lost",
   });
   await events.publish(job.runId, payload);
-  await events.setKey(`run:${job.runId}:status`, "failed", 3600);
+  await events.setKey(`run:${job.runId}:status`, "error", 3600);
+}
+
+const STALE_RUN_CHECK_INTERVAL_MS = 60_000;
+const STALE_RUN_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+
+async function staleRunReaper(platform: PlatformContainer): Promise<void> {
+  const { db, events } = platform;
+
+  while (!shuttingDown) {
+    await new Promise((r) => setTimeout(r, STALE_RUN_CHECK_INTERVAL_MS));
+
+    try {
+      const cutoff = new Date(Date.now() - STALE_RUN_THRESHOLD_MS);
+      const staleRuns = await db
+        .select({
+          id: agentRuns.id,
+          chatId: agentRuns.chatId,
+          sessionId: agentRuns.sessionId,
+        })
+        .from(agentRuns)
+        .where(
+          and(
+            eq(agentRuns.status, "running"),
+            lt(agentRuns.lastHeartbeatAt, cutoff),
+          ),
+        )
+        .limit(10);
+
+      for (const run of staleRuns) {
+        console.warn(`[worker] Finalizing stale run ${run.id} (no heartbeat for >${STALE_RUN_THRESHOLD_MS / 1000}s)`);
+
+        const finishedAt = new Date();
+        await db
+          .update(agentRuns)
+          .set({ status: "error", finishedAt, terminalReason: "worker_lost" })
+          .where(eq(agentRuns.id, run.id));
+
+        await db
+          .update(chats)
+          .set({ activeRunId: null })
+          .where(eq(chats.id, run.chatId));
+
+        const payload = JSON.stringify({
+          type: "error",
+          code: "STALE_RUN",
+          message: "Agent run lost (no heartbeat)",
+          retryable: false,
+          terminalReason: "worker_lost",
+        });
+        await events.publish(run.id, payload);
+        await events.setKey(`run:${run.id}:status`, "error", 3600);
+      }
+    } catch (err) {
+      console.error("[worker] Stale run reaper error:", err);
+    }
+  }
 }
 
 async function reclaimLoop(redis: Redis, platform: PlatformContainer): Promise<void> {
@@ -189,6 +246,7 @@ async function main() {
 
   void heartbeat(heartbeatRedis).catch((err) => console.error("Heartbeat failed", err));
   void reclaimLoop(redis, platform).catch((err) => console.error("Reclaim loop failed", err));
+  void staleRunReaper(platform).catch((err) => console.error("Stale run reaper failed", err));
   const stopRetentionLoop = startObservabilityRetentionLoop(platform);
 
   while (true) {

@@ -13,6 +13,7 @@ interface ChatPanelProps {
   activeRunId: string | null;
   initialMessages: Message[];
   modelId: string;
+  initialTerminalReason?: string | null;
   onFileChanges?: (files: LiveFileChange[]) => void;
   onViewFiles?: () => void;
   onTitleChange?: (title: string) => void;
@@ -29,6 +30,7 @@ export function ChatPanel({
   activeRunId,
   initialMessages,
   modelId,
+  initialTerminalReason,
   onFileChanges,
   onViewFiles,
   onTitleChange,
@@ -45,6 +47,7 @@ export function ChatPanel({
     modelId,
     activeRunId,
     initialMessages,
+    initialTerminalReason,
     onFileChanges,
     onTitleChange,
   });
@@ -95,6 +98,10 @@ export function ChatPanel({
 
   const askResolved = chat.askUserPrompt ?? pendingAsk;
 
+  const handleContinue = useCallback(() => {
+    void chat.sendMessage("Continue where you left off.");
+  }, [chat.sendMessage]);
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto px-(--of-space-md) py-(--of-space-xl)">
@@ -108,6 +115,9 @@ export function ChatPanel({
             onAskUserResponse={handleAskUserResponse}
             onViewFiles={onViewFiles}
             error={chat.error}
+            terminalReason={chat.terminalReason}
+            stepLimitReached={chat.stepLimitReached}
+            onContinue={handleContinue}
           />
           <div ref={messagesEndRef} />
         </div>

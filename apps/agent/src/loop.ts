@@ -3,7 +3,7 @@ import type { ObservabilityRecorder } from "./observability";
 
 export interface AgentTool {
   definition: ToolDefinition;
-  execute: (input: unknown, toolCallId?: string) => Promise<unknown>;
+  execute: (input: unknown, toolCallId?: string, options?: { signal?: AbortSignal }) => Promise<unknown>;
 }
 
 export interface AgentStep {
@@ -21,16 +21,64 @@ export interface AgentStep {
   usage: { inputTokens: number; outputTokens: number; cacheCreationInputTokens?: number; cacheReadInputTokens?: number };
 }
 
+export type LoopTerminationReason = "end_turn" | "step_limit" | "empty_response" | "abort" | "max_tokens";
+
 export interface AgentLoopResult {
   text: string;
   messages: LLMMessage[];
   totalUsage: { inputTokens: number; outputTokens: number; cacheCreationInputTokens?: number; cacheReadInputTokens?: number };
   steps: number;
   hitStepLimit: boolean;
+  terminationReason: LoopTerminationReason;
 }
 
 const COMPACTION_CHAR_THRESHOLD = 2000;
 const COMPACTION_STALE_STEPS = 2;
+const MAX_EMPTY_RETRIES = 2;
+
+const LLM_MAX_RETRIES = 3;
+const LLM_RETRY_BACKOFF = [1000, 4000, 16000];
+
+function isTransientLlmError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const msg = err.message.toLowerCase();
+  return (
+    msg.includes("429") ||
+    msg.includes("rate limit") ||
+    msg.includes("overloaded") ||
+    msg.includes("500") ||
+    msg.includes("502") ||
+    msg.includes("503") ||
+    msg.includes("529") ||
+    msg.includes("network") ||
+    msg.includes("econnreset") ||
+    msg.includes("timeout")
+  );
+}
+
+async function chatWithRetry(
+  provider: LLMProvider,
+  chatParams: Parameters<LLMProvider["chat"]>[0],
+): Promise<LLMResponse> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < LLM_MAX_RETRIES; attempt++) {
+    try {
+      return await provider.chat(chatParams);
+    } catch (err) {
+      lastError = err;
+      const errMsg = err instanceof Error ? err.message : String(err);
+      const isRetryable = isTransientLlmError(err);
+
+      if (!isRetryable || attempt === LLM_MAX_RETRIES - 1) {
+        throw err;
+      }
+
+      console.warn(`[agent-loop] LLM call failed (attempt ${attempt + 1}/${LLM_MAX_RETRIES}), retrying in ${LLM_RETRY_BACKOFF[attempt]}ms: ${errMsg}`);
+      await new Promise((r) => setTimeout(r, LLM_RETRY_BACKOFF[attempt]));
+    }
+  }
+  throw lastError;
+}
 
 /**
  * Replace large tool results from older steps with compact pointers.
@@ -119,9 +167,12 @@ export async function agentLoop(params: {
   let totalCacheRead = 0;
   let accumulatedText = "";
   let steps = 0;
+  let terminationReason: LoopTerminationReason = "step_limit";
+  let emptyRetries = 0;
 
   while (steps < maxSteps) {
     if (shouldAbort && (await shouldAbort())) {
+      terminationReason = "abort";
       break;
     }
 
@@ -137,7 +188,7 @@ export async function agentLoop(params: {
     });
     let response: LLMResponse;
     try {
-      response = await provider.chat({
+      response = await chatWithRetry(provider, {
         model,
         system,
         messages: allMessages,
@@ -171,6 +222,11 @@ export async function agentLoop(params: {
 
     const textBlocks = response.content.filter((b) => b.type === "text");
     const toolUseBlocks = response.content.filter((b) => b.type === "tool_use");
+
+    if (response.stopReason === "tool_use" && toolUseBlocks.length === 0) {
+      console.warn("[agent-loop] stopReason=tool_use but no tool blocks found, treating as empty response");
+    }
+
     const stepText = textBlocks.map((b) => b.text ?? "").join("");
     accumulatedText += stepText;
 
@@ -180,6 +236,29 @@ export async function agentLoop(params: {
     });
 
     if (toolUseBlocks.length === 0) {
+      const hasText = textBlocks.some((b) => (b.text ?? "").trim().length > 0);
+
+      if (hasText || response.stopReason === "max_tokens") {
+        if (onStep) {
+          await onStep({
+            text: stepText,
+            toolCalls: [],
+            toolResults: [],
+            usage: response.usage,
+          });
+        }
+        terminationReason = response.stopReason === "max_tokens" ? "max_tokens" : "end_turn";
+        break;
+      }
+
+      if (emptyRetries < MAX_EMPTY_RETRIES) {
+        emptyRetries++;
+        console.warn(`[agent-loop] Empty response (attempt ${emptyRetries}/${MAX_EMPTY_RETRIES}), retrying...`);
+        onToken?.("");
+        allMessages.pop();
+        continue;
+      }
+
       if (onStep) {
         await onStep({
           text: stepText,
@@ -188,6 +267,7 @@ export async function agentLoop(params: {
           usage: response.usage,
         });
       }
+      terminationReason = "empty_response";
       break;
     }
 
@@ -241,7 +321,7 @@ export async function agentLoop(params: {
       }
 
       try {
-        const output = await tool.execute(input, toolCallId);
+        const output = await tool.execute(input, toolCallId, { signal });
         const endedAt = new Date();
         const durationMs = Math.max(0, endedAt.getTime() - startedAt.getTime());
         stepToolCalls[stepToolCalls.length - 1] = {
@@ -268,6 +348,25 @@ export async function agentLoop(params: {
           content: serialized,
         });
       } catch (err) {
+        if (signal?.aborted) {
+          const endedAt = new Date();
+          const durationMs = Math.max(0, endedAt.getTime() - startedAt.getTime());
+          stepToolCalls[stepToolCalls.length - 1] = {
+            ...stepToolCalls[stepToolCalls.length - 1],
+            startedAt,
+            endedAt,
+            durationMs,
+            status: "error",
+          };
+          stepToolResults.push({ toolCallId, output: { error: "interrupted", interrupted: true } });
+          resultBlocks.push({
+            type: "tool_result",
+            tool_use_id: toolCallId,
+            content: JSON.stringify({ error: "Tool execution interrupted" }),
+            is_error: true,
+          });
+          break;
+        }
         const errorMsg = err instanceof Error ? err.message : String(err);
         const errorResult = { error: errorMsg };
         const endedAt = new Date();
@@ -325,5 +424,6 @@ export async function agentLoop(params: {
     },
     steps,
     hitStepLimit: steps >= maxSteps,
+    terminationReason,
   };
 }

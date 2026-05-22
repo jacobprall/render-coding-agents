@@ -161,7 +161,7 @@ export {
   InvalidRunTransitionError,
   runStateMachine,
 } from "./state-machine";
-export type { AgentRunStatus, AgentRunEvent } from "./state-machine";
+export type { AgentRunStatus, AgentRunEvent, TerminalReason } from "./state-machine";
 
 // Composition root
 export { createPlatform, createPlatformFromInstances } from "./container";

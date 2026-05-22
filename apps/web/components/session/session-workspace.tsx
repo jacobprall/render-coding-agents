@@ -47,6 +47,8 @@ interface SessionWorkspaceProps {
   session: SessionInfo;
   initialModelId?: string | null;
   activeRunId: string | null;
+  terminalReason?: string | null;
+  terminalStatus?: string | null;
   initialMessages: {
     id: string;
     role: "user" | "assistant";
@@ -66,6 +68,7 @@ export function SessionWorkspace({
   session,
   initialModelId,
   activeRunId,
+  terminalReason,
   initialMessages,
 }: SessionWorkspaceProps) {
   const [activeView, setActiveView] = useState<ViewTab>("chat");
@@ -153,6 +156,7 @@ export function SessionWorkspace({
             sessionId={session.id}
             activeRunId={activeRunId}
             initialMessages={initialMessages as Message[]}
+            initialTerminalReason={terminalReason}
             modelId={modelId}
             onFileChanges={handleFileChanges}
             onViewFiles={handleViewFiles}

@@ -9,7 +9,7 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import Redis from "ioredis";
 import { eq, and, desc, sql } from "drizzle-orm";
-import { sessions, chats, prEvents } from "@coding-agents/db";
+import { agentRuns, sessions, chats, prEvents } from "@coding-agents/db";
 import {
   readRunEventHistoryDetailed,
   readRunEventEntriesAfterId,
@@ -191,8 +191,22 @@ streamRoutes.get("/sessions/:id", async (c) => {
     if (runStatus === "completed" || runStatus === "failed" || runStatus === "aborted") {
       const syntheticType =
         runStatus === "completed" ? "done" : runStatus === "aborted" ? "aborted" : "error";
+
+      let terminalReason: string | null = null;
+      try {
+        const [runRow] = await db
+          .select({ terminalReason: agentRuns.terminalReason })
+          .from(agentRuns)
+          .where(eq(agentRuns.id, runId))
+          .limit(1);
+        terminalReason = runRow?.terminalReason ?? null;
+      } catch { /* best-effort */ }
+
       syntheticTerminal = JSON.stringify({
-        type: syntheticType, message: "Run already finished", synthetic: true,
+        type: syntheticType,
+        message: "Run already finished",
+        synthetic: true,
+        ...(terminalReason ? { terminalReason } : {}),
       });
     }
   }

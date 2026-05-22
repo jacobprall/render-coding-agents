@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { getSession } from "@/lib/auth/session";
 import { redirect, notFound } from "next/navigation";
 import { getDb } from "@/lib/db";
-import { sessions, chats, chatMessages, userPreferences } from "@coding-agents/db";
+import { sessions, chats, chatMessages, userPreferences, agentRuns } from "@coding-agents/db";
 import { eq, and, desc } from "drizzle-orm";
 import { SessionWorkspace } from "@/components/session/session-workspace";
 import { DEFAULT_MODEL_ID } from "@/lib/model-defaults";
@@ -82,6 +82,19 @@ export default async function SessionDetailPage({
     prefsRow?.data?.defaultModelId?.trim() ||
     DEFAULT_MODEL_ID;
 
+  const latestRun = chatRow
+    ? await db
+        .select({
+          status: agentRuns.status,
+          terminalReason: agentRuns.terminalReason,
+        })
+        .from(agentRuns)
+        .where(eq(agentRuns.chatId, chatRow.id))
+        .orderBy(desc(agentRuns.createdAt))
+        .limit(1)
+        .then((r) => r[0])
+    : undefined;
+
   const messages = chatRow
     ? await db
         .select({
@@ -112,6 +125,8 @@ export default async function SessionDetailPage({
         linesRemoved: sessionRow.linesRemoved,
       }}
       activeRunId={chatRow?.activeRunId ?? null}
+      terminalReason={latestRun?.terminalReason ?? null}
+      terminalStatus={latestRun?.status ?? null}
       initialMessages={messages.map((m) => ({
         id: m.id,
         role: m.role as "user" | "assistant",

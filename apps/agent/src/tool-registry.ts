@@ -89,9 +89,9 @@ export function toolConfigsToAgentTools(
         description: cfg.description,
         input_schema: zodToJsonSchema(cfg.inputSchema),
       },
-      execute: (input, toolCallId) => {
+      execute: (input, toolCallId, options) => {
         const parsed = cfg.inputSchema.parse(input);
-        return cfg.execute(parsed, { context, toolCallId });
+        return cfg.execute(parsed, { context, toolCallId, abortSignal: options?.signal });
       },
     });
   }

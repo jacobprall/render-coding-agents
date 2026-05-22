@@ -32,6 +32,7 @@ interface UseAgentChatOptions {
   modelId: string;
   activeRunId?: string | null;
   initialMessages?: Message[];
+  initialTerminalReason?: string | null;
   onFileChanges?: (files: LiveFileChange[]) => void;
   onTitleChange?: (title: string) => void;
 }
@@ -44,6 +45,8 @@ export interface UseAgentChatReturn {
   liveFileChanges: LiveFileChange[];
   askUserPrompt: AskUserPrompt | null;
   activeRunId: string | null;
+  terminalReason: string | null;
+  stepLimitReached: boolean;
   sendMessage: (content: string) => Promise<void>;
   submitAskUserReply: (answer: string) => Promise<void>;
   stopStreaming: () => Promise<void>;
@@ -57,13 +60,15 @@ export function useAgentChat({
   modelId,
   activeRunId: externalRunId,
   initialMessages = [],
+  initialTerminalReason = null,
   onFileChanges,
   onTitleChange,
 }: UseAgentChatOptions): UseAgentChatReturn {
   const [state, dispatch] = useReducer(
     chatReducer,
-    initialMessages,
-    initialChatState,
+    { initialMessages, initialTerminalReason },
+    ({ initialMessages: msgs, initialTerminalReason: reason }) =>
+      initialChatState(msgs, { terminalReason: reason }),
   );
 
   const seenIds = useRef(new Set<string>());
@@ -273,7 +278,15 @@ export function useAgentChat({
     } catch {
       // best effort
     }
-    dispatch({ type: "FINISH_STREAMING" });
+    // Don't dispatch FINISH_STREAMING immediately — let the SSE terminal event
+    // (aborted with terminalReason: "stopped") drive the flush.
+    // Safety timeout in case the terminal event never arrives:
+    const safetyTimeout = setTimeout(() => {
+      dispatch({ type: "FINISH_STREAMING" });
+    }, 10_000);
+    // Store timeout for cleanup
+    if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    retryTimerRef.current = safetyTimeout;
   }, [sessionId]);
 
   useEffect(() => {
@@ -290,6 +303,8 @@ export function useAgentChat({
     liveFileChanges: state.liveFileChanges,
     askUserPrompt: state.askUserPrompt,
     activeRunId: state.activeRunId,
+    terminalReason: state.terminalReason,
+    stepLimitReached: state.stepLimitReached,
     sendMessage,
     submitAskUserReply,
     stopStreaming,

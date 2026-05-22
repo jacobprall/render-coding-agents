@@ -17,6 +17,20 @@ export type AgentRunStatus =
   | "failed"    // unrecoverable runtime error
   | "error";    // infrastructure error (queue dead-letter, timeout)
 
+export type TerminalReason =
+  | "end_turn"
+  | "step_limit"
+  | "stopped"
+  | "timeout"
+  | "coalesced"
+  | "worker_lost"
+  | "empty_response"
+  | "provider_transient"
+  | "provider_fatal"
+  | "tool_fatal"
+  | "internal"
+  | "max_tokens";
+
 /** Lifecycle events that drive status transitions */
 export type AgentRunEvent =
   | "run.started"    // worker claimed the job

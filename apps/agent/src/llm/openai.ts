@@ -210,6 +210,10 @@ async function parseSSEStream(
     reader.releaseLock();
   }
 
+  if (finishReason === "length") {
+    console.warn("[openai] Response truncated: max_tokens (finish_reason=length)");
+  }
+
   const content: ContentBlock[] = [];
 
   if (text) {

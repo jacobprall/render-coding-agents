@@ -10,6 +10,8 @@ export const STREAM_EVENT = {
   TASK_ERROR: "task_error",
   NO_ACTIVE_RUN: "no_active_run",
   SPEC_UPDATE: "spec_update",
+  HEARTBEAT: "heartbeat",
+  STEP_PERSISTED: "step_persisted",
 } as const;
 
 export type StreamEventType = (typeof STREAM_EVENT)[keyof typeof STREAM_EVENT];

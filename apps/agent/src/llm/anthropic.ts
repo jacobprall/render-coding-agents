@@ -275,6 +275,10 @@ async function parseSSEStream(
     reader.releaseLock();
   }
 
+  if (stopReason === "max_tokens") {
+    console.warn("[anthropic] Response truncated: max_tokens reached");
+  }
+
   const content: ContentBlock[] = contentBlocks.map((b) => {
     switch (b.type) {
       case "text":

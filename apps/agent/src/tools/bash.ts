@@ -17,7 +17,7 @@ export function bashTool() {
     description:
       "Execute a bash command in the session workspace (repo root). Each invocation starts in the same working directory — `cd` does not persist between calls. Use relative paths. Do not use this for `git push`, `git fetch`, or `git pull` — use the git tool for those so forge authentication is applied.",
     inputSchema: bashInputSchema,
-    execute: async ({ command, timeoutMs }, { context }) => {
+    execute: async ({ command, timeoutMs }, execOptions) => {
       if (bashInvokesRemoteGit(command)) {
         return {
           stdout: "",
@@ -27,7 +27,10 @@ export function bashTool() {
           timedOut: false,
         };
       }
-      const { adapter, sessionId } = getSandboxContext(context);
+      if (execOptions.abortSignal?.aborted) {
+        return { stdout: "", stderr: "Execution interrupted", exitCode: 130, timedOut: false };
+      }
+      const { adapter, sessionId } = getSandboxContext(execOptions.context);
       const result = await adapter.exec(sessionId, command, timeoutMs);
       const stdout = truncateLargeString(result.stdout, MAX_BASH_STREAM_CHARS);
       const stderr = truncateLargeString(result.stderr, MAX_BASH_STREAM_CHARS);

@@ -31,18 +31,12 @@ export async function publishRunEvent(
   payloadJson: string,
 ): Promise<void> {
   const key = runEventStreamKey(runId);
-  let streamId: string | null = null;
-  try {
-    streamId = await redis.xadd(key, "MAXLEN", "~", STREAM_MAXLEN, "*", STREAM_FIELD, payloadJson);
-  } catch (err) {
-    console.warn("[run-stream] XADD failed; skipping PUBLISH", { runId });
-    return;
-  }
+  const streamId = await redis.xadd(key, "MAXLEN", "~", STREAM_MAXLEN, "*", STREAM_FIELD, payloadJson);
   try {
     const pubPayload = JSON.stringify({ _sid: streamId, ...JSON.parse(payloadJson) });
     await redis.publish(`run:${runId}`, pubPayload);
   } catch (err) {
-    console.error("[run-stream] PUBLISH failed", { runId });
+    console.error("[run-stream] PUBLISH failed (XADD succeeded)", { runId, streamId, err });
   }
 }
 

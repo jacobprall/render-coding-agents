@@ -176,6 +176,27 @@ export class ObservabilityRecorder {
     this.endEvent(handle, status);
   }
 
+  recordTerminalReason(
+    reason: string,
+    metadata: JsonLike = {},
+    parentEventId?: string,
+  ): void {
+    console.info("[observability] run_terminated", {
+      runId: this.runId,
+      sessionId: this.sessionId,
+      terminalReason: reason,
+      ...metadata,
+    });
+
+    const handle = this.startEvent("system", {
+      terminalReason: reason,
+      ...metadata,
+    }, parentEventId);
+    this.endEvent(handle, reason === "end_turn" ? "success" : "error", {
+      terminalReason: reason,
+    });
+  }
+
   async close(): Promise<void> {
     if (this.flushTimer) {
       clearTimeout(this.flushTimer);
