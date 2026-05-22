@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { MessageCircle, LogOut, Moon, Sun } from "lucide-react";
+import { Activity, MessageCircle, LogOut, Moon, Sun } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { useTheme } from "next-themes";
 import {
@@ -27,6 +27,10 @@ export function IconRail({ user, onSessionsClick }: IconRailProps) {
   const sessionsActive =
     pathname === "/sessions" || pathname.startsWith("/sessions/");
 
+  const observabilityActive =
+    pathname === "/observability" ||
+    pathname.startsWith("/observability/");
+
   return (
     <TooltipProvider delayDuration={0}>
       <aside className="flex h-screen w-12 flex-col items-center border-r border-border bg-card py-3">
@@ -46,6 +50,22 @@ export function IconRail({ user, onSessionsClick }: IconRailProps) {
               </button>
             </TooltipTrigger>
             <TooltipContent side="right">Sessions</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Link
+                href="/observability"
+                className={`flex h-9 w-9 items-center justify-center transition-colors ${
+                  observabilityActive
+                    ? "bg-primary/10 text-primary"
+                    : "text-foreground hover:bg-muted hover:text-muted-foreground"
+                }`}
+              >
+                <Activity className="h-[18px] w-[18px]" />
+              </Link>
+            </TooltipTrigger>
+            <TooltipContent side="right">Observability</TooltipContent>
           </Tooltip>
         </nav>
 

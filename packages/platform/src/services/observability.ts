@@ -1,8 +1,10 @@
 import { and, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 import {
   agentEvents,
+  agentRuns,
   eventSeries,
   sessions,
+  users,
   type NewAgentEvent,
   type ObservabilityEventStatus,
   type ObservabilityEventType,
@@ -23,6 +25,28 @@ export interface EventQueryOptions {
   status?: ObservabilityEventStatus | ObservabilityEventStatus[];
   after?: Date;
   before?: Date;
+}
+
+export interface GlobalEventQueryOptions {
+  limit?: number;
+  cursor?: string;
+  type?: ObservabilityEventType | ObservabilityEventType[];
+  status?: ObservabilityEventStatus | ObservabilityEventStatus[];
+  sessionId?: string;
+  after?: Date;
+  before?: Date;
+}
+
+export interface GlobalEventRow {
+  id: string;
+  sessionId: string;
+  eventType: ObservabilityEventType;
+  status: ObservabilityEventStatus;
+  durationMs: number | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: Date;
+  userName: string | null;
+  trigger: string | null;
 }
 
 export interface UsageAggregateOptions {
@@ -160,6 +184,65 @@ export class ObservabilityService {
         estimatedCost: breakdown.reduce((sum, row) => sum + row.estimatedCost, 0),
       },
       breakdown,
+    };
+  }
+
+  async queryEvents(
+    auth: AuthContext,
+    opts: GlobalEventQueryOptions = {},
+  ): Promise<{ items: GlobalEventRow[]; nextCursor: string | null; total: number }> {
+    const limit = Math.min(Math.max(opts.limit ?? 50, 1), MAX_PAGE_SIZE);
+
+    const scopePredicate = auth.isAdmin
+      ? undefined
+      : eq(sessions.userId, auth.userId);
+
+    const predicates = [
+      opts.sessionId ? eq(agentEvents.sessionId, opts.sessionId) : undefined,
+      opts.after ? gte(agentEvents.createdAt, opts.after) : undefined,
+      opts.before ? lte(agentEvents.createdAt, opts.before) : undefined,
+      opts.cursor ? sql`${agentEvents.id} < ${opts.cursor}` : undefined,
+      this.buildTypePredicate(opts.type),
+      this.buildStatusPredicate(opts.status),
+      scopePredicate,
+    ].filter(Boolean);
+
+    const whereClause = predicates.length > 0 ? and(...predicates) : undefined;
+
+    const [rows, countResult] = await Promise.all([
+      this.db
+        .select({
+          id: agentEvents.id,
+          sessionId: agentEvents.sessionId,
+          eventType: agentEvents.eventType,
+          status: agentEvents.status,
+          durationMs: agentEvents.durationMs,
+          metadata: agentEvents.metadata,
+          createdAt: agentEvents.createdAt,
+          userName: users.name,
+          trigger: agentRuns.trigger,
+        })
+        .from(agentEvents)
+        .innerJoin(sessions, eq(sessions.id, agentEvents.sessionId))
+        .leftJoin(users, eq(users.id, sessions.userId))
+        .leftJoin(agentRuns, eq(agentRuns.sessionId, agentEvents.sessionId))
+        .where(whereClause)
+        .orderBy(desc(agentEvents.createdAt), desc(agentEvents.id))
+        .limit(limit + 1),
+      this.db
+        .select({ count: sql<number>`count(*)` })
+        .from(agentEvents)
+        .innerJoin(sessions, eq(sessions.id, agentEvents.sessionId))
+        .where(whereClause),
+    ]);
+
+    const hasMore = rows.length > limit;
+    const items = hasMore ? rows.slice(0, limit) : rows;
+
+    return {
+      items: items as GlobalEventRow[],
+      nextCursor: hasMore ? items[items.length - 1]?.id ?? null : null,
+      total: Number(countResult[0]?.count ?? 0),
     };
   }
 

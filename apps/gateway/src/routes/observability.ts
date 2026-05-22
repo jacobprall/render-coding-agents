@@ -45,6 +45,36 @@ observabilityRoutes.get("/sessions/:id/events", async (c) => {
   return c.json(data);
 });
 
+const GlobalEventsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  cursor: z.string().optional(),
+  type: z.enum(OBSERVABILITY_EVENT_TYPES).optional(),
+  status: z.enum(OBSERVABILITY_EVENT_STATUSES).optional(),
+  sessionId: z.string().optional(),
+  after: z.string().datetime({ offset: true }).optional(),
+  before: z.string().datetime({ offset: true }).optional(),
+});
+
+observabilityRoutes.get("/events", async (c) => {
+  const auth = c.get("auth");
+  const parsed = GlobalEventsQuerySchema.safeParse(c.req.query());
+  if (!parsed.success) return c.json({ error: formatZodError(parsed.error) }, 400);
+
+  const { limit, cursor, type, status, sessionId, after, before } = parsed.data;
+
+  const data = await getPlatform().observability.queryEvents(auth, {
+    limit,
+    cursor,
+    type,
+    status,
+    sessionId,
+    after: after ? new Date(after) : undefined,
+    before: before ? new Date(before) : undefined,
+  });
+
+  return c.json(data);
+});
+
 observabilityRoutes.get("/usage", async (c) => {
   const auth = c.get("auth");
   const parsed = UsageQuerySchema.safeParse(c.req.query());

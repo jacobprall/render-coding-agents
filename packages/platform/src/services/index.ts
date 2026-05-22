@@ -66,6 +66,8 @@ export type {
 export { ObservabilityService } from "./observability";
 export type {
   EventQueryOptions,
+  GlobalEventQueryOptions,
+  GlobalEventRow,
   NewAgentEventInput,
   UsageAggregateOptions,
   UsageAggregateResult,

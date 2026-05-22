@@ -1,0 +1,2 @@
+- Automations
+- Match Cursor on Cloud agents?
