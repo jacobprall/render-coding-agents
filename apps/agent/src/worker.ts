@@ -29,7 +29,7 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
-const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT_RUNS ?? "5", 10);
+const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT_RUNS ?? "10", 10);
 const WORKER_ID = `worker-${process.pid}-${Date.now()}`;
 const HEARTBEAT_TTL = 30;
 const RECLAIM_INTERVAL_MS = 60_000;

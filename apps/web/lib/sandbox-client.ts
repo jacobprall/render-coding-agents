@@ -54,7 +54,10 @@ async function sandboxRequest<T>(
 
   if (!res.ok) {
     const text = await res.text().catch(() => "unknown error");
-    throw new Error(`Sandbox request failed (${res.status}): ${text}`);
+    const truncated = text.startsWith("<!") || text.length > 200
+      ? `${res.statusText || "error"} (HTML/non-JSON response)`
+      : text;
+    throw new Error(`Sandbox request failed (${res.status}): ${truncated}`);
   }
 
   return res.json() as Promise<T>;

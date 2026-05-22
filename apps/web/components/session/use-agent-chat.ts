@@ -202,6 +202,7 @@ export function useAgentChat({
       };
       dispatch({ type: "ADD_USER_MESSAGE", message: userMessage });
       dispatch({ type: "CLEAR_ERROR" });
+      dispatch({ type: "START_STREAMING" });
 
       try {
         const body: Record<string, unknown> = { content };
@@ -226,9 +227,6 @@ export function useAgentChat({
           return;
         }
 
-        dispatch({ type: "CLEAR_ERROR" });
-        startStreaming();
-
         if (data.isFirstMessage) {
           apiFetch<{ ok?: boolean; title?: string }>(
             `/api/sessions/${sessionId}/auto-title`,
@@ -243,7 +241,7 @@ export function useAgentChat({
         dispatch({ type: "SET_ERROR", error: "Network error -- failed to send message" });
       }
     },
-    [sessionId, modelId, isActive, startStreaming],
+    [sessionId, modelId, isActive],
   );
 
   const submitAskUserReply = useCallback(
