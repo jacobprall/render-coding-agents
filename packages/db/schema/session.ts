@@ -26,6 +26,20 @@ export type WorkflowMode = "full" | "standard" | "fast" | "yolo" | "autonomous";
 
 export type ForgeType = "github" | "gitlab";
 
+type SkillRef = { source: "builtin" | "user" | "repo"; slug: string };
+
+type SessionSummary = {
+  outcome: "completed" | "failed" | "aborted";
+  durationMs: number;
+  reposTouched: string[];
+  prUrls: string[];
+  linesAdded: number;
+  linesRemoved: number;
+  toolCallCount: number;
+  llmCostUsd: number;
+  completedAt: string;
+};
+
 export const sessions = pgTable(
   "sessions",
   {
@@ -86,6 +100,16 @@ export const sessions = pgTable(
     // CI fix tracking
     ciFixAttempts: integer("ci_fix_attempts").notNull().default(0),
     maxCiFixAttempts: integer("max_ci_fix_attempts").notNull().default(3),
+
+    // Workspace overrides
+    sessionEnvOverrides: jsonb("session_env_overrides")
+      .$type<Record<string, string>>()
+      .default({}),
+    sessionSkillsOverrides: jsonb("session_skills_overrides")
+      .$type<SkillRef[]>()
+      .default([]),
+    reposUsed: jsonb("repos_used").$type<string[]>().default([]),
+    summary: jsonb("summary").$type<SessionSummary>(),
 
     // Timestamps
     lastActivityAt: timestamp("last_activity_at"),

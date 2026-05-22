@@ -1,4 +1,5 @@
 import type { LLMProvider, LLMMessage, LLMResponse, ContentBlock, ToolDefinition } from "./llm";
+import { formatToolOutputForLlm } from "./lib/secret-redaction";
 import type { ObservabilityRecorder } from "./observability";
 
 export interface AgentTool {
@@ -141,6 +142,8 @@ export async function agentLoop(params: {
   onToken?: (token: string) => void;
   resultStore?: Map<string, string>;
   recorder?: ObservabilityRecorder;
+  /** __SECRET__-prefixed values redacted from tool output before LLM context. */
+  secrets?: Record<string, string>;
 }): Promise<AgentLoopResult> {
   const {
     provider,
@@ -156,6 +159,7 @@ export async function agentLoop(params: {
     onToken,
     resultStore = new Map<string, string>(),
     recorder,
+    secrets,
   } = params;
 
   const allMessages = [...initialMessages];
@@ -314,7 +318,7 @@ export async function agentLoop(params: {
         resultBlocks.push({
           type: "tool_result",
           tool_use_id: toolCallId,
-          content: JSON.stringify(errorResult),
+          content: formatToolOutputForLlm(errorResult, secrets),
           is_error: true,
         });
         continue;
@@ -340,7 +344,7 @@ export async function agentLoop(params: {
           toolCallId,
           durationMs,
         });
-        const serialized = typeof output === "string" ? output : JSON.stringify(output);
+        const serialized = formatToolOutputForLlm(output, secrets);
         stepToolResults.push({ toolCallId, output });
         resultBlocks.push({
           type: "tool_result",
@@ -362,7 +366,7 @@ export async function agentLoop(params: {
           resultBlocks.push({
             type: "tool_result",
             tool_use_id: toolCallId,
-            content: JSON.stringify({ error: "Tool execution interrupted" }),
+            content: formatToolOutputForLlm({ error: "Tool execution interrupted" }, secrets),
             is_error: true,
           });
           break;
@@ -392,7 +396,7 @@ export async function agentLoop(params: {
         resultBlocks.push({
           type: "tool_result",
           tool_use_id: toolCallId,
-          content: JSON.stringify(errorResult),
+          content: formatToolOutputForLlm(errorResult, secrets),
           is_error: true,
         });
       }

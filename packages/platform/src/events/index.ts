@@ -6,4 +6,5 @@ export {
   readRunEventPayloadsAfterId,
   readRunEventEntriesAfterId,
   askUserReplyQueueKey,
+  trimOldStreamEntries,
 } from "./run-stream";

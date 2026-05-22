@@ -28,4 +28,13 @@ export interface AgentJob {
     | "pr_merged"
     | "workflow_run"
     | "deploy_failure";
+  workspaceId?: string;
+  resolvedEnv?: Record<string, string>;
+  resolvedSecrets?: Record<string, string>;
+  repos?: Array<{
+    repoPath: string;
+    forgeType: "github" | "gitlab" | null;
+    defaultBranch: string;
+    isPrimary: boolean;
+  }>;
 }

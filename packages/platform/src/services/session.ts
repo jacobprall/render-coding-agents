@@ -35,6 +35,11 @@ import {
   getOrCreateChatId,
 } from "./session-agent-jobs";
 import { assertValidTransition, type AgentRunStatus } from "../state-machine";
+import {
+  resolveWorkspaceConfig,
+  mergeSessionOverrides,
+  decryptSecrets,
+} from "./workspace";
 
 // ---------------------------------------------------------------------------
 // Re-exports from sub-modules (preserves the public API surface)
@@ -57,6 +62,8 @@ export interface CreateSessionParams {
   firstMessage?: string;
   modelId?: string;
   projectId?: string;
+  sessionEnvOverrides?: Record<string, string>;
+  sessionSkillsOverrides?: Array<{ source: "builtin" | "user" | "repo"; slug: string }>;
 }
 
 export interface AttachRepoParams {
@@ -175,6 +182,50 @@ export class SessionService {
       }
     }
 
+    const sessionEnvOverrides = params.sessionEnvOverrides ?? {};
+    const sessionSkillsOverrides = params.sessionSkillsOverrides ?? [];
+    let reposUsed: string[] = [];
+    let workspaceJobPayload: Record<string, unknown> = {};
+
+    if (params.projectId) {
+      try {
+        const workspace = await resolveWorkspaceConfig(this.db, params.projectId);
+        const { mergedEnv, mergedSkills } = mergeSessionOverrides(
+          workspace,
+          sessionEnvOverrides,
+          sessionSkillsOverrides,
+        );
+
+        reposUsed = workspace.repos.map((r) => r.repoPath);
+
+        const decryptedSecrets = decryptSecrets(workspace.secretsConfig);
+        const resolvedSecrets: Record<string, string> = {
+          ...(decryptedSecrets.env ?? {}),
+        };
+        for (const [key, value] of Object.entries(decryptedSecrets.runtime ?? {})) {
+          resolvedSecrets[`__SECRET__${key}`] = value;
+        }
+
+        workspaceJobPayload = {
+          workspaceId: params.projectId,
+          resolvedEnv: mergedEnv,
+          resolvedSecrets,
+          resolvedSkills: mergedSkills,
+          repos: workspace.repos,
+        };
+      } catch (err) {
+        if (err instanceof Error) {
+          if (err.message.includes("Session env overrides cannot shadow")) {
+            throw new ValidationError(err.message);
+          }
+          if (err.message.startsWith("Project not found:")) {
+            throw new ValidationError("Project not found");
+          }
+        }
+        throw err;
+      }
+    }
+
     await this.db.insert(sessions).values({
       id: sessionId,
       userId: auth.userId,
@@ -191,6 +242,9 @@ export class SessionService {
       activeSkills: Array.isArray(activeSkills) && activeSkills.length > 0 ? activeSkills : null,
       projectConfig,
       projectContext,
+      sessionEnvOverrides: Object.keys(sessionEnvOverrides).length > 0 ? sessionEnvOverrides : {},
+      sessionSkillsOverrides: sessionSkillsOverrides.length > 0 ? sessionSkillsOverrides : [],
+      reposUsed,
     });
 
     const modelId = params.modelId?.trim() || preferredModel || DEFAULT_MODEL_ID;
@@ -230,7 +284,10 @@ export class SessionService {
         .set({ activeRunId: runId, updatedAt: new Date() })
         .where(eq(chats.id, chatId));
 
-      const activeSkillRefs = normalizeActiveSkills(null);
+      const activeSkillRefs =
+        (workspaceJobPayload.resolvedSkills as ActiveSkillRef[] | undefined)?.length
+          ? (workspaceJobPayload.resolvedSkills as ActiveSkillRef[])
+          : normalizeActiveSkills(null);
 
       await this.queue.ensureGroup();
       await this.queue.enqueue({
@@ -243,6 +300,7 @@ export class SessionService {
         modelId,
         requestId,
         maxRetries: 3,
+        ...workspaceJobPayload,
       });
     }
 

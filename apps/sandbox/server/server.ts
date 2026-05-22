@@ -13,7 +13,11 @@ import { handleGlob, handleGrep, handleRead, handleWrite } from "./handlers/file
 import { handleGit } from "./handlers/git-http";
 import { handleHealth } from "./handlers/health";
 import { handleRestore, handleSnapshot } from "./handlers/snapshots";
+import { handleMirrorEnsure, handleMirrorFetch, handleDiskStatus } from "./handlers/mirror";
+import { evictLRU } from "./services/disk-monitor";
 import { handleVerify } from "./handlers/verify";
+import { handleWorktreeCreate, handleWorktreeRemove } from "./handlers/worktree";
+import { startPeriodicSync } from "./services/mirror-manager";
 
 try {
   mkdirSync(SNAPSHOT_DIR, { recursive: true });
@@ -27,6 +31,20 @@ try {
 assertProductionSecretsOrExit();
 
 startSnapshotCleanupCron();
+
+setInterval(() => {
+  try {
+    const result = evictLRU();
+    if (result.evicted.length > 0) {
+      logger.info("periodic_eviction", result);
+    }
+  } catch (err) {
+    logger.warn("periodic_eviction_failed", {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+}, 30 * 60 * 1000);
+startPeriodicSync();
 
 function asRecordBody(parsed: unknown): Record<string, unknown> {
   if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
@@ -102,6 +120,25 @@ const server = Bun.serve({
         if (method === "POST" && path === "/verify") {
           const body = asRecordBody(await parseLimitedJsonBody(req, MAX_REQUEST_BODY_BYTES));
           return handleVerify(req, body);
+        }
+        if (method === "POST" && path === "/mirror/ensure") {
+          const body = asRecordBody(await parseLimitedJsonBody(req, MAX_REQUEST_BODY_BYTES));
+          return handleMirrorEnsure(req, body);
+        }
+        if (method === "POST" && path === "/mirror/fetch") {
+          const body = asRecordBody(await parseLimitedJsonBody(req, MAX_REQUEST_BODY_BYTES));
+          return handleMirrorFetch(req, body);
+        }
+        if (method === "GET" && path === "/disk/status") {
+          return handleDiskStatus();
+        }
+        if (method === "POST" && path === "/worktree/create") {
+          const body = asRecordBody(await parseLimitedJsonBody(req, MAX_REQUEST_BODY_BYTES));
+          return handleWorktreeCreate(req, body);
+        }
+        if (method === "POST" && path === "/worktree/remove") {
+          const body = asRecordBody(await parseLimitedJsonBody(req, MAX_REQUEST_BODY_BYTES));
+          return handleWorktreeRemove(req, body);
         }
 
         const snapshotMatch = path.match(/^\/snapshot\/([^/]+)$/);

@@ -158,7 +158,7 @@ export function buildToolSet(
     todo_write: todoWriteTool(),
     ask_user_question: askUserQuestionTool(job.runId, () => redis.duplicate(), publishFn),
     load_skill: loadSkillTool(),
-    get_tool_result: getToolResultTool(resultStore ?? new Map()),
+    get_tool_result: getToolResultTool(resultStore ?? new Map(), job.resolvedSecrets),
   };
 
   if (!hasRepo) {

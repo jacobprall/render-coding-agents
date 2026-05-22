@@ -1,6 +1,6 @@
 import type { ExecResult, VerifyCheck, VerifyResult } from "../../types";
 import { DEFAULT_VERIFY_TIMEOUT_MS } from "../lib/constants";
-import { getSessionWorkspace, getSessionId } from "../lib/path-security";
+import { getSessionGitCwd, getSessionId } from "../lib/path-security";
 import { parseShellCommand, runArgv, runCommand } from "../lib/process";
 
 export async function handleVerify(req: Request, body: Record<string, unknown>): Promise<Response> {
@@ -11,7 +11,7 @@ export async function handleVerify(req: Request, body: Record<string, unknown>):
       ? rawChecks
       : [];
 
-  const cwd = getSessionWorkspace(sessionId);
+  const cwd = getSessionGitCwd(sessionId);
   const results: VerifyResult[] = [];
 
   for (const check of checks) {

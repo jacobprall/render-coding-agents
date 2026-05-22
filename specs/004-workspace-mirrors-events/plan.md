@@ -1,113 +1,113 @@
-# Implementation Plan: Workspace Model, Repo Mirrors & Event Taxonomy
+# Implementation Plan: [FEATURE]
 
-**Branch**: `004-workspace-mirrors-events` | **Date**: 2026-05-21 | **Spec**: [spec.md](./spec.md)
+**Branch**: `[###-feature-name]` | **Date**: [DATE] | **Spec**: [link]
 
-**Input**: Feature specification from `specs/004-workspace-mirrors-events/spec.md`
+**Input**: Feature specification from `/specs/[###-feature-name]/spec.md`
+
+**Note**: This template is filled in by the `/speckit-plan` command. See `.specify/templates/plan-template.md` for the execution workflow.
 
 ## Summary
 
-Evolve the agent platform with three foundational changes: (1) promote projects to workspaces owning multi-repo config, secrets, and skills; (2) maintain persistent bare clone mirrors on the sandbox disk with git worktree-based session setup; (3) formalize the Redis Streams event bus with a namespaced event taxonomy. All changes extend the existing architecture — no new services are introduced.
+[Extract from feature spec: primary requirement + technical approach from research]
 
 ## Technical Context
 
-**Language/Version**: TypeScript (strict, ES2022), Bun 1.2.14
+<!--
+  ACTION REQUIRED: Replace the content in this section with the technical details
+  for the project. The structure here is presented in advisory capacity to guide
+  the iteration process.
+-->
 
-**Primary Dependencies**: Next.js 15, React 19, Hono 4, Drizzle ORM, ioredis, Zod 4, Turborepo
+**Language/Version**: [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION]
 
-**Storage**: PostgreSQL 16 via Drizzle ORM; Redis 7 (Streams + Pub/Sub)
+**Primary Dependencies**: [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION]
 
-**Testing**: Bun built-in test runner (`bun:test`); tests in `tests/` and `apps/gateway/tests/`
+**Storage**: [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
 
-**Target Platform**: Linux server (Render); Docker containers for sandbox
+**Testing**: [e.g., pytest, XCTest, cargo test or NEEDS CLARIFICATION]
 
-**Project Type**: Monorepo with 5 apps (`web`, `agent`, `gateway`, `sandbox`, `cli`) and 3 packages (`db`, `platform`, `shared`)
+**Target Platform**: [e.g., Linux server, iOS 15+, WASM or NEEDS CLARIFICATION]
 
-**Performance Goals**: Session setup <3s with mirrors (down from 10-30s); 5+ concurrent agent runs
+**Project Type**: [e.g., library/cli/web-service/mobile-app/compiler/desktop-app or NEEDS CLARIFICATION]
 
-**Constraints**: 20GB persistent disk on sandbox; Redis Streams MAXLEN ~2000 per run; GitHub API rate limits
+**Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps or NEEDS CLARIFICATION]
 
-**Scale/Scope**: Multi-workspace, multi-repo; initial target: dozens of workspaces, hundreds of repos
+**Constraints**: [domain-specific, e.g., <200ms p95, <100MB memory, offline-capable or NEEDS CLARIFICATION]
+
+**Scale/Scope**: [domain-specific, e.g., 10k users, 1M LOC, 50 screens or NEEDS CLARIFICATION]
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-| Principle | Status | Notes |
-|-----------|--------|-------|
-| I. Simplicity | PASS | Extends existing tables (`projects`) rather than adding new entities. No new services. env-var config. |
-| II. Observability | PASS | Event taxonomy directly improves observability. Structured events with correlation via session/run IDs. |
-| III. Modularity | PASS | Changes scoped to `packages/db` (schema), `packages/platform` (events, queue), `packages/shared` (types), `apps/agent` (clone logic), `apps/sandbox` (mirrors). No circular deps. |
-| IV. API-First | PASS | Workspace config exposed via gateway API. Event taxonomy consumable by web, gateway, CLI, MCP. |
-| V. Reliability | PASS | Fallback clone when mirror unavailable. LRU eviction prevents disk exhaustion. Event retention with TTL. |
-| VI. Security | PASS | Org admin authorization for workspace config. Three-tier secrets with redaction. Sandbox isolation maintained. |
-| VII. Testing Discipline | PASS | Mirror lifecycle, worktree creation, event emission are testable. Integration tests preferred for Redis/sandbox. |
-| VIII. OSS-Friendly | PASS | No proprietary dependencies added. Mirror/worktree strategy uses standard git. |
-| IX. Performance | PASS | Sub-second worktree setup. Streaming events maintained. Background worker processing unchanged. |
-
-All gates pass. No violations to justify.
+[Gates determined based on constitution file]
 
 ## Project Structure
 
 ### Documentation (this feature)
 
 ```text
-specs/004-workspace-mirrors-events/
-├── plan.md              # This file
-├── research.md          # Phase 0 output
-├── data-model.md        # Phase 1 output
-├── quickstart.md        # Phase 1 output
-├── contracts/           # Phase 1 output
-└── tasks.md             # Phase 2 output (/speckit-tasks command)
+specs/[###-feature]/
+├── plan.md              # This file (/speckit-plan command output)
+├── research.md          # Phase 0 output (/speckit-plan command)
+├── data-model.md        # Phase 1 output (/speckit-plan command)
+├── quickstart.md        # Phase 1 output (/speckit-plan command)
+├── contracts/           # Phase 1 output (/speckit-plan command)
+└── tasks.md             # Phase 2 output (/speckit-tasks command - NOT created by /speckit-plan)
 ```
 
 ### Source Code (repository root)
+<!--
+  ACTION REQUIRED: Replace the placeholder tree below with the concrete layout
+  for this feature. Delete unused options and expand the chosen structure with
+  real paths (e.g., apps/admin, packages/something). The delivered plan must
+  not include Option labels.
+-->
 
 ```text
-packages/db/schema/
-├── org.ts               # MODIFY: extend projects table (workspace fields)
-└── session.ts           # MODIFY: add session-level override fields
-
-packages/shared/lib/
-└── stream-types.ts      # MODIFY: replace ad-hoc event types with namespaced taxonomy
-
-packages/platform/src/
-├── events/
-│   └── run-stream.ts    # MODIFY: emit structured events with new taxonomy
+# [REMOVE IF UNUSED] Option 1: Single project (DEFAULT)
+src/
+├── models/
 ├── services/
-│   └── workspace.ts     # NEW: workspace config resolution, secret injection
-└── queue/
-    └── job-queue.ts      # MODIFY: add workspace fields to job payload
-
-apps/agent/src/
-├── agent.ts             # MODIFY: replace ensureRepoCloned with worktree-based setup
-├── worker.ts            # MODIFY: workspace-aware job params
-└── run-persistence.ts   # MODIFY: emit events using new taxonomy
-
-apps/sandbox/server/
-├── handlers/
-│   ├── mirror.ts        # NEW: bare clone mirror management endpoints
-│   └── worktree.ts      # NEW: worktree create/remove endpoints
-├── services/
-│   ├── mirror-manager.ts # NEW: mirror lifecycle (create, sync, evict)
-│   └── disk-monitor.ts  # NEW: disk usage monitoring + LRU eviction
+├── cli/
 └── lib/
-    └── constants.ts     # MODIFY: add mirror paths
-
-apps/web/
-├── app/api/sessions/[id]/stream/route.ts  # MODIFY: translate event format
-└── lib/db/migrations/
-    └── NNNN_workspace_model.sql            # NEW: schema migration
-
-apps/gateway/src/routes/
-└── workspace.ts         # NEW: workspace config CRUD endpoints
 
 tests/
-├── platform/
-│   └── workspace.test.ts    # NEW: workspace config resolution tests
-├── agent/
-│   └── worktree-setup.test.ts # NEW: worktree creation tests
-└── packages/sandbox/
-    └── mirror.test.ts       # NEW: mirror lifecycle tests
+├── contract/
+├── integration/
+└── unit/
+
+# [REMOVE IF UNUSED] Option 2: Web application (when "frontend" + "backend" detected)
+backend/
+├── src/
+│   ├── models/
+│   ├── services/
+│   └── api/
+└── tests/
+
+frontend/
+├── src/
+│   ├── components/
+│   ├── pages/
+│   └── services/
+└── tests/
+
+# [REMOVE IF UNUSED] Option 3: Mobile + API (when "iOS/Android" detected)
+api/
+└── [same as backend above]
+
+ios/ or android/
+└── [platform-specific structure: feature modules, UI flows, platform tests]
 ```
 
-**Structure Decision**: Monorepo structure preserved. Changes are distributed across existing packages following the established modularity boundaries. Two new sandbox handlers (`mirror.ts`, `worktree.ts`), one new platform service (`workspace.ts`), one new gateway route (`workspace.ts`), and one new sandbox service layer (`mirror-manager.ts`, `disk-monitor.ts`).
+**Structure Decision**: [Document the selected structure and reference the real
+directories captured above]
+
+## Complexity Tracking
+
+> **Fill ONLY if Constitution Check has violations that must be justified**
+
+| Violation | Why Needed | Simpler Alternative Rejected Because |
+|-----------|------------|-------------------------------------|
+| [e.g., 4th project] | [current need] | [why 3 projects insufficient] |
+| [e.g., Repository pattern] | [specific problem] | [why direct DB access insufficient] |

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { webhookDeliveries } from "@coding-agents/db";
+import { projectRepos, webhookDeliveries } from "@coding-agents/db";
 import { ValidationError, logger } from "@coding-agents/shared";
 import {
   githubWebhookToInboundEvent,
@@ -30,6 +30,48 @@ async function tryRecordDelivery(
     .returning({ id: webhookDeliveries.id });
 
   return result.length > 0;
+}
+
+const SANDBOX_URL = process.env.SANDBOX_URL ?? "http://localhost:3001";
+const SANDBOX_SECRET = process.env.SANDBOX_SHARED_SECRET;
+
+async function triggerMirrorFetch(workspaceId: string, repoPath: string): Promise<void> {
+  try {
+    await fetch(`${SANDBOX_URL}/mirror/fetch`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(SANDBOX_SECRET ? { Authorization: `Bearer ${SANDBOX_SECRET}` } : {}),
+      },
+      body: JSON.stringify({ workspaceId, repoPath }),
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (err) {
+    console.warn(`[webhook] Mirror fetch failed for ${workspaceId}/${repoPath}:`, err);
+  }
+}
+
+async function handlePushMirrorFetch(rawBody: string): Promise<void> {
+  let payload: Record<string, unknown>;
+  try {
+    payload = JSON.parse(rawBody) as Record<string, unknown>;
+  } catch {
+    return;
+  }
+
+  const repository = payload.repository as Record<string, unknown> | undefined;
+  const repoFullName = typeof repository?.full_name === "string" ? repository.full_name : null;
+  if (!repoFullName) return;
+
+  const db = getPlatform().db;
+  const linkedProjects = await db
+    .select({ projectId: projectRepos.projectId })
+    .from(projectRepos)
+    .where(eq(projectRepos.repoPath, repoFullName));
+
+  for (const { projectId } of linkedProjects) {
+    void triggerMirrorFetch(projectId, repoFullName);
+  }
 }
 
 export const webhookRoutes = new Hono();
@@ -74,6 +116,10 @@ webhookRoutes.post("/github", async (c) => {
 
   if (routeAction.type === "coalesce" || event_.kind === "pr_synchronize") {
     await platform.inboundDispatcher.dispatch(routeAction);
+  }
+
+  if (event === "push") {
+    void handlePushMirrorFetch(rawBody);
   }
 
   try {

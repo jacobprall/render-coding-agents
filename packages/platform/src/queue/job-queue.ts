@@ -40,6 +40,16 @@ export const AgentJobSchema = z.object({
   requestId: z.string().optional(),
   retryCount: z.number().int().min(0).optional(),
   maxRetries: z.number().int().min(0).max(50).optional(),
+  workspaceId: z.string().optional(),
+  resolvedEnv: z.record(z.string(), z.string()).optional(),
+  resolvedSecrets: z.record(z.string(), z.string()).optional(),
+  resolvedSkills: z.array(ActiveSkillRefSchema).optional(),
+  repos: z.array(z.object({
+    repoPath: z.string(),
+    forgeType: z.enum(["github", "gitlab"]).nullable(),
+    defaultBranch: z.string(),
+    isPrimary: z.boolean(),
+  })).optional(),
 });
 
 export type ValidatedAgentJob = z.infer<typeof AgentJobSchema>;

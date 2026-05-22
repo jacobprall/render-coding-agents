@@ -60,6 +60,7 @@ export {
   readRunEventEntriesAfterId,
   readRunEventPayloadsAfterId,
   runEventStreamKey,
+  trimOldStreamEntries,
 } from "./events/run-stream";
 
 // LLM API keys (encrypted storage + resolution)

@@ -21,4 +21,31 @@ export interface SandboxAdapter {
   cloneWorkspace(fromSessionId: string, toSessionId: string): Promise<void>;
   verify(sessionId: string, checks: VerifyCheck[]): Promise<VerifyResult[]>;
   cleanup(sessionId: string): Promise<void>;
+  ensureMirror(
+    sessionId: string,
+    workspaceId: string,
+    repoPath: string,
+    cloneUrl: string,
+  ): Promise<{ status: string; path: string; sizeBytes: number; created: boolean }>;
+  fetchMirror(
+    sessionId: string,
+    workspaceId: string,
+    repoPath: string,
+  ): Promise<{ status: string; durationMs: number; newCommits: number }>;
+  createWorktree(
+    sessionId: string,
+    workspaceId: string,
+    repoPath: string,
+    branchName: string,
+    baseBranch: string,
+  ): Promise<{ path: string; branch: string; durationMs: number }>;
+  removeWorktree(sessionId: string, repoPath: string): Promise<{ removed: boolean }>;
+  getDiskStatus(sessionId: string): Promise<{
+    totalBytes: number;
+    usedBytes: number;
+    mirrorBytes: number;
+    usagePercent: number;
+    mirrorCount: number;
+    worktreeCount: number;
+  }>;
 }

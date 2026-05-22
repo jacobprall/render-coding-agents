@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { formatToolOutputForLlm } from "../lib/secret-redaction";
 import { defineTool } from "./define-tool";
 
 const getToolResultInputSchema = z.object({
@@ -7,7 +8,10 @@ const getToolResultInputSchema = z.object({
     .describe("The tool_call_id of the result to retrieve"),
 });
 
-export function getToolResultTool(resultStore: Map<string, string>) {
+export function getToolResultTool(
+  resultStore: Map<string, string>,
+  secrets?: Record<string, string>,
+) {
   return defineTool({
     description:
       "Retrieve the full content of a previously compacted tool result. Use when you need to re-examine output from an earlier step.",
@@ -17,7 +21,7 @@ export function getToolResultTool(resultStore: Map<string, string>) {
       if (!stored) {
         return { error: `No stored result for tool_call_id "${tool_call_id}". It may not have been compacted or the ID is incorrect.` };
       }
-      return stored;
+      return formatToolOutputForLlm(stored, secrets);
     },
   });
 }

@@ -172,4 +172,62 @@ export class HttpSandboxAdapter implements SandboxAdapter {
       throw new Error(`Cleanup failed (${res.status}): ${text}`);
     }
   }
+
+  async ensureMirror(
+    sessionId: string,
+    workspaceId: string,
+    repoPath: string,
+    cloneUrl: string,
+  ): Promise<{ status: string; path: string; sizeBytes: number; created: boolean }> {
+    return this.request("/mirror/ensure", sessionId, { workspaceId, repoPath, cloneUrl });
+  }
+
+  async fetchMirror(
+    sessionId: string,
+    workspaceId: string,
+    repoPath: string,
+  ): Promise<{ status: string; durationMs: number; newCommits: number }> {
+    return this.request("/mirror/fetch", sessionId, { workspaceId, repoPath });
+  }
+
+  async createWorktree(
+    sessionId: string,
+    workspaceId: string,
+    repoPath: string,
+    branchName: string,
+    baseBranch: string,
+  ): Promise<{ path: string; branch: string; durationMs: number }> {
+    return this.request("/worktree/create", sessionId, {
+      workspaceId,
+      sessionId,
+      repoPath,
+      branchName,
+      baseBranch,
+    });
+  }
+
+  async removeWorktree(sessionId: string, repoPath: string): Promise<{ removed: boolean }> {
+    return this.request("/worktree/remove", sessionId, { sessionId, repoPath });
+  }
+
+  async getDiskStatus(sessionId: string): Promise<{
+    totalBytes: number;
+    usedBytes: number;
+    mirrorBytes: number;
+    usagePercent: number;
+    mirrorCount: number;
+    worktreeCount: number;
+  }> {
+    const res = await fetch(`${this.baseUrl}/disk/status`, {
+      method: "GET",
+      headers: {
+        "X-Session-Id": sessionId,
+        ...this.authHeaders,
+        ...this.sessionHeaders(sessionId),
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) throw new Error(`getDiskStatus failed: ${res.status}`);
+    return res.json();
+  }
 }

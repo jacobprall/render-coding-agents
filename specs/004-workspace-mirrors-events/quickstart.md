@@ -27,7 +27,7 @@ bun run dev
 
 ```bash
 # Set workspace environment variables and secrets
-curl -X PUT http://localhost:3002/api/v1/projects/{projectId}/workspace \
+curl -X PUT http://localhost:3002/api/workspace/projects/{projectId}/workspace \
   -H "X-Api-Key: $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -48,7 +48,7 @@ curl -X PUT http://localhost:3002/api/v1/projects/{projectId}/workspace \
 
 ```bash
 # Create a session — it inherits workspace config
-curl -X POST http://localhost:3002/api/v1/sessions \
+curl -X POST http://localhost:3002/api/sessions \
   -H "X-Api-Key: $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -61,7 +61,7 @@ curl -X POST http://localhost:3002/api/v1/sessions \
 ### 3. Test additive session overrides
 
 ```bash
-curl -X POST http://localhost:3002/api/v1/sessions \
+curl -X POST http://localhost:3002/api/sessions \
   -H "X-Api-Key: $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -78,14 +78,14 @@ curl -X POST http://localhost:3002/api/v1/sessions \
 ### 1. Check mirror status
 
 ```bash
-curl http://localhost:3002/api/v1/projects/{projectId}/mirrors \
+curl http://localhost:3002/api/workspace/projects/{projectId}/mirrors \
   -H "X-Api-Key: $API_KEY"
 ```
 
 ### 2. Trigger manual sync
 
 ```bash
-curl -X POST http://localhost:3002/api/v1/projects/{projectId}/mirrors/sync \
+curl -X POST http://localhost:3002/api/workspace/projects/{projectId}/mirrors/sync \
   -H "X-Api-Key: $API_KEY"
 ```
 
@@ -103,7 +103,7 @@ curl http://localhost:3001/disk/status \
 
 ```bash
 # SSE stream with V2 event format
-curl -N http://localhost:3002/api/v1/sessions/{sessionId}/stream \
+curl -N http://localhost:3002/api/stream/sessions/{sessionId} \
   -H "X-Api-Key: $API_KEY"
 ```
 

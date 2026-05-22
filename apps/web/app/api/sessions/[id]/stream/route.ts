@@ -6,6 +6,7 @@ import {
   readRunEventHistoryDetailed,
   readRunEventEntriesAfterId,
 } from "@coding-agents/platform";
+import { normalizeEvent, isTerminalEvent as isTerminalEventCheck } from "@coding-agents/shared";
 import { requireForgeAuth, getPlatform } from "@/lib/platform";
 import { getRedisUrl } from "@/lib/redis";
 
@@ -14,8 +15,22 @@ export const dynamic = "force-dynamic";
 
 const KEEPALIVE_MS = 25_000;
 
-function isTerminalEvent(type: string): boolean {
-  return type === "done" || type === "error" || type === "aborted";
+function checkTerminal(payload: string): boolean {
+  try {
+    const parsed = JSON.parse(payload);
+    return isTerminalEventCheck(parsed);
+  } catch {
+    return false;
+  }
+}
+
+function normalizePayload(payload: string): string {
+  try {
+    const parsed = JSON.parse(payload);
+    return JSON.stringify(normalizeEvent(parsed));
+  } catch {
+    return payload;
+  }
 }
 
 type MessageHandler = (message: string) => void;
@@ -183,12 +198,7 @@ export async function GET(
     : lastEventId;
 
   let syntheticTerminal: string | null = null;
-  const hasTerminal = historyEntries.some((e) => {
-    try {
-      const parsed = JSON.parse(e.payload) as { type?: string };
-      return parsed.type ? isTerminalEvent(parsed.type) : false;
-    } catch { return false; }
-  });
+  const hasTerminal = historyEntries.some((e) => checkTerminal(e.payload));
   if (!hasTerminal) {
     const runStatus = await cmd.get(`run:${runId}:status`).catch(() => null);
     if (runStatus === "completed" || runStatus === "failed" || runStatus === "aborted") {
@@ -221,19 +231,16 @@ export async function GET(
 
       for (const entry of historyEntries) {
         if (closed) { await cleanup(); return; }
-        write(entry.id, entry.payload);
-        try {
-          const parsed = JSON.parse(entry.payload) as { type?: string };
-          if (parsed.type && isTerminalEvent(parsed.type)) {
-            await cleanup();
-            controller.close();
-            return;
-          }
-        } catch { /* non-fatal */ }
+        write(entry.id, normalizePayload(entry.payload));
+        if (checkTerminal(entry.payload)) {
+          await cleanup();
+          controller.close();
+          return;
+        }
       }
 
       if (syntheticTerminal) {
-        write(undefined, syntheticTerminal);
+        write(undefined, normalizePayload(syntheticTerminal));
         await cleanup();
         controller.close();
         return;
@@ -243,15 +250,12 @@ export async function GET(
       for (const buffered of pubsubBuffer) {
         if (closed) { await cleanup(); return; }
         if (buffered.sid && lastHistoryId && buffered.sid <= lastHistoryId) continue;
-        write(buffered.sid ?? undefined, buffered.payload);
-        try {
-          const parsed = JSON.parse(buffered.payload) as { type?: string };
-          if (parsed.type && isTerminalEvent(parsed.type)) {
-            await cleanup();
-            controller.close();
-            return;
-          }
-        } catch { /* non-fatal */ }
+        write(buffered.sid ?? undefined, normalizePayload(buffered.payload));
+        if (checkTerminal(buffered.payload)) {
+          await cleanup();
+          controller.close();
+          return;
+        }
       }
       pubsubBuffer.length = 0;
 
@@ -262,16 +266,13 @@ export async function GET(
           const parsed = JSON.parse(message) as { _sid?: string };
           sid = parsed._sid ?? null;
         } catch { /* use null sid */ }
-        write(sid ?? undefined, message);
-        try {
-          const parsed = JSON.parse(message) as { type?: string };
-          if (parsed.type && isTerminalEvent(parsed.type)) {
-            clearInterval(keepAlive);
-            void cleanup().then(() => {
-              try { controller.close(); } catch { /* already closed */ }
-            });
-          }
-        } catch { /* non-fatal */ }
+        write(sid ?? undefined, normalizePayload(message));
+        if (checkTerminal(message)) {
+          clearInterval(keepAlive);
+          void cleanup().then(() => {
+            try { controller.close(); } catch { /* already closed */ }
+          });
+        }
       });
       await sub?.unsubscribe().catch(() => {});
       sub = liveSub;

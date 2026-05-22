@@ -1,7 +1,7 @@
 import type Redis from "ioredis";
 import { eq } from "drizzle-orm";
 import { agentRuns, chatMessages, sessions, prEvents, projects, projectRepos } from "@coding-agents/db";
-import { AppError } from "@coding-agents/shared";
+import { AppError, type SessionSummary } from "@coding-agents/shared";
 import { resolveLlmApiKeys, type ResolvedLlmKeys, type PlatformContainer, type PlatformDb, type EventBus } from "@coding-agents/platform";
 import type { SandboxAdapter } from "@coding-agents/sandbox";
 import type { ForgeAgentContext } from "./context/agent-context";
@@ -115,13 +115,19 @@ function buildSystemPromptForJob(job: AgentJob, isScratch = false): string {
   return appended ? `${base}\n\n${appended}` : base;
 }
 
+function repoNameFromPath(repoPath: string): string {
+  return repoPath.split("/").pop() ?? repoPath;
+}
+
 function buildWorkspaceContext(
   sessionRow: { repoPath: string | null; branch: string | null; baseBranch: string | null; userId?: string } | undefined,
   ctx: ForgeAgentContext,
+  options?: { workdir?: string; repos?: AgentJob["repos"] },
 ): string | null {
   if (!sessionRow) return null;
 
-  if (!sessionRow.repoPath) {
+  const repos = options?.repos;
+  if (!sessionRow.repoPath && !repos?.length) {
     const scratchDir = `/workspace/scratch/${sessionRow.userId ?? ctx.sessionId}`;
     return [
       "# Workspace",
@@ -132,16 +138,33 @@ function buildWorkspaceContext(
     ].join("\n");
   }
 
-  const workdir = `/workspace/${ctx.sessionId}`;
+  const workdir = options?.workdir ?? `/workspace/${ctx.sessionId}`;
+  const branch = sessionRow.branch || (repos?.length ? `agent/${ctx.sessionId}` : "main");
+  const baseBranch = sessionRow.baseBranch || "main";
 
-  const lines = [
-    "# Workspace",
-    "",
-    `- **Repository:** ${sessionRow.repoPath}`,
-    `- **Branch:** ${sessionRow.branch || "main"}`,
-    `- **Base branch:** ${sessionRow.baseBranch || "main"}`,
-    `- **Working directory:** \`${workdir}\` — the repo is cloned here. All bash and git commands execute in this directory automatically. Do NOT \`cd\` elsewhere; \`cd\` does not persist between commands.`,
-  ];
+  const lines = ["# Workspace", ""];
+
+  if (repos && repos.length > 0) {
+    lines.push("- **Mode:** Multi-repository workspace");
+    lines.push("- **Repositories:**");
+    for (const repo of repos) {
+      const name = repoNameFromPath(repo.repoPath);
+      const repoDir = `/workspace/${ctx.sessionId}/repos/${name}`;
+      lines.push(`  - \`${repo.repoPath}\`${repo.isPrimary ? " (primary)" : ""} — \`${repoDir}\``);
+    }
+    lines.push(
+      `- **Working directory:** \`${workdir}\` — primary repo. Bash and git commands run here by default.`,
+      "- To work in another repo, use a single command with \`git -C repos/{name} ...\` or \`cd repos/{name} && ...\`.",
+    );
+  } else {
+    lines.push(
+      `- **Repository:** ${sessionRow.repoPath}`,
+      `- **Working directory:** \`${workdir}\` — the repo is cloned here. All bash and git commands execute in this directory automatically. Do NOT \`cd\` elsewhere; \`cd\` does not persist between commands.`,
+    );
+  }
+
+  lines.push(`- **Branch:** ${branch}`);
+  lines.push(`- **Base branch:** ${baseBranch}`);
 
   if (ctx.repoOwner && ctx.repoName) {
     lines.push(`- **Owner:** ${ctx.repoOwner}`);
@@ -187,15 +210,19 @@ async function buildForgeContext(params: {
     .where(eq(sessions.id, job.sessionId))
     .limit(1);
 
-  const isScratch = !sessionRow?.repoPath;
+  const isScratch = !sessionRow?.repoPath && !job.repos?.length;
 
   const forge = await getForgeProviderForSession(db, {
     forgeType: sessionRow?.forgeType ?? "github",
     userId: sessionRow?.userId ?? job.userId,
   });
 
-  const repoPath = sessionRow?.repoPath ?? "";
-  const [repoOwner, repoName] = repoPath.split("/");
+  const primaryRepoPath =
+    job.repos?.find((r) => r.isPrimary)?.repoPath ??
+    job.repos?.[0]?.repoPath ??
+    sessionRow?.repoPath ??
+    "";
+  const [repoOwner, repoName] = primaryRepoPath.split("/");
 
   const forgeContext: ForgeAgentContext = {
     __brand: "ForgeAgentContext",
@@ -283,6 +310,7 @@ async function runTurn(params: {
   db: PlatformDb;
   adapter: SandboxAdapter;
   llmKeys: ResolvedLlmKeys;
+  workspaceSetup: { workdir: string; repoCount: number };
 }): Promise<{
   text: string;
   assistantParts: AssistantPart[];
@@ -291,8 +319,10 @@ async function runTurn(params: {
   hitStepLimit: boolean;
   terminationReason?: string;
   assistantMessageId?: string;
+  forgeContext: ForgeAgentContext;
+  sessionRow: SessionRowContext | undefined;
 }> {
-  const { job, redis, events, db, adapter, llmKeys, platform } = params;
+  const { job, redis, events, db, adapter, llmKeys, platform, workspaceSetup } = params;
   const { provider, modelId } = getModel(job.modelId, llmKeys);
   const thinkingParams = buildThinkingParams(job);
 
@@ -319,9 +349,12 @@ async function runTurn(params: {
 
   const { forgeContext, sessionRow } = await buildForgeContext({ job, db, events, adapter, assistantParts });
 
-  const isScratch = !sessionRow?.repoPath;
+  const isScratch = !sessionRow?.repoPath && !job.repos?.length;
   const basePrompt = buildSystemPromptForJob(job, isScratch);
-  const workspaceBlock = buildWorkspaceContext(sessionRow, forgeContext);
+  const workspaceBlock = buildWorkspaceContext(sessionRow, forgeContext, {
+    workdir: workspaceSetup.workdir,
+    repos: job.repos,
+  });
   let systemPrompt = workspaceBlock ? `${basePrompt}\n\n${workspaceBlock}` : basePrompt;
 
   const projectBlock = await buildProjectBlock(db, sessionRow?.projectId ?? null);
@@ -356,6 +389,7 @@ async function runTurn(params: {
       thinking: thinkingParams,
       resultStore,
       recorder,
+      secrets: job.resolvedSecrets,
       shouldAbort: async () => {
         if (await isAborted(events, job.runId)) {
           throw new AbortError(assistantParts);
@@ -419,6 +453,8 @@ async function runTurn(params: {
     hitStepLimit: result.hitStepLimit,
     terminationReason: result.terminationReason,
     assistantMessageId,
+    forgeContext,
+    sessionRow,
   };
 }
 
@@ -444,6 +480,24 @@ async function tryClone(
 ): Promise<{ exitCode: number; stderr: string }> {
   const result = await adapter.git(sessionId, args);
   return { exitCode: result.exitCode, stderr: result.stderr ?? "" };
+}
+
+async function scheduleBackgroundMirrorCreation(
+  adapter: SandboxAdapter,
+  job: AgentJob,
+  repoPath: string,
+  cloneUrl: string,
+): Promise<void> {
+  if (!job.workspaceId) return;
+  try {
+    const result = await adapter.ensureMirror(job.sessionId, job.workspaceId, repoPath, cloneUrl);
+    console.log(`[mirror] background ensureMirror for ${repoPath}: ${result.status}`);
+  } catch (err) {
+    console.warn(
+      `[mirror] background ensureMirror failed for ${repoPath}:`,
+      err instanceof Error ? err.message : err,
+    );
+  }
 }
 
 async function ensureRepoCloned(db: PlatformDb, job: AgentJob, adapter: SandboxAdapter): Promise<void> {
@@ -474,6 +528,7 @@ async function ensureRepoCloned(db: PlatformDb, job: AgentJob, adapter: SandboxA
   if (result.exitCode === 0) {
     console.log(`[clone] success for session ${job.sessionId}`);
     await adapter.git(job.sessionId, ["remote", "set-url", "origin", plainUrl]);
+    void scheduleBackgroundMirrorCreation(adapter, job, session.repoPath, authenticatedUrl);
     return;
   }
 
@@ -505,6 +560,348 @@ async function ensureRepoCloned(db: PlatformDb, job: AgentJob, adapter: SandboxA
 
   console.log(`[clone] success for session ${job.sessionId}`);
   await adapter.git(job.sessionId, ["remote", "set-url", "origin", plainUrl]);
+  void scheduleBackgroundMirrorCreation(adapter, job, session.repoPath, authenticatedUrl);
+}
+
+async function repoDirReady(adapter: SandboxAdapter, sessionId: string, repoName: string): Promise<boolean> {
+  const result = await adapter
+    .exec(sessionId, `test -e "repos/${repoName}/.git" && echo ready`)
+    .catch(() => ({ stdout: "", exitCode: 1 }));
+  return result.stdout.trim() === "ready";
+}
+
+async function cloneRepoIntoSubdir(params: {
+  adapter: SandboxAdapter;
+  db: PlatformDb;
+  job: AgentJob;
+  repoPath: string;
+  defaultBranch: string;
+  branchName: string;
+}): Promise<void> {
+  const { adapter, db, job, repoPath, defaultBranch, branchName } = params;
+  const repoName = repoNameFromPath(repoPath);
+  const cloneDir = `repos/${repoName}`;
+
+  const [session] = await db.select().from(sessions).where(eq(sessions.id, job.sessionId)).limit(1);
+  const forge = await getForgeProviderForSession(db, {
+    forgeType: session?.forgeType ?? "github",
+    userId: session?.userId ?? job.userId,
+  });
+  const [owner, repo] = repoPath.split("/");
+  if (!owner || !repo) return;
+
+  const authenticatedUrl = forge.git.authenticatedCloneUrl(owner, repo);
+  const plainUrl = forge.git.plainCloneUrl(owner, repo);
+
+  console.log(`[clone] cloning ${repoPath} into ${cloneDir} for session ${job.sessionId}`);
+
+  const shallowResult = await adapter.exec(
+    job.sessionId,
+    `mkdir -p "${cloneDir}" && git clone --depth 50 --branch "${defaultBranch}" "${authenticatedUrl}" "${cloneDir}"`,
+  );
+  if (shallowResult.exitCode !== 0) {
+    const fullResult = await adapter.exec(
+      job.sessionId,
+      `rm -rf "${cloneDir}" && mkdir -p "${cloneDir}" && git clone --branch "${defaultBranch}" "${authenticatedUrl}" "${cloneDir}"`,
+    );
+    if (fullResult.exitCode !== 0) {
+      throw new CloneError(`Clone failed for ${repoPath}: ${fullResult.stderr}`);
+    }
+  }
+
+  await adapter.exec(job.sessionId, `git -C "${cloneDir}" remote set-url origin "${plainUrl}"`);
+  const checkout = await adapter.exec(job.sessionId, `git -C "${cloneDir}" checkout -b "${branchName}"`);
+  if (checkout.exitCode !== 0) {
+    throw new CloneError(`Branch creation failed for ${repoPath}: ${checkout.stderr}`);
+  }
+
+  void scheduleBackgroundMirrorCreation(adapter, job, repoPath, authenticatedUrl);
+}
+
+async function emitDegradedCloneEvent(
+  events: EventBus,
+  job: AgentJob,
+  repoPath: string,
+  reason: string,
+): Promise<void> {
+  await publishEvent(
+    events,
+    job.runId,
+    {
+      type: "heartbeat",
+      activity: `Mirror unavailable for ${repoPath}, fell back to clone (${reason})`,
+      timestamp: new Date().toISOString(),
+    },
+    job.requestId,
+  );
+}
+
+async function setupWorkspace(params: {
+  job: AgentJob;
+  db: PlatformDb;
+  adapter: SandboxAdapter;
+  events: EventBus;
+}): Promise<{ workdir: string; repoCount: number }> {
+  const { job, db, adapter, events } = params;
+  const sessionId = job.sessionId;
+
+  if (!job.repos?.length) {
+    await ensureRepoCloned(db, job, adapter);
+    return { workdir: `/workspace/${sessionId}`, repoCount: 1 };
+  }
+
+  const repos = job.repos;
+  const workspaceId = job.workspaceId ?? sessionId;
+  const branchName = (await db.select({ branch: sessions.branch }).from(sessions).where(eq(sessions.id, sessionId)).limit(1))[0]
+    ?.branch ?? `agent/${sessionId}`;
+
+  const allReady = await Promise.all(
+    repos.map((repo) => repoDirReady(adapter, sessionId, repoNameFromPath(repo.repoPath))),
+  );
+  if (!allReady.every(Boolean)) {
+    for (const repo of repos) {
+      const repoName = repoNameFromPath(repo.repoPath);
+      if (await repoDirReady(adapter, sessionId, repoName)) continue;
+
+      const [owner, name] = repo.repoPath.split("/");
+      if (!owner || !name) continue;
+
+      const forge = await getForgeProviderForSession(db, {
+        forgeType: repo.forgeType ?? "github",
+        userId: job.userId,
+      });
+      const cloneUrl = forge.git.authenticatedCloneUrl(owner, name);
+
+      try {
+        const mirror = await adapter.ensureMirror(sessionId, workspaceId, repo.repoPath, cloneUrl);
+        if (mirror.status === "error") {
+          throw new Error("mirror unavailable");
+        }
+        await adapter.createWorktree(sessionId, workspaceId, repo.repoPath, branchName, repo.defaultBranch);
+        console.log(`[worktree] created for ${repo.repoPath} in session ${sessionId}`);
+      } catch (worktreeErr) {
+        const reason = worktreeErr instanceof Error ? worktreeErr.message : "worktree failed";
+        console.warn(`[worktree] fallback to clone for ${repo.repoPath}:`, reason);
+        try {
+          await cloneRepoIntoSubdir({
+            adapter,
+            db,
+            job,
+            repoPath: repo.repoPath,
+            defaultBranch: repo.defaultBranch,
+            branchName,
+          });
+          await emitDegradedCloneEvent(events, job, repo.repoPath, reason);
+        } catch (cloneErr) {
+          console.error(`[agent] Failed to set up repo ${repo.repoPath}:`, cloneErr);
+        }
+      }
+    }
+  }
+
+  const primary = repos.find((r) => r.isPrimary) ?? repos[0];
+  const primaryName = primary ? repoNameFromPath(primary.repoPath) : "";
+  if (primaryName) {
+    await adapter.writeFile(sessionId, ".agent/primary-repo", primaryName).catch(() => {});
+  }
+
+  return {
+    workdir: `/workspace/${sessionId}/repos/${primaryName}`,
+    repoCount: repos.length,
+  };
+}
+
+async function cleanupWorktrees(job: AgentJob, adapter: SandboxAdapter): Promise<void> {
+  if (!job.repos?.length) return;
+  for (const repo of job.repos) {
+    try {
+      await adapter.removeWorktree(job.sessionId, repo.repoPath);
+    } catch (err) {
+      console.warn(`[worktree] cleanup failed for ${repo.repoPath}:`, err instanceof Error ? err.message : err);
+    }
+  }
+}
+
+function countToolCalls(parts: AssistantPart[]): number {
+  return parts.filter((p) => p.type === "tool_call").length;
+}
+
+async function collectGitLineStats(
+  adapter: SandboxAdapter,
+  sessionId: string,
+  repoRelDir: string | null,
+  baseBranch: string,
+): Promise<{ added: number; removed: number; hasChanges: boolean }> {
+  const gitPrefix = repoRelDir ? `git -C "${repoRelDir}"` : "git";
+  await adapter.exec(sessionId, `${gitPrefix} fetch origin "${baseBranch}" 2>/dev/null || true`).catch(() => {});
+
+  const diffResult = await adapter
+    .exec(sessionId, `${gitPrefix} diff --numstat "origin/${baseBranch}"...HEAD 2>/dev/null || ${gitPrefix} diff --numstat HEAD~1..HEAD 2>/dev/null || true`)
+    .catch(() => ({ stdout: "", exitCode: 1 }));
+
+  let added = 0;
+  let removed = 0;
+  for (const line of diffResult.stdout.split("\n")) {
+    const [a, d] = line.split("\t");
+    if (a && d && a !== "-" && d !== "-") {
+      added += parseInt(a, 10) || 0;
+      removed += parseInt(d, 10) || 0;
+    }
+  }
+
+  const hasChanges = added > 0 || removed > 0;
+  return { added, removed, hasChanges };
+}
+
+async function pushRepoBranch(params: {
+  adapter: SandboxAdapter;
+  forge: Awaited<ReturnType<typeof getForgeProviderForSession>>;
+  sessionId: string;
+  repoRelDir: string | null;
+  repoPath: string;
+  branch: string;
+}): Promise<{ ok: boolean; stderr: string }> {
+  const { adapter, forge, sessionId, repoRelDir, repoPath, branch } = params;
+  const [owner, repo] = repoPath.split("/");
+  if (!owner || !repo) return { ok: false, stderr: "invalid repo path" };
+
+  const authUrl = forge.git.authenticatedCloneUrl(owner, repo);
+  const plainUrl = forge.git.plainCloneUrl(owner, repo);
+  const gitPrefix = repoRelDir ? `git -C "${repoRelDir}"` : "git";
+
+  await adapter.exec(sessionId, `${gitPrefix} remote set-url origin "${authUrl}"`).catch(() => {});
+  try {
+    const pushResult = await adapter.exec(sessionId, `${gitPrefix} push -u origin "${branch}"`);
+    return { ok: pushResult.exitCode === 0, stderr: pushResult.stderr };
+  } finally {
+    await adapter.exec(sessionId, `${gitPrefix} remote set-url origin "${plainUrl}"`).catch(() => {});
+  }
+}
+
+async function createPrsForChangedRepos(params: {
+  job: AgentJob;
+  db: PlatformDb;
+  adapter: SandboxAdapter;
+  sessionRow: { title: string; branch: string | null; baseBranch: string | null; repoPath: string | null; forgeType: string | null; userId: string };
+  forgeContext: ForgeAgentContext;
+}): Promise<{ prUrls: string[]; reposTouched: string[]; linesAdded: number; linesRemoved: number }> {
+  const { job, db, adapter, sessionRow, forgeContext } = params;
+  const branch = sessionRow.branch ?? `agent/${job.sessionId}`;
+  const baseBranch = sessionRow.baseBranch ?? "main";
+  const prUrls: string[] = [];
+  const reposTouched: string[] = [];
+  let linesAdded = 0;
+  let linesRemoved = 0;
+
+  const repoEntries =
+    job.repos?.map((r) => ({
+      repoPath: r.repoPath,
+      relDir: `repos/${repoNameFromPath(r.repoPath)}`,
+      isPrimary: r.isPrimary,
+      defaultBranch: r.defaultBranch,
+    })) ??
+    (sessionRow.repoPath
+      ? [{ repoPath: sessionRow.repoPath, relDir: null as string | null, isPrimary: true, defaultBranch: baseBranch }]
+      : []);
+
+  for (const entry of repoEntries) {
+    const base = entry.defaultBranch || baseBranch;
+    const stats = await collectGitLineStats(adapter, job.sessionId, entry.relDir, base);
+    linesAdded += stats.added;
+    linesRemoved += stats.removed;
+    if (!stats.hasChanges) continue;
+
+    reposTouched.push(entry.repoPath);
+    const [owner, repo] = entry.repoPath.split("/");
+    if (!owner || !repo) continue;
+
+    const push = await pushRepoBranch({
+      adapter,
+      forge: forgeContext.forge,
+      sessionId: job.sessionId,
+      repoRelDir: entry.relDir,
+      repoPath: entry.repoPath,
+      branch,
+    });
+    if (!push.ok) {
+      console.warn(`[pr] push failed for ${entry.repoPath}: ${push.stderr}`);
+      continue;
+    }
+
+    try {
+      const pr = await forgeContext.forge.pulls.create({
+        owner,
+        repo,
+        head: branch,
+        base,
+        title: sessionRow.title || `Agent changes (${entry.repoPath})`,
+        body: `Automated PR from agent session ${job.sessionId}.`,
+      });
+      prUrls.push(pr.htmlUrl);
+
+      if (entry.isPrimary) {
+        await forgeContext.onPrCreated?.({ prNumber: pr.number, prStatus: "open" });
+      } else {
+        await db.insert(prEvents).values({
+          id: crypto.randomUUID(),
+          userId: job.userId,
+          sessionId: job.sessionId,
+          repoPath: entry.repoPath,
+          prNumber: pr.number,
+          action: "opened",
+          title: sessionRow.title ?? "PR",
+          actionNeeded: true,
+          metadata: { createdByAgent: true, runId: job.runId },
+        });
+      }
+    } catch (err) {
+      console.warn(`[pr] create failed for ${entry.repoPath}:`, err instanceof Error ? err.message : err);
+    }
+  }
+
+  return { prUrls, reposTouched, linesAdded, linesRemoved };
+}
+
+async function persistSessionSummary(params: {
+  db: PlatformDb;
+  job: AgentJob;
+  outcome: SessionSummary["outcome"];
+  assistantParts: AssistantPart[];
+  prUrls: string[];
+  reposTouched: string[];
+  linesAdded: number;
+  linesRemoved: number;
+}): Promise<void> {
+  const { db, job, outcome, assistantParts, prUrls, reposTouched, linesAdded, linesRemoved } = params;
+
+  const [runRow] = await db
+    .select({ startedAt: agentRuns.startedAt, totalDurationMs: agentRuns.totalDurationMs, costUsd: agentRuns.costUsd })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, job.runId))
+    .limit(1);
+
+  const durationMs =
+    runRow?.totalDurationMs ??
+    (runRow?.startedAt ? Date.now() - runRow.startedAt.getTime() : 0);
+
+  const summary: SessionSummary = {
+    outcome,
+    durationMs,
+    reposTouched: reposTouched.length > 0
+      ? reposTouched
+      : job.repos?.map((r) => r.repoPath) ?? [],
+    prUrls,
+    linesAdded,
+    linesRemoved,
+    toolCallCount: countToolCalls(assistantParts),
+    llmCostUsd: runRow?.costUsd ? parseFloat(String(runRow.costUsd)) : 0,
+    completedAt: new Date().toISOString(),
+  };
+
+  await db
+    .update(sessions)
+    .set({ summary, linesAdded, linesRemoved, updatedAt: new Date() })
+    .where(eq(sessions.id, job.sessionId));
 }
 
 // ─── Public entry point ───────────────────────────────────────────────────────
@@ -541,16 +938,26 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
   }
 
   const adapter = await getAdapter(job.sessionId);
+  let summaryParts: AssistantPart[] = [];
+  let prMeta = { prUrls: [] as string[], reposTouched: [] as string[], linesAdded: 0, linesRemoved: 0 };
 
   try {
     await db.update(agentRuns).set({ status: "running", startedAt: new Date() }).where(eq(agentRuns.id, job.runId));
     await events.setKey(`run:${job.runId}:status`, "running", RUN_STATUS_TTL);
 
-    await ensureRepoCloned(db, job, adapter);
+    const workspaceSetup = await setupWorkspace({ job, db, adapter, events });
 
     const llmKeys = await resolveLlmApiKeys(db, job.userId);
 
-    const { assistantParts, responseMessages, usage, hitStepLimit, assistantMessageId } = await runTurn({
+    const {
+      assistantParts,
+      responseMessages,
+      usage,
+      hitStepLimit,
+      assistantMessageId,
+      forgeContext,
+      sessionRow,
+    } = await runTurn({
       job,
       redis,
       events,
@@ -558,7 +965,27 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
       db,
       adapter,
       llmKeys,
+      workspaceSetup,
     });
+
+    summaryParts = assistantParts;
+
+    if (sessionRow?.repoPath || job.repos?.length) {
+      prMeta = await createPrsForChangedRepos({
+        job,
+        db,
+        adapter,
+        sessionRow: {
+          title: sessionRow?.title ?? "Agent changes",
+          branch: sessionRow?.branch ?? null,
+          baseBranch: sessionRow?.baseBranch ?? null,
+          repoPath: sessionRow?.repoPath ?? null,
+          forgeType: sessionRow?.forgeType ?? null,
+          userId: sessionRow?.userId ?? job.userId,
+        },
+        forgeContext,
+      });
+    }
 
     let finalMessageId = assistantMessageId;
     if (assistantParts.length > 0) {
@@ -568,6 +995,14 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
     const terminalReason = hitStepLimit ? "step_limit" : "end_turn";
     console.info("[agent] run_terminal", { runId: job.runId, sessionId: job.sessionId, terminalReason, status: "completed" });
     await updateRunStatus(db, job, "completed", usage, terminalReason);
+
+    await persistSessionSummary({
+      db,
+      job,
+      outcome: "completed",
+      assistantParts,
+      ...prMeta,
+    });
 
     await publishEvent(
       events,
@@ -590,8 +1025,16 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
   } catch (error) {
     // Handle user-initiated abort
     if (error instanceof AbortError) {
+      summaryParts = error.parts;
       console.info("[agent] run_terminal", { runId: job.runId, sessionId: job.sessionId, terminalReason: "stopped", status: "aborted" });
       await updateRunStatus(db, job, "aborted", undefined, "stopped");
+      await persistSessionSummary({
+        db,
+        job,
+        outcome: "aborted",
+        assistantParts: error.parts,
+        ...prMeta,
+      });
       await publishEvent(events, job.runId, { type: "aborted", terminalReason: "stopped" }, job.requestId);
       await events.setKey(`run:${job.runId}:status`, "aborted", RUN_STATUS_TTL);
       await expireRunStream(redis, job.runId);
@@ -602,6 +1045,13 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
     if (isTimeoutAbort(error)) {
       console.info("[agent] run_terminal", { runId: job.runId, sessionId: job.sessionId, terminalReason: "timeout", status: "aborted" });
       await updateRunStatus(db, job, "aborted", undefined, "timeout");
+      await persistSessionSummary({
+        db,
+        job,
+        outcome: "aborted",
+        assistantParts: summaryParts,
+        ...prMeta,
+      });
       await publishEvent(events, job.runId, { type: "aborted", terminalReason: "timeout" }, job.requestId);
       await events.setKey(`run:${job.runId}:status`, "aborted", RUN_STATUS_TTL);
       await expireRunStream(redis, job.runId);
@@ -611,6 +1061,13 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
     const terminalReason = error instanceof AppError && error.retryable ? "provider_transient" : "internal";
     console.info("[agent] run_terminal", { runId: job.runId, sessionId: job.sessionId, terminalReason, status: "failed", error: error instanceof Error ? error.message : String(error) });
     await updateRunStatus(db, job, "failed", undefined, terminalReason);
+    await persistSessionSummary({
+      db,
+      job,
+      outcome: "failed",
+      assistantParts: summaryParts,
+      ...prMeta,
+    });
     await publishEvent(
       events,
       job.runId,
@@ -627,5 +1084,7 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
     await events.setKey(`run:${job.runId}:status`, "failed", RUN_STATUS_TTL);
     await expireRunStream(redis, job.runId);
     throw error;
+  } finally {
+    await cleanupWorktrees(job, adapter);
   }
 }

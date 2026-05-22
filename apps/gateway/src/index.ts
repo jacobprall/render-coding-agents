@@ -17,6 +17,7 @@ import { ciRoutes } from "./routes/ci";
 import { modelRoutes } from "./routes/models";
 import { streamRoutes } from "./routes/stream";
 import { observabilityRoutes } from "./routes/observability";
+import { workspaceRoutes } from "./routes/workspace";
 import { handleMcpRequest } from "./mcp/server";
 
 const app = new Hono<GatewayEnv>();
@@ -42,6 +43,7 @@ app.route("/api/settings", settingsRoutes);
 app.route("/api/models", modelRoutes);
 app.route("/api/stream", streamRoutes);
 app.route("/api/observability", observabilityRoutes);
+app.route("/api/workspace", workspaceRoutes);
 
 // --- MCP endpoint (authenticated) ---
 app.use("/mcp", requireApiAuth);

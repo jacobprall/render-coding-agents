@@ -21,7 +21,7 @@ A user opens the agent interface and conducts a multi-turn coding conversation. 
 **Acceptance Scenarios**:
 
 1. **Given** a user has an active session, **When** they type a message and press Enter, **Then** the message appears as a visually distinct bubble with any attached files shown as inline chips
-2. **Given** the agent is processing a request, **When** it completes, **Then** a "Worked for X" duration marker appears followed by the agent's response rendered flush (no bubble) with full markdown support
+2. **Given** the agent is processing a request, **When** it begins generating, **Then** tokens stream into the conversation in real-time, rendering flush (no bubble) with full markdown support, followed by a "Worked for X" duration marker once complete
 3. **Given** an agent response exceeds the display threshold, **When** the response renders, **Then** it is truncated with a "Message is too long to display" banner and an expand affordance
 4. **Given** a user attaches files to a message, **When** the message is sent, **Then** each file appears as a pill/chip showing filename and line range
 
@@ -120,6 +120,16 @@ A user configures which AI model to use for their next message, attaches files v
 - What happens when a git commit fails? (error state in the inline commit UI, retry affordance)
 - How does the system handle very long file names in the sidebar and file tree? (truncation with ellipsis, tooltip on hover)
 
+## Clarifications
+
+### Session 2026-05-21
+
+- Q: How are agent responses delivered to the UI? → A: Streaming token-by-token (words appear as the agent generates them)
+- Q: Is this single-user or multi-user? → A: Multi-user with private conversations (users authenticate, each sees only their own conversations grouped by their projects)
+- Q: What does the user see while the agent is working? → A: Streaming text plus visible tool calls (file edits, shell commands shown as collapsible inline blocks alongside streaming text)
+- Q: What conversation lifecycle actions are available? → A: Standard — rename, archive (soft-hide with filter to restore), and delete with confirmation
+- Q: Does the file tree update in real-time as the agent works? → A: Yes — live updates driven by file-change events, reflecting creates/modifies/deletes as they happen
+
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
@@ -127,11 +137,14 @@ A user configures which AI model to use for their next message, attaches files v
 - **FR-001**: System MUST render a three-panel layout (sidebar, main chat, right context panel) with independently scrollable regions
 - **FR-002**: System MUST display user messages in visually distinct containers (bubbles) and agent messages flush (no container) to create asymmetric message identification
 - **FR-003**: System MUST show elapsed work duration markers ("Worked for Xm Xs") between agent turns
-- **FR-004**: System MUST render agent responses with full markdown support (bold, inline code, headings, paragraphs, code blocks)
+- **FR-004**: System MUST render agent responses with full markdown support (bold, inline code, headings, paragraphs, code blocks) and stream tokens in real-time as the agent generates them
+- **FR-004a**: System MUST display intermediate tool calls (file edits, shell commands, searches) as collapsible inline blocks within the agent response stream, showing the tool name and a summary of the action
 - **FR-005**: System MUST display file attachments as inline pill/chip components showing filename and line range
-- **FR-006**: System MUST organize sidebar conversations under project group headers with activity indicators
+- **FR-006**: System MUST organize sidebar conversations under project group headers with activity indicators, scoped to the authenticated user's own conversations only
+- **FR-006a**: System MUST support renaming, archiving (soft-hide), and deleting conversations from the sidebar with a confirmation step for destructive actions
+- **FR-006b**: System MUST provide a filter/toggle to show archived conversations, allowing users to restore them
 - **FR-007**: System MUST support toggling the right panel between file explorer, git changes, and file preview modes via tab icons
-- **FR-008**: System MUST render a hierarchical file tree with expand/collapse directories and color-coded file type icons
+- **FR-008**: System MUST render a hierarchical file tree with expand/collapse directories and color-coded file type icons, updating in real-time as the agent creates, modifies, or deletes files (event-driven, not polling)
 - **FR-009**: System MUST provide a split view (tree + preview) when a file is selected, with breadcrumb navigation and Preview/Markdown toggle
 - **FR-010**: System MUST display inline git review controls (Review button with +/- stats, "Create Branch & Commit" action) after the agent makes file changes
 - **FR-011**: System MUST show current git branch and workspace context in a persistent status bar
@@ -145,9 +158,9 @@ A user configures which AI model to use for their next message, attaches files v
 
 ### Key Entities
 
-- **Conversation**: A persistent multi-turn exchange between a user and an agent, tied to a project and git branch. Contains messages, metadata (title, duration), and associated file changes.
+- **Conversation**: A persistent multi-turn exchange between a user and an agent, tied to a project and git branch. Private to the owning user — not visible to other team members. States: active, archived, deleted. Contains messages, metadata (title, duration), and associated file changes.
 - **Project**: A grouping mechanism for conversations, typically corresponding to a code repository. Contains multiple conversations.
-- **Message**: A single turn in a conversation — either user-authored (with optional file attachments) or agent-generated (with optional review actions). Includes role, content (markdown), attachments, work duration, and truncation state.
+- **Message**: A single turn in a conversation — either user-authored (with optional file attachments) or agent-generated (with optional review actions and inline tool call blocks). Includes role, content (markdown), attachments, tool invocations, work duration, and truncation state.
 - **File Reference**: A pointer to a specific file and line range within the workspace, rendered as an interactive chip that can open the file in the right panel.
 - **Agent Work Session**: Represents the compute time between user input and agent output, displayed as "Worked for X" duration markers.
 

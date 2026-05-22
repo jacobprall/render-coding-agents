@@ -104,3 +104,38 @@ export async function readRunEventEntriesAfterId(
 export function askUserReplyQueueKey(runId: string, toolCallId: string): string {
   return `run:${runId}:ask:${toolCallId}`;
 }
+
+export async function trimOldStreamEntries(
+  redis: Redis,
+  maxAgeMs: number = 7 * 24 * 60 * 60 * 1000,
+): Promise<{ trimmed: number }> {
+  const cutoffMs = Date.now() - maxAgeMs;
+  const cutoffId = `${cutoffMs}-0`;
+
+  let trimmed = 0;
+  let cursor = "0";
+
+  do {
+    const [nextCursor, keys] = await redis.scan(
+      cursor,
+      "MATCH",
+      "run:*:events",
+      "COUNT",
+      100,
+    );
+    cursor = nextCursor;
+
+    for (const key of keys) {
+      try {
+        const before = await redis.xlen(key);
+        await redis.xtrim(key, "MINID", cutoffId);
+        const after = await redis.xlen(key);
+        trimmed += before - after;
+      } catch {
+        /* skip on error */
+      }
+    }
+  } while (cursor !== "0");
+
+  return { trimmed };
+}

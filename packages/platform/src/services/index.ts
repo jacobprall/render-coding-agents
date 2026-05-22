@@ -80,3 +80,5 @@ export type {
   AcceptInviteParams,
   InviteSummary,
 } from "./invite";
+
+export * from "./workspace";

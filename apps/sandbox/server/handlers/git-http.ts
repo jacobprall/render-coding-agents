@@ -2,7 +2,7 @@ import type { GitResult } from "../../types";
 import { DEFAULT_GIT_USER_EMAIL, DEFAULT_GIT_USER_NAME } from "../lib/constants";
 import { jsonError } from "../lib/http-response";
 import { validateGitArgv } from "../lib/git-policy";
-import { getSessionWorkspace, getSessionId } from "../lib/path-security";
+import { getSessionGitCwd, getSessionId } from "../lib/path-security";
 import { runArgv } from "../lib/process";
 
 export async function handleGit(req: Request, body: Record<string, unknown>): Promise<Response> {
@@ -16,7 +16,7 @@ export async function handleGit(req: Request, body: Record<string, unknown>): Pr
     return jsonError(req, 400, "GIT_POLICY", policyErr);
   }
 
-  const cwd = getSessionWorkspace(sessionId);
+  const cwd = getSessionGitCwd(sessionId);
 
   const gitIdentityEnv = {
     GIT_AUTHOR_NAME: DEFAULT_GIT_USER_NAME,

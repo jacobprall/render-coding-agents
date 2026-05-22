@@ -1,5 +1,5 @@
 import { jsonError } from "../lib/http-response";
-import { getSessionWorkspace, getSessionId } from "../lib/path-security";
+import { getSessionGitCwd, getSessionId } from "../lib/path-security";
 import { runCommand } from "../lib/process";
 
 export async function handleExec(req: Request, body: Record<string, unknown>): Promise<Response> {
@@ -11,7 +11,7 @@ export async function handleExec(req: Request, body: Record<string, unknown>): P
     return jsonError(req, 400, "VALIDATION_ERROR", "command is required");
   }
 
-  const cwd = getSessionWorkspace(sessionId);
+  const cwd = getSessionGitCwd(sessionId);
   const result = await runCommand(command, cwd, timeoutMs);
   return Response.json(result);
 }

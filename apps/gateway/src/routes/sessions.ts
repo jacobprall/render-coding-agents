@@ -5,6 +5,7 @@ import { syncConnections } from "@coding-agents/db";
 import type { GatewayEnv } from "../middleware/auth";
 import { getPlatform } from "../platform";
 import { getForgeProviderForAuth, createForgeProvider } from "@coding-agents/platform/forge";
+import { resolveWorkspaceConfig } from "@coding-agents/platform/services";
 import { decryptTokenSafe } from "@coding-agents/shared/lib/encryption";
 import { formatZodError } from "../middleware/validation";
 
@@ -45,6 +46,10 @@ const CreateSessionSchema = z.object({
   firstMessage: z.string().optional(),
   modelId: z.string().optional(),
   projectId: z.string().optional(),
+  sessionEnvOverrides: z.record(z.string(), z.string()).optional(),
+  sessionSkillsOverrides: z
+    .array(z.object({ source: z.enum(["builtin", "user", "repo"]), slug: z.string() }))
+    .optional(),
 });
 
 sessionRoutes.post("/", async (c) => {
@@ -54,6 +59,27 @@ sessionRoutes.post("/", async (c) => {
 
   const data = body.data;
   const platform = getPlatform();
+
+  if (data.projectId && data.sessionEnvOverrides) {
+    try {
+      const workspace = await resolveWorkspaceConfig(platform.db, data.projectId);
+      const conflicting = Object.keys(data.sessionEnvOverrides).filter(
+        (key) => key in workspace.environmentConfig,
+      );
+      if (conflicting.length > 0) {
+        return c.json(
+          { error: `Session env overrides cannot shadow workspace keys: ${conflicting.join(", ")}` },
+          400,
+        );
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith("Project not found:")) {
+        return c.json({ error: "Project not found" }, 404);
+      }
+      throw err;
+    }
+  }
+
   const branch = data.repoPath ? (data.branch || data.baseBranch || "main") : undefined;
 
   const result = await platform.sessions.create(auth, { ...data, branch });

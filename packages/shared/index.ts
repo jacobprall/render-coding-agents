@@ -1,7 +1,23 @@
 // ── Direct exports (owned by shared) ─────────────────────────────────────────
 
 // Lib - Stream event types
-export type { StreamEvent } from "./lib/stream-types";
+export type { StreamEvent, StreamEventV2 } from "./lib/stream-types";
+export {
+  normalizeEvent,
+  isTerminalEvent,
+  isTerminalEventV2,
+} from "./lib/stream-types";
+
+// Lib - Workspace config types
+export type {
+  SecretsConfig,
+  RepoMirrorStatus,
+  SessionSummary,
+  WorkspaceConfig,
+  ResolvedWorkspaceConfig,
+  MirrorSyncTrigger,
+  MirrorSyncStatus,
+} from "./lib/workspace-types";
 
 // Forge types & interfaces (implementations live in @coding-agents/platform)
 export type {

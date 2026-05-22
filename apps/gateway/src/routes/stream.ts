@@ -14,6 +14,7 @@ import {
   readRunEventHistoryDetailed,
   readRunEventEntriesAfterId,
 } from "@coding-agents/platform";
+import { normalizeEvent, isTerminalEvent as isTerminalEventCheck } from "@coding-agents/shared";
 import type { GatewayEnv } from "../middleware/auth";
 import { getPlatform } from "../platform";
 
@@ -23,8 +24,22 @@ const KEEPALIVE_MS = 25_000;
 const INBOX_POLL_MS = 5_000;
 const INBOX_HEARTBEAT_MS = 15_000;
 
-function isTerminalEvent(type: string): boolean {
-  return type === "done" || type === "error" || type === "aborted";
+function checkTerminal(payload: string): boolean {
+  try {
+    const parsed = JSON.parse(payload);
+    return isTerminalEventCheck(parsed);
+  } catch {
+    return false;
+  }
+}
+
+function normalizePayload(payload: string): string {
+  try {
+    const parsed = JSON.parse(payload);
+    return JSON.stringify(normalizeEvent(parsed));
+  } catch {
+    return payload;
+  }
 }
 
 function getRedisUrl(): string {
@@ -178,14 +193,7 @@ streamRoutes.get("/sessions/:id", async (c) => {
 
   // Check for a synthetic terminal if none was found in history
   let syntheticTerminal: string | null = null;
-  const hasTerminal = historyEntries.some((e) => {
-    try {
-      const parsed = JSON.parse(e.payload) as { type?: string };
-      return parsed.type ? isTerminalEvent(parsed.type) : false;
-    } catch {
-      return false;
-    }
-  });
+  const hasTerminal = historyEntries.some((e) => checkTerminal(e.payload));
   if (!hasTerminal) {
     const runStatus = await cmd.get(`run:${runId}:status`).catch(() => null);
     if (runStatus === "completed" || runStatus === "failed" || runStatus === "aborted") {
@@ -225,18 +233,16 @@ streamRoutes.get("/sessions/:id", async (c) => {
     // Step 3: Replay history with SSE id fields
     for (const entry of historyEntries) {
       if (closed) return;
-      await stream.writeSSE({ id: entry.id, data: entry.payload });
-      try {
-        const parsed = JSON.parse(entry.payload) as { type?: string };
-        if (parsed.type && isTerminalEvent(parsed.type)) {
-          await cleanup();
-          return;
-        }
-      } catch { /* non-fatal */ }
+      const normalized = normalizePayload(entry.payload);
+      await stream.writeSSE({ id: entry.id, data: normalized });
+      if (checkTerminal(entry.payload)) {
+        await cleanup();
+        return;
+      }
     }
 
     if (syntheticTerminal) {
-      await stream.writeSSE({ data: syntheticTerminal });
+      await stream.writeSSE({ data: normalizePayload(syntheticTerminal) });
       await cleanup();
       return;
     }
@@ -247,14 +253,12 @@ streamRoutes.get("/sessions/:id", async (c) => {
       if (closed) return;
       if (buffered.sid && lastHistoryId && buffered.sid <= lastHistoryId) continue;
       const sseId = buffered.sid ?? undefined;
-      await stream.writeSSE({ id: sseId, data: buffered.payload });
-      try {
-        const parsed = JSON.parse(buffered.payload) as { type?: string };
-        if (parsed.type && isTerminalEvent(parsed.type)) {
-          await cleanup();
-          return;
-        }
-      } catch { /* non-fatal */ }
+      const normalized = normalizePayload(buffered.payload);
+      await stream.writeSSE({ id: sseId, data: normalized });
+      if (checkTerminal(buffered.payload)) {
+        await cleanup();
+        return;
+      }
     }
     pubsubBuffer.length = 0;
 
@@ -267,14 +271,12 @@ streamRoutes.get("/sessions/:id", async (c) => {
         sid = parsed._sid ?? null;
       } catch { /* use null sid */ }
       const sseId = sid ?? undefined;
-      stream.writeSSE({ id: sseId, data: message }).catch(() => {});
-      try {
-        const parsed = JSON.parse(message) as { type?: string };
-        if (parsed.type && isTerminalEvent(parsed.type)) {
-          clearInterval(keepAlive);
-          void cleanup();
-        }
-      } catch { /* non-fatal */ }
+      const normalized = normalizePayload(message);
+      stream.writeSSE({ id: sseId, data: normalized }).catch(() => {});
+      if (checkTerminal(message)) {
+        clearInterval(keepAlive);
+        void cleanup();
+      }
     });
 
     // Remove the buffering handler
