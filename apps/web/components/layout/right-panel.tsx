@@ -16,6 +16,7 @@ interface RightPanelProps {
   width: number;
   selectedPath?: string | null;
   onClearSelection?: () => void;
+  mobile?: boolean;
 }
 
 function getModeAnnouncement(mode: RightPanelMode, width: number): string {
@@ -31,6 +32,7 @@ export function RightPanel({
   width,
   selectedPath,
   onClearSelection,
+  mobile = false,
 }: RightPanelProps) {
   const [localSelectedPath, setLocalSelectedPath] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState(() =>
@@ -74,8 +76,11 @@ export function RightPanel({
       {isOpen ? (
         <aside
           aria-label="File explorer panel"
-          className="flex h-full min-w-0 flex-col overflow-hidden border-l border-border bg-card transition-all duration-200"
-          style={{ width }}
+          className={cn(
+            "flex min-w-0 flex-col overflow-hidden bg-card transition-all duration-200",
+            mobile ? "h-full w-full" : "h-full border-l border-border",
+          )}
+          style={mobile ? undefined : { width }}
         >
           <div className="flex shrink-0 items-center justify-between border-b border-stroke-subtle px-2 py-1.5">
             <div className="flex items-center gap-0.5">

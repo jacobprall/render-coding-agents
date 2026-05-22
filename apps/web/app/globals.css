@@ -78,6 +78,8 @@
   --chat-min-width: 450px;
   --status-bar-height: 28px;
   --panel-transition: 200ms ease;
+  --mobile-nav-height: 0px;
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
 
   --background: 220 5% 5%;
   --foreground: 220 3% 94%;
@@ -246,4 +248,13 @@ h1, h2, h3, h4, h5, h6 {
 @utility content-auto-message {
   content-visibility: auto;
   contain-intrinsic-size: auto 80px;
+}
+
+/* ── Mobile overrides ── */
+@media (max-width: 767px) {
+  :root {
+    --chat-min-width: 0px;
+    --mobile-nav-height: 56px;
+    --status-bar-height: 0px;
+  }
 }
