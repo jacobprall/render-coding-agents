@@ -68,6 +68,17 @@
   --of-space-xl: 40px;
   --of-space-2xl: 64px;
 
+  /* Panel layout tokens */
+  --sidebar-width: 260px;
+  --sidebar-min: 200px;
+  --sidebar-max: 400px;
+  --right-panel-width: 400px;
+  --right-panel-min: 300px;
+  --right-panel-max: 600px;
+  --chat-min-width: 450px;
+  --status-bar-height: 28px;
+  --panel-transition: 200ms ease;
+
   --background: 220 5% 5%;
   --foreground: 220 3% 94%;
   --card: 220 5% 8%;
@@ -225,4 +236,9 @@ h1, h2, h3, h4, h5, h6 {
 @utility content-auto {
   content-visibility: auto;
   contain-intrinsic-size: auto 3rem;
+}
+
+@utility content-auto-message {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 80px;
 }

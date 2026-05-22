@@ -49,7 +49,7 @@ export const sessions = pgTable(
     forgeUsername: text("forge_username"),
     title: text("title").notNull(),
     status: text("status", {
-      enum: ["running", "completed", "failed", "archived"],
+      enum: ["running", "completed", "failed", "archived", "deleted"],
     })
       .notNull()
       .default("running"),

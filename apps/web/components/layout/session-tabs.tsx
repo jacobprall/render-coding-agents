@@ -3,8 +3,20 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Plus, X, Circle, Pause, CheckCircle2, AlertCircle } from "lucide-react";
+import {
+  Plus,
+  X,
+  Circle,
+  Pause,
+  CheckCircle2,
+  AlertCircle,
+  PanelLeft,
+  FolderTree,
+  GitBranch,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { RightPanelMode } from "./right-panel";
+import { useRightPanelOptional } from "./right-panel-context";
 
 export interface SessionTab {
   id: string;
@@ -44,10 +56,23 @@ function StatusIcon({ status }: { status: string }) {
   }
 }
 
-export function SessionTabs() {
+interface SessionTabsProps {
+  onToggleSidebar?: () => void;
+  sidebarOpen?: boolean;
+  rightPanelMode?: RightPanelMode;
+  onRightPanelModeChange?: (mode: RightPanelMode) => void;
+}
+
+export function SessionTabs({
+  onToggleSidebar,
+  sidebarOpen = true,
+  rightPanelMode = "closed",
+  onRightPanelModeChange,
+}: SessionTabsProps) {
   const [tabs, setTabs] = useState<SessionTab[]>([]);
   const pathname = usePathname();
   const router = useRouter();
+  const rightPanelCtx = useRightPanelOptional();
 
   useEffect(() => {
     setTabs(getStoredTabs());
@@ -70,28 +95,28 @@ export function SessionTabs() {
     });
   }, []);
 
-  const removeTab = useCallback((id: string, e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setTabs((prev) => {
-      const next = prev.filter((t) => t.id !== id);
-      storeTabs(next);
-      if (id === activeSessionId && next.length > 0) {
-        router.push(`/sessions/${next[next.length - 1].id}`);
-      } else if (next.length === 0) {
-        router.push("/sessions");
-      }
-      return next;
-    });
-  }, [activeSessionId, router]);
+  const removeTab = useCallback(
+    (id: string, e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setTabs((prev) => {
+        const next = prev.filter((t) => t.id !== id);
+        storeTabs(next);
+        if (id === activeSessionId && next.length > 0) {
+          router.push(`/sessions/${next[next.length - 1].id}`);
+        } else if (next.length === 0) {
+          router.push("/sessions");
+        }
+        return next;
+      });
+    },
+    [activeSessionId, router],
+  );
 
   const updateTab = useCallback((id: string, updates: Partial<SessionTab>) => {
-    setTabs((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, ...updates } : t))
-    );
+    setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)));
   }, []);
 
-  // Expose methods globally for session workspace to call
   useEffect(() => {
     (window as unknown as Record<string, unknown>).__sessionTabs = { addTab, updateTab };
     return () => {
@@ -102,9 +127,53 @@ export function SessionTabs() {
   if (!pathname.startsWith("/sessions")) return null;
 
   const showNewButton = pathname !== "/sessions";
+  const panelMode = rightPanelCtx?.mode ?? rightPanelMode;
+  const showRightPanelTabs = Boolean(
+    activeSessionId && (rightPanelCtx || onRightPanelModeChange),
+  );
+
+  const togglePanelMode = (target: Exclude<RightPanelMode, "closed" | "preview">) => {
+    if (rightPanelCtx) {
+      rightPanelCtx.toggleMode(target);
+      return;
+    }
+    if (!onRightPanelModeChange) return;
+    const isFilesActive = panelMode === "files" || panelMode === "preview";
+    if (target === "files" && isFilesActive) {
+      onRightPanelModeChange("closed");
+    } else if (target === "git" && panelMode === "git") {
+      onRightPanelModeChange("closed");
+    } else {
+      onRightPanelModeChange(target);
+    }
+  };
+
+  const rightPanelButtonClass = (target: "files" | "git") => {
+    const isActive =
+      target === "files"
+        ? panelMode === "files" || panelMode === "preview"
+        : panelMode === "git";
+    return cn(
+      "flex h-7 w-7 items-center justify-center transition-colors",
+      isActive
+        ? "bg-primary/10 text-primary"
+        : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+    );
+  };
 
   return (
     <div className="flex h-9 shrink-0 items-end border-b border-border bg-card/50">
+      {onToggleSidebar ? (
+        <button
+          type="button"
+          onClick={onToggleSidebar}
+          title={sidebarOpen ? "Hide sidebar (⌘B)" : "Show sidebar (⌘B)"}
+          className="ml-1 flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+        >
+          <PanelLeft className="h-3.5 w-3.5" />
+        </button>
+      ) : null}
+
       <div className="flex flex-1 items-end gap-0 overflow-x-auto px-1">
         {tabs.map((tab) => {
           const isActive = tab.id === activeSessionId;
@@ -116,7 +185,7 @@ export function SessionTabs() {
                 "group relative flex h-8 max-w-[200px] items-center gap-2 border-x border-t px-3 text-[12px] transition-colors",
                 isActive
                   ? "border-border bg-background text-foreground"
-                  : "border-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                  : "border-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground",
               )}
             >
               <StatusIcon status={tab.status} />
@@ -131,6 +200,28 @@ export function SessionTabs() {
           );
         })}
       </div>
+
+      {showRightPanelTabs ? (
+        <div className="flex shrink-0 items-center gap-0.5 border-l border-border px-1">
+          <button
+            type="button"
+            title="Files"
+            className={rightPanelButtonClass("files")}
+            onClick={() => togglePanelMode("files")}
+          >
+            <FolderTree className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            title="Git"
+            className={rightPanelButtonClass("git")}
+            onClick={() => togglePanelMode("git")}
+          >
+            <GitBranch className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ) : null}
+
       {showNewButton && (
         <Link
           href="/sessions"

@@ -7,6 +7,38 @@ import { AskUserCard } from "../ask-user-card";
 import { AssistantParts } from "./assistant-parts";
 import { MessageBubble } from "./message-bubble";
 
+function formatWorkDuration(ms: number): string {
+  const totalSeconds = Math.max(1, Math.round(ms / 1000));
+  if (totalSeconds < 60) return `Worked for ${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (seconds === 0) return `Worked for ${minutes}m`;
+  return `Worked for ${minutes}m ${seconds}s`;
+}
+
+function deriveWorkDurationMs(message: Message, previous?: Message): number | null {
+  if (message.role !== "assistant") return null;
+  if (message.totalDurationMs != null && message.totalDurationMs > 0) {
+    return message.totalDurationMs;
+  }
+  if (previous?.createdAt && message.createdAt) {
+    const delta = new Date(message.createdAt).getTime() - new Date(previous.createdAt).getTime();
+    if (delta > 0) return delta;
+  }
+  return null;
+}
+
+function WorkDurationMarker({ durationMs }: { durationMs: number }) {
+  return (
+    <p
+      aria-live="polite"
+      className="py-1 text-[13px] text-muted-foreground"
+    >
+      {formatWorkDuration(durationMs)}
+    </p>
+  );
+}
+
 function TerminalBadge({ reason }: { reason: string }) {
   const labels: Record<string, { text: string; className: string }> = {
     stopped: { text: "Stopped", className: "bg-yellow-500/10 text-yellow-600 border-yellow-500/20" },
@@ -39,6 +71,7 @@ export function MessageArea({
   askResolved,
   onAskUserResponse,
   onViewFiles,
+  onFileSelect,
   error,
   terminalReason,
   stepLimitReached,
@@ -51,6 +84,7 @@ export function MessageArea({
   askResolved: { question?: string; options?: string[] } | null;
   onAskUserResponse: (answer: string) => void;
   onViewFiles?: () => void;
+  onFileSelect?: (path: string) => void;
   error: string | null;
   terminalReason?: string | null;
   stepLimitReached?: boolean;
@@ -126,7 +160,21 @@ export function MessageArea({
           <p className="text-[15px] text-text-tertiary">Ask the agent to help with your codebase.</p>
         </div>
       ) : (
-        messages.map((msg) => <MessageBubble key={msg.id} message={msg} />)
+        <div role="log" aria-live="polite" aria-relevant="additions" className="flex flex-col gap-(--of-space-lg)">
+          {messages.map((msg, index) => {
+            const previous = index > 0 ? messages[index - 1] : undefined;
+            const durationMs = deriveWorkDurationMs(msg, previous);
+
+            return (
+              <div key={msg.id} className="content-auto-message">
+                {msg.role === "assistant" && durationMs != null ? (
+                  <WorkDurationMarker durationMs={durationMs} />
+                ) : null}
+                <MessageBubble message={msg} onFileSelect={onFileSelect} />
+              </div>
+            );
+          })}
+        </div>
       )}
 
       {streamingParts.length > 0 ? (

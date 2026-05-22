@@ -1,8 +1,9 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { Bot } from "lucide-react";
+import { useState } from "react";
 import type { AssistantPart } from "@/lib/ui";
+import { cn } from "@/lib/utils";
 
 const Markdown = dynamic(
   () => import("@/components/markdown").then((m) => ({ default: m.Markdown })),
@@ -14,6 +15,9 @@ const ToolCallLazy = dynamic(
   { ssr: false, loading: () => <span className="text-xs text-text-tertiary">…</span> },
 );
 
+const TRUNCATE_CHAR_LIMIT = 4000;
+const TRUNCATE_LINE_LIMIT = 80;
+
 function formatTimestamp(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
@@ -23,6 +27,63 @@ function partKey(part: AssistantPart, index: number): string {
   if (part.type === "tool_call" && part.toolCallId) return part.toolCallId;
   if (part.type === "task" && part.taskId) return `task-${part.taskId}`;
   return `${part.type}-${index}`;
+}
+
+function shouldTruncateText(text: string): boolean {
+  if (text.length > TRUNCATE_CHAR_LIMIT) return true;
+  return text.split("\n").length > TRUNCATE_LINE_LIMIT;
+}
+
+function truncateText(text: string): string {
+  const lines = text.split("\n");
+  if (lines.length > TRUNCATE_LINE_LIMIT) {
+    return lines.slice(0, TRUNCATE_LINE_LIMIT).join("\n");
+  }
+  return text.slice(0, TRUNCATE_CHAR_LIMIT);
+}
+
+function TruncatedAgentText({ text, streaming }: { text: string; streaming?: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const needsTruncation = !streaming && shouldTruncateText(text);
+
+  if (!needsTruncation) {
+    return (
+      <div className="min-w-0 text-[15px] leading-relaxed text-text-primary">
+        <Markdown>{text}</Markdown>
+      </div>
+    );
+  }
+
+  const displayText = expanded ? text : truncateText(text);
+
+  return (
+    <div className="min-w-0">
+      {!expanded ? (
+        <div className="mb-2 flex items-center justify-between gap-3 rounded-md border border-stroke-subtle bg-muted/20 px-3 py-2">
+          <span className="text-[13px] text-muted-foreground">Message is too long to display</span>
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className="shrink-0 text-[13px] font-medium text-accent-text transition-colors hover:text-text-primary"
+          >
+            Expand
+          </button>
+        </div>
+      ) : null}
+      <div className={cn("min-w-0 text-[15px] leading-relaxed text-text-primary", !expanded && "opacity-90")}>
+        <Markdown>{displayText}</Markdown>
+      </div>
+      {expanded ? (
+        <button
+          type="button"
+          onClick={() => setExpanded(false)}
+          className="mt-2 text-[13px] font-medium text-accent-text transition-colors hover:text-text-primary"
+        >
+          Collapse
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 export function AssistantParts({
@@ -43,7 +104,7 @@ export function AssistantParts({
   }
 
   return (
-    <div className="flex flex-col gap-1.5 w-full">
+    <div className="flex w-full flex-col gap-1.5">
       {parts.map((part, i) => {
         const key = partKey(part, i);
         switch (part.type) {
@@ -51,17 +112,7 @@ export function AssistantParts({
             const showTime = Boolean(createdAt) && !streaming && lastTextIndex === i;
             return (
               <div key={key} className="flex w-full min-w-0 flex-col items-start gap-1">
-                <div className="flex w-full min-w-0 flex-col overflow-x-auto rounded-sm border border-stroke-subtle bg-surface-1 text-xs shadow-xs">
-                  <div className="flex w-full min-w-0 items-center gap-2 bg-surface-1 px-(--of-space-md) py-(--of-space-sm)">
-                    <Bot className="size-3.5 text-accent-text/80 shrink-0" />
-                    <span className="min-w-0 truncate text-[13px] font-medium text-text-primary">
-                      Agent
-                    </span>
-                  </div>
-                  <div className="min-w-0 border-t border-stroke-subtle bg-surface-0 px-(--of-space-md) py-(--of-space-md)">
-                    <Markdown>{part.text}</Markdown>
-                  </div>
-                </div>
+                <TruncatedAgentText text={part.text} streaming={streaming} />
                 {showTime && createdAt ? (
                   <span className="ml-1 text-[11px] text-text-tertiary">{formatTimestamp(createdAt)}</span>
                 ) : null}

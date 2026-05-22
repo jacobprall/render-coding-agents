@@ -209,6 +209,7 @@ export function SessionsHome({
             activeRunId={activeSession.activeRunId ?? null}
             initialMessages={activeSession.initialMessages}
             modelId={modelId}
+            onModelChange={setModelId}
             autoStream
             autoStreamRunId={activeSession.activeRunId}
           />

@@ -43,12 +43,22 @@ export type AssistantFileChangedPart = {
   id?: string;
 };
 
+export type AssistantFileAttachmentPart = {
+  type: "file_attachment";
+  filename: string;
+  lineStart?: number;
+  lineEnd?: number;
+  path?: string;
+  id?: string;
+};
+
 export type AssistantPart =
   | AssistantTextPart
   | AssistantToolCallPart
   | AssistantAskUserPart
   | AssistantTaskPart
-  | AssistantFileChangedPart;
+  | AssistantFileChangedPart
+  | AssistantFileAttachmentPart;
 
 export function appendStreamEvent(
   parts: AssistantPart[],

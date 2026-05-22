@@ -9,6 +9,7 @@ import {
   startTransition,
 } from "react";
 import { useEventSource } from "@/hooks/use-event-source";
+import { notifyFileTreeChange } from "@/hooks/use-file-tree";
 import { STREAM_EVENT } from "@/lib/stream-events";
 import { apiFetch } from "@/lib/api-fetch";
 import type { StreamEvent } from "@coding-agents/shared";
@@ -53,6 +54,7 @@ export interface UseAgentChatReturn {
   startStreaming: (runId?: string) => void;
   addUserMessage: (message: Message) => void;
   clearError: () => void;
+  clearFileChanges: () => void;
 }
 
 export function useAgentChat({
@@ -123,6 +125,10 @@ export function useAgentChat({
       const type = raw.type as string;
 
       if (type === STREAM_EVENT.CONNECTED) return;
+
+      if (type === STREAM_EVENT.FILE_CHANGED && typeof raw.path === "string") {
+        notifyFileTreeChange(raw.path);
+      }
 
       if (type === STREAM_EVENT.NO_ACTIVE_RUN) {
         if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
@@ -295,6 +301,10 @@ export function useAgentChat({
     };
   }, []);
 
+  const clearFileChanges = useCallback(() => {
+    dispatch({ type: "CLEAR_FILE_CHANGES" });
+  }, []);
+
   return {
     messages: state.messages,
     streamingParts: state.streamingParts,
@@ -311,5 +321,6 @@ export function useAgentChat({
     startStreaming,
     addUserMessage,
     clearError,
+    clearFileChanges,
   };
 }

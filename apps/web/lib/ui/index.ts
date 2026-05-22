@@ -1,6 +1,7 @@
 export {
   appendStreamEvent,
   type AssistantAskUserPart,
+  type AssistantFileAttachmentPart,
   type AssistantFileChangedPart,
   type AssistantPart,
   type AssistantTaskPart,

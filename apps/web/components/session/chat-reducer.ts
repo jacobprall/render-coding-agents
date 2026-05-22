@@ -22,6 +22,7 @@ export interface Message {
   role: "user" | "assistant";
   parts: AssistantPart[];
   createdAt: string;
+  totalDurationMs?: number;
 }
 
 export type ChatStatus = "idle" | "waitingForRun" | "streaming" | "done" | "error";
@@ -50,6 +51,7 @@ export type ChatAction =
   | { type: "SET_ASK_USER"; prompt: AskUserPrompt | null }
   | { type: "NO_ACTIVE_RUN" }
   | { type: "SET_ACTIVE_RUN_ID"; runId: string }
+  | { type: "CLEAR_FILE_CHANGES" }
   | { type: "RESET" };
 
 function flushStreamingToMessages(
@@ -167,6 +169,9 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
 
     case "SET_ACTIVE_RUN_ID":
       return { ...state, activeRunId: action.runId };
+
+    case "CLEAR_FILE_CHANGES":
+      return { ...state, liveFileChanges: [] };
 
     case "RESET":
       return { ...initialChatState(state.messages) };

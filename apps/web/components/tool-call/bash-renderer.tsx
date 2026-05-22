@@ -21,12 +21,6 @@ interface Props {
   status?: ToolStatus;
 }
 
-function truncateLines(text: string, maxLines: number): string {
-  const lines = text.split("\n");
-  if (lines.length <= maxLines) return text;
-  return lines.slice(0, maxLines).join("\n") + "\n…";
-}
-
 export function BashRenderer({ args, result, status = "idle" }: Props) {
   const cmd = args?.command ?? args?.cmd ?? "";
   const output = result?.stdout ?? result?.output ?? "";
@@ -43,10 +37,6 @@ export function BashRenderer({ args, result, status = "idle" }: Props) {
           : "success"
         : status;
 
-  const preview = !isError && output ? (
-    <pre className="text-xs whitespace-pre-wrap line-clamp-2">{truncateLines(output, 2)}</pre>
-  ) : null;
-
   return (
     <ToolLayout
       icon={<Terminal className="size-3" />}
@@ -54,7 +44,6 @@ export function BashRenderer({ args, result, status = "idle" }: Props) {
       subtitle={cmd.length > 60 ? cmd.slice(0, 60) + "…" : cmd}
       status={derivedStatus}
       defaultOpen={isError}
-      preview={preview}
     >
       {cmd && (
         <pre className="text-xs text-foreground whitespace-pre-wrap mb-2">
