@@ -1,111 +1,113 @@
-# Implementation Plan: Parallel Agents Infrastructure
+# Implementation Plan: [FEATURE]
 
-**Branch**: `007-parallel-agents-infra` | **Date**: 2026-05-22 | **Spec**: [spec.md](./spec.md)
+**Branch**: `[###-feature-name]` | **Date**: [DATE] | **Spec**: [link]
 
-**Input**: Feature specification + Architecture decision record (`architecture.md`)
+**Input**: Feature specification from `/specs/[###-feature-name]/spec.md`
+
+**Note**: This template is filled in by the `/speckit-plan` command. See `.specify/templates/plan-template.md` for the execution workflow.
 
 ## Summary
 
-Extend the existing agent platform to support parallel agent sessions with sub-second workspace setup, workspace-level configuration inheritance, and structured event streaming. The architecture doc is the source of truth for approach. Key insight: much of the schema and infrastructure scaffolding already exists (workspace columns on `projects`, mirror/worktree sandbox endpoints, v2 event types). This plan focuses on completing, hardening, and wiring the existing pieces into a production-ready whole.
+[Extract from feature spec: primary requirement + technical approach from research]
 
 ## Technical Context
 
-**Language/Version**: TypeScript (Bun runtime)
+<!--
+  ACTION REQUIRED: Replace the content in this section with the technical details
+  for the project. The structure here is presented in advisory capacity to guide
+  the iteration process.
+-->
 
-**Primary Dependencies**: Next.js 15, Hono, Drizzle ORM, Redis (ioredis), Anthropic SDK
+**Language/Version**: [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION]
 
-**Storage**: PostgreSQL 16 (via Drizzle), Redis Streams, Sandbox persistent disk (20GB at `/workspace/`)
+**Primary Dependencies**: [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION]
 
-**Testing**: Bun test (unit), integration tests against local Redis/Postgres
+**Storage**: [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
 
-**Target Platform**: Linux server (Render Background Workers + Web Services)
+**Testing**: [e.g., pytest, XCTest, cargo test or NEEDS CLARIFICATION]
 
-**Project Type**: Monorepo (apps: web, agent, gateway, sandbox, cli; packages: db, platform, shared)
+**Target Platform**: [e.g., Linux server, iOS 15+, WASM or NEEDS CLARIFICATION]
 
-**Performance Goals**: <1s workspace setup from mirror, 10 concurrent sessions/worker, <500ms event delivery, <2s steering response
+**Project Type**: [e.g., library/cli/web-service/mobile-app/compiler/desktop-app or NEEDS CLARIFICATION]
 
-**Constraints**: No new services; extend existing agent worker, sandbox, and Redis. Backward-compatible SSE during migration.
+**Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps or NEEDS CLARIFICATION]
 
-**Scale/Scope**: 10 concurrent agent sessions per worker instance, multi-repo workspaces (2-5 repos typical)
+**Constraints**: [domain-specific, e.g., <200ms p95, <100MB memory, offline-capable or NEEDS CLARIFICATION]
+
+**Scale/Scope**: [domain-specific, e.g., 10k users, 1M LOC, 50 screens or NEEDS CLARIFICATION]
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-| Principle | Status | Notes |
-|-----------|--------|-------|
-| I. Simplicity | PASS | Extends existing infra, no new services. Mirrors are git primitives (bare clone + worktree). |
-| II. Observability | PASS | Event taxonomy formalizes structured events. All operations emit progress. |
-| III. Modularity | PASS | Changes stay within existing package boundaries (platform/events, sandbox/mirrors, agent/workspace). |
-| IV. API-First | PASS | Sandbox exposes REST endpoints for mirrors/worktrees. Gateway streams events. |
-| V. Reliability | PASS | At-least-once delivery maintained. Fallback to GitHub clone on mirror failure. Corruption auto-recovery. |
-| VI. Security | PASS | Workspace isolation (SC-006). Secrets encrypted at rest. No cross-workspace access. |
-| VII. Testing Discipline | PASS | Critical paths (workspace setup, event delivery, cancellation) require coverage. |
-| VIII. OSS-Friendly | PASS | Env-var config. No proprietary dependencies added. |
-| IX. Performance | PASS | Sub-second setup, streaming events, background workers. |
-
-**All gates pass. No violations to justify.**
+[Gates determined based on constitution file]
 
 ## Project Structure
 
 ### Documentation (this feature)
 
 ```text
-specs/007-parallel-agents-infra/
-├── architecture.md      # Source of truth for approach (existing)
-├── spec.md              # Feature specification (existing)
-├── plan.md              # This file
-├── research.md          # Phase 0 output
-├── data-model.md        # Phase 1 output
-├── quickstart.md        # Phase 1 output
-├── contracts/           # Phase 1 output
-│   └── api.md
-└── checklists/
-    └── requirements.md  # Quality checklist (existing)
+specs/[###-feature]/
+├── plan.md              # This file (/speckit-plan command output)
+├── research.md          # Phase 0 output (/speckit-plan command)
+├── data-model.md        # Phase 1 output (/speckit-plan command)
+├── quickstart.md        # Phase 1 output (/speckit-plan command)
+├── contracts/           # Phase 1 output (/speckit-plan command)
+└── tasks.md             # Phase 2 output (/speckit-tasks command - NOT created by /speckit-plan)
 ```
 
 ### Source Code (repository root)
+<!--
+  ACTION REQUIRED: Replace the placeholder tree below with the concrete layout
+  for this feature. Delete unused options and expand the chosen structure with
+  real paths (e.g., apps/admin, packages/something). The delivered plan must
+  not include Option labels.
+-->
 
 ```text
-packages/
-├── db/schema/
-│   └── org.ts                    # Workspace (projects) schema — already has columns, needs completion
-├── platform/src/
-│   ├── events/
-│   │   ├── run-stream.ts         # Event publishing — extend with full taxonomy
-│   │   └── event-types.ts        # NEW: formal event type registry
-│   ├── queue/
-│   │   └── job-queue.ts          # Increase MAX_CONCURRENT to 10
-│   ├── services/
-│   │   ├── session.ts            # Workspace inheritance on session create
-│   │   ├── session-agent-jobs.ts # Job payload: workspace config injection
-│   │   └── workspace.ts          # NEW: workspace CRUD, secrets management
-│   └── interfaces/
-│       └── events.ts             # Event bus interface — extend with steering
-└── shared/src/
-    ├── stream-types.ts           # Extend v2 event types (planning, steering)
-    └── workspace-types.ts        # Workspace config types — already exists
+# [REMOVE IF UNUSED] Option 1: Single project (DEFAULT)
+src/
+├── models/
+├── services/
+├── cli/
+└── lib/
 
-apps/
-├── agent/src/
-│   ├── worker.ts                 # MAX_CONCURRENT_RUNS → 10, workspace-aware setup
-│   ├── agent.ts                  # setupWorkspace() — fetch-on-start, corruption recovery
-│   ├── loop.ts                   # Steering event consumption between iterations
-│   └── planner.ts               # NEW: planning phase (same loop, plan-only tools)
-├── sandbox/server/
+tests/
+├── contract/
+├── integration/
+└── unit/
+
+# [REMOVE IF UNUSED] Option 2: Web application (when "frontend" + "backend" detected)
+backend/
+├── src/
+│   ├── models/
 │   ├── services/
-│   │   └── mirror-manager.ts     # Harden: corruption detection, 24h cron, fetch-on-start
-│   └── server.ts                 # Webhook endpoint for GitHub push events
-└── web/
-    ├── app/api/
-    │   ├── sessions/[id]/stream/ # SSE — backward compat translation layer
-    │   ├── sessions/[id]/steer/  # NEW: steering endpoint (user message during execution)
-    │   └── webhooks/github/      # NEW: GitHub push webhook → mirror fetch
-    └── components/session/       # UI updates for planning/steering (future, out of scope)
+│   └── api/
+└── tests/
+
+frontend/
+├── src/
+│   ├── components/
+│   ├── pages/
+│   └── services/
+└── tests/
+
+# [REMOVE IF UNUSED] Option 3: Mobile + API (when "iOS/Android" detected)
+api/
+└── [same as backend above]
+
+ios/ or android/
+└── [platform-specific structure: feature modules, UI flows, platform tests]
 ```
 
-**Structure Decision**: Existing monorepo structure with apps/ and packages/ boundaries. All changes extend existing modules. One new service file (`workspace.ts`), one new agent module (`planner.ts`), and several new API routes.
+**Structure Decision**: [Document the selected structure and reference the real
+directories captured above]
 
 ## Complexity Tracking
 
-No constitution violations. No justification needed.
+> **Fill ONLY if Constitution Check has violations that must be justified**
+
+| Violation | Why Needed | Simpler Alternative Rejected Because |
+|-----------|------------|-------------------------------------|
+| [e.g., 4th project] | [current need] | [why 3 projects insufficient] |
+| [e.g., Repository pattern] | [specific problem] | [why direct DB access insufficient] |

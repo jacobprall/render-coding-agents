@@ -20,9 +20,9 @@
 
 **Purpose**: Minimal setup for the remaining implementation gaps.
 
-- [ ] T001 Update worker concurrency default to 10 in `apps/agent/src/worker.ts` using `MAX_CONCURRENT_RUNS` env fallback
-- [ ] T002 [P] Add missing planning/steering/step event variants to `packages/shared/src/stream-types.ts` (`planner:*`, `plan:*`, `user:*`, `step:*`)
-- [ ] T003 [P] Add/refresh planning and sync env vars in `.env.example` (`MAX_CONCURRENT_RUNS`, `MIRROR_IDLE_SYNC_INTERVAL_MS`, `GITHUB_WEBHOOK_SECRET`, `PLANNING_ENABLED`)
+- [x] T001 Update worker concurrency default to 10 in `apps/agent/src/worker.ts` using `MAX_CONCURRENT_RUNS` env fallback
+- [x] T002 [P] Add missing planning/steering/step event variants to `packages/shared/lib/stream-types.ts` (`planner:*`, `plan:*`, `user:*`, `step:*`)
+- [x] T003 [P] Add/refresh planning and sync env vars in `.env.example` (`MAX_CONCURRENT_RUNS`, `MIRROR_IDLE_SYNC_INTERVAL_MS`, `GITHUB_WEBHOOK_SECRET`, `PLANNING_ENABLED`)
 
 ---
 
@@ -32,9 +32,9 @@
 
 **⚠️ CRITICAL**: User story work starts after this phase.
 
-- [ ] T004 Implement steering publish/subscribe helpers in `packages/platform/src/events/run-stream.ts` on existing `run:{runId}` channel
-- [ ] T005 [P] Extend `EventBus` contract in `packages/platform/src/interfaces/events.ts` with typed steering methods used by web/gateway and agent
-- [ ] T006 [P] Verify and tune idle mirror sync interval logic to 24h in `apps/sandbox/server/services/mirror-manager.ts` (without changing existing mirror health/recovery behavior)
+- [x] T004 Implement steering publish/subscribe helpers in `packages/platform/src/events/run-stream.ts` on existing `run:{runId}` channel
+- [x] T005 [P] Extend `EventBus` contract in `packages/platform/src/interfaces/events.ts` with typed steering methods used by web/gateway and agent
+- [x] T006 [P] Verify and tune idle mirror sync interval logic to 24h in `apps/sandbox/server/services/mirror-manager.ts` (without changing existing mirror health/recovery behavior)
 
 **Checkpoint**: Shared event + sync primitives ready.
 
@@ -48,9 +48,9 @@
 
 ### Implementation for User Story 1
 
-- [ ] T007 [US1] Audit and finalize workspace inheritance wiring in `packages/platform/src/services/session.ts` for `environmentConfig`, `secretsConfig`, `defaultSkills`, and `instructions`
-- [ ] T008 [US1] Ensure job payload resolution is complete in `packages/platform/src/services/session-agent-jobs.ts` (`resolvedEnv`, `resolvedSecrets`, `activeSkillRefs`, `instructions`)
-- [ ] T009 [US1] Enforce secret redaction boundary in `apps/agent/src/agent.ts` so `__SECRET__`-prefixed runtime secrets are never surfaced back into assistant-visible tool output
+- [x] T007 [US1] Audit and finalize workspace inheritance wiring in `packages/platform/src/services/session.ts` for `environmentConfig`, `secretsConfig`, `defaultSkills`, and `instructions`
+- [x] T008 [US1] Ensure job payload resolution is complete in `packages/platform/src/services/session-agent-jobs.ts` (`resolvedEnv`, `resolvedSecrets`, `activeSkillRefs`, `instructions`)
+- [x] T009 [US1] Enforce secret redaction boundary in `apps/agent/src/agent.ts` so `__SECRET__`-prefixed runtime secrets are never surfaced back into assistant-visible tool output
 
 **Checkpoint**: Workspace inheritance and secret boundaries are correct.
 
@@ -64,10 +64,10 @@
 
 ### Implementation for User Story 2
 
-- [ ] T010 [US2] Emit `step:started` / `step:completed` events for workspace setup stages in `apps/agent/src/agent.ts` (`mirror_check`, `mirror_fetch`, `worktree_create`, `fallback_clone`)
-- [ ] T011 [US2] Make mirror freshness explicit by ensuring setup path invokes fetch semantics before worktree creation in `apps/agent/src/agent.ts` (without duplicating existing `ensureMirror` behavior)
-- [ ] T012 [P] [US2] Expose mirror health/status endpoint wiring in `apps/sandbox/server/server.ts` using existing `mirror-manager` health data (no duplicate recovery implementation)
-- [ ] T013 [US2] Add degraded-setup telemetry enrichment in `apps/agent/src/agent.ts` for fallback clone cases (repo, reason, duration)
+- [x] T010 [US2] Emit `step:started` / `step:completed` events for workspace setup stages in `apps/agent/src/agent.ts` (`mirror_check`, `mirror_fetch`, `worktree_create`, `fallback_clone`)
+- [x] T011 [US2] Make mirror freshness explicit by ensuring setup path invokes fetch semantics before worktree creation in `apps/agent/src/agent.ts` (without duplicating existing `ensureMirror` behavior)
+- [x] T012 [P] [US2] Expose mirror health/status endpoint wiring in `apps/sandbox/server/server.ts` using existing `mirror-manager` health data (no duplicate recovery implementation)
+- [x] T013 [US2] Add degraded-setup telemetry enrichment in `apps/agent/src/agent.ts` for fallback clone cases (repo, reason, duration)
 
 **Checkpoint**: Setup remains fast, observable, and operationally clear.
 
@@ -81,8 +81,8 @@
 
 ### Implementation for User Story 3
 
-- [ ] T014 [US3] Update event mapping in `apps/agent/src/run-persistence.ts` so new planning/steering/step events are serialized consistently as v2 payloads
-- [ ] T015 [US3] Validate backward compatibility in `apps/web/app/api/sessions/[id]/stream/route.ts` and `apps/gateway/src/routes/stream.ts` for old consumers while passing through new event types
+- [x] T014 [US3] Update event mapping in `apps/agent/src/run-persistence.ts` so new planning/steering/step events are serialized consistently as v2 payloads
+- [x] T015 [US3] Validate backward compatibility in `apps/web/app/api/sessions/[id]/stream/route.ts` and `apps/gateway/src/routes/stream.ts` for old consumers while passing through new event types
 
 **Checkpoint**: Event taxonomy expansion is visible and non-breaking.
 
@@ -96,9 +96,9 @@
 
 ### Implementation for User Story 4
 
-- [ ] T016 [US4] Create steering endpoint `apps/web/app/api/sessions/[id]/steer/route.ts` to publish `user:message` / `user:interrupt` events to the active run
-- [ ] T017 [US4] Consume steering events in agent execution flow by extending `apps/agent/src/agent.ts` and `apps/agent/src/loop.ts` to read queued messages between iterations
-- [ ] T018 [P] [US4] Add gateway parity endpoint in `apps/gateway/src/routes/stream.ts` for non-web clients to send steering events
+- [x] T016 [US4] Create steering endpoint `apps/web/app/api/sessions/[id]/steer/route.ts` to publish `user:message` / `user:interrupt` events to the active run
+- [x] T017 [US4] Consume steering events in agent execution flow by extending `apps/agent/src/agent.ts` and `apps/agent/src/loop.ts` to read queued messages between iterations
+- [x] T018 [P] [US4] Add gateway parity endpoint in `apps/gateway/src/routes/stream.ts` for non-web clients to send steering events
 
 **Checkpoint**: Mid-flight steering works end-to-end across web and gateway surfaces.
 
@@ -112,10 +112,10 @@
 
 ### Implementation for User Story 5
 
-- [ ] T019 [US5] Create planning module in `apps/agent/src/planner.ts` with read-only toolset and plan-generation output
-- [ ] T020 [US5] Integrate planning phase switch in `apps/agent/src/agent.ts` so runs enter planning mode, emit `plan:generated`, and pause awaiting approval
-- [ ] T021 [US5] Create approval endpoint `apps/web/app/api/sessions/[id]/approve-plan/route.ts` that publishes `user:plan_approved` / `user:plan_rejected`
-- [ ] T022 [P] [US5] Add gateway parity approval route in `apps/gateway/src/routes/stream.ts`
+- [x] T019 [US5] Create planning module in `apps/agent/src/planner.ts` with read-only toolset and plan-generation output
+- [x] T020 [US5] Integrate planning phase switch in `apps/agent/src/agent.ts` so runs enter planning mode, emit `plan:generated`, and pause awaiting approval
+- [x] T021 [US5] Create approval endpoint `apps/web/app/api/sessions/[id]/approve-plan/route.ts` that publishes `user:plan_approved` / `user:plan_rejected`
+- [x] T022 [P] [US5] Add gateway parity approval route in `apps/gateway/src/routes/stream.ts`
 
 **Checkpoint**: Planning/approval lifecycle functions on existing worker/event infrastructure.
 
@@ -125,8 +125,8 @@
 
 **Purpose**: Final hardening and documentation validation across all stories.
 
-- [ ] T023 [P] Add targeted observability fields for setup/steering/planning transitions in `apps/agent/src/agent.ts` and `apps/sandbox/server/services/mirror-manager.ts`
-- [ ] T024 Run and document quickstart validation updates in `specs/007-parallel-agents-infra/quickstart.md` to reflect final task outcomes
+- [x] T023 [P] Add targeted observability fields for setup/steering/planning transitions in `apps/agent/src/agent.ts` and `apps/sandbox/server/services/mirror-manager.ts`
+- [x] T024 Run and document quickstart validation updates in `specs/007-parallel-agents-infra/quickstart.md` to reflect final task outcomes
 
 ---
 
