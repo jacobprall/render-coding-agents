@@ -49,7 +49,7 @@ for (const sig of ["SIGTERM", "SIGINT"] as const) {
 
 function createRedis(name: string): Redis {
   const redis = new Redis(REDIS_URL!, { enableReadyCheck: false, lazyConnect: false });
-  redis.on("error", (err) => console.error(`[${name}] error:`, err));
+  redis.on("error", (err) => console.error(`[${name}] error:`, err.message ?? err));
   return redis;
 }
 
@@ -266,7 +266,7 @@ async function main() {
     try {
       entry = await readOneJob(redis, WORKER_ID, BLOCK_READ_MS);
     } catch (err) {
-      console.error("readOneJob error", err);
+      console.error("readOneJob error", err instanceof Error ? err.message : String(err));
       await new Promise((r) => setTimeout(r, 1000));
       continue;
     }

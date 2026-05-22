@@ -483,9 +483,16 @@ async function ensureScratchWorkspace(adapter: SandboxAdapter, userId: string): 
 
 class CloneError extends Error {
   constructor(message: string) {
-    super(message);
+    super(redactCredentials(message));
     this.name = "CloneError";
   }
+}
+
+function redactCredentials(text: string): string {
+  return text.replace(
+    /https?:\/\/[^:]+:[^@]+@/g,
+    "https://***:***@",
+  );
 }
 
 async function tryClone(
