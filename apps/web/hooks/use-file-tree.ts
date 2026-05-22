@@ -100,6 +100,11 @@ export function useFileTree(
     [data],
   );
 
+  const hasLoaded = useCallback(
+    (path: string): boolean => !!data?.[path],
+    [data],
+  );
+
   const invalidate = useCallback(
     async (path: string) => {
       if (!sessionId) return;
@@ -133,6 +138,7 @@ export function useFileTree(
     select,
     selectedPath,
     getChildren,
+    hasLoaded,
     invalidate,
     isLoading,
     error,

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireForgeAuth } from "@/lib/platform";
 import { requireSessionForUser } from "@/lib/session-auth";
+import { getGitStatus } from "@/lib/sandbox-client";
 
 export interface GitChange {
   path: string;
@@ -22,16 +23,8 @@ export async function GET(
       return NextResponse.json({ error: "Session has no repository" }, { status: 404 });
     }
 
-    // TODO: Fetch git status from session sandbox via platform adapter
-    const changes: GitChange[] = [];
-
-    return NextResponse.json({
-      branch: "main",
-      ahead: 0,
-      behind: 0,
-      changes,
-      clean: changes.length === 0,
-    });
+    const result = await getGitStatus(id);
+    return NextResponse.json(result);
   } catch (err) {
     if (err instanceof Response) return err;
     console.error("[sessions/git/status] failed:", err);

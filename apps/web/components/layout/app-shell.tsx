@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePanelResize } from "@/hooks/use-panel-resize";
 import { useLayoutState } from "@/hooks/use-layout-state";
 import { Sidebar } from "./sidebar";
@@ -24,7 +24,6 @@ const CHAT_MIN_WIDTH = 450;
 const SIDEBAR_MIN = 200;
 const SIDEBAR_MAX = 400;
 const RIGHT_PANEL_MIN = 300;
-const RIGHT_PANEL_MAX = 600;
 
 type LayoutStateReturn = LayoutState & {
   hydrated: boolean;
@@ -214,12 +213,28 @@ function AppShellGrid({ user, children, layout, rightPanelResize }: AppShellGrid
 
 export function AppShell(props: AppShellProps) {
   const layout = useLayoutState();
+  const [rightPanelMaxSize, setRightPanelMaxSize] = useState(900);
+
+  useEffect(() => {
+    function updateMaxSize() {
+      const max =
+        window.innerWidth -
+        (layout.sidebarOpen ? layout.sidebarWidth + 4 : 0) -
+        CHAT_MIN_WIDTH -
+        8;
+      setRightPanelMaxSize(max);
+    }
+
+    updateMaxSize();
+    window.addEventListener("resize", updateMaxSize);
+    return () => window.removeEventListener("resize", updateMaxSize);
+  }, [layout.sidebarOpen, layout.sidebarWidth]);
 
   const rightPanelResize = usePanelResize({
     direction: "horizontal",
     initialSize: layout.rightPanelWidth,
     minSize: RIGHT_PANEL_MIN,
-    maxSize: RIGHT_PANEL_MAX,
+    maxSize: rightPanelMaxSize,
     invertDrag: true,
     size: layout.hydrated ? layout.rightPanelWidth : 400,
     onSizeChange: layout.setRightPanelWidth,

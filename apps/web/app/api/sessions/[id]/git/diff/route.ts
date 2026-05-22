@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireForgeAuth } from "@/lib/platform";
 import { requireSessionForUser } from "@/lib/session-auth";
-import { readFileContent } from "@/lib/sandbox-client";
+import { getFileDiff } from "@/lib/sandbox-client";
 
 export async function GET(
   req: NextRequest,
@@ -22,16 +22,11 @@ export async function GET(
       return NextResponse.json({ error: "path query parameter is required" }, { status: 400 });
     }
 
-    const result = await readFileContent(id, path);
-
-    if (result.binary) {
-      return NextResponse.json({ error: "Binary file", binary: true }, { status: 422 });
-    }
-
+    const result = await getFileDiff(id, path);
     return NextResponse.json(result);
   } catch (err) {
     if (err instanceof Response) return err;
-    console.error("[sessions/files/content] read failed:", err);
-    return NextResponse.json({ error: "Failed to read file content" }, { status: 500 });
+    console.error("[sessions/git/diff] failed:", err);
+    return NextResponse.json({ error: "Failed to get file diff" }, { status: 500 });
   }
 }

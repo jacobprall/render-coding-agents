@@ -61,6 +61,10 @@ export function usePanelResize({
     localStorage.setItem(storageKey, String(size));
   }, [size, storageKey, isControlled]);
 
+  useEffect(() => {
+    setSize((curr) => Math.min(curr, maxSize));
+  }, [maxSize, setSize]);
+
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
       e.preventDefault();

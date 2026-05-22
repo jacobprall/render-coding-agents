@@ -11,8 +11,7 @@ import {
   CheckCircle2,
   AlertCircle,
   PanelLeft,
-  FolderTree,
-  GitBranch,
+  PanelRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { RightPanelMode } from "./right-panel";
@@ -128,37 +127,22 @@ export function SessionTabs({
 
   const showNewButton = pathname !== "/sessions";
   const panelMode = rightPanelCtx?.mode ?? rightPanelMode;
-  const showRightPanelTabs = Boolean(
+  const rightPanelOpen = panelMode !== "closed";
+  const showPanelToggle = Boolean(
     activeSessionId && (rightPanelCtx || onRightPanelModeChange),
   );
 
-  const togglePanelMode = (target: Exclude<RightPanelMode, "closed" | "preview">) => {
+  const toggleRightPanel = () => {
     if (rightPanelCtx) {
-      rightPanelCtx.toggleMode(target);
+      if (rightPanelOpen) {
+        rightPanelCtx.toggleMode("files");
+      } else {
+        rightPanelCtx.toggleMode("files");
+      }
       return;
     }
     if (!onRightPanelModeChange) return;
-    const isFilesActive = panelMode === "files" || panelMode === "preview";
-    if (target === "files" && isFilesActive) {
-      onRightPanelModeChange("closed");
-    } else if (target === "git" && panelMode === "git") {
-      onRightPanelModeChange("closed");
-    } else {
-      onRightPanelModeChange(target);
-    }
-  };
-
-  const rightPanelButtonClass = (target: "files" | "git") => {
-    const isActive =
-      target === "files"
-        ? panelMode === "files" || panelMode === "preview"
-        : panelMode === "git";
-    return cn(
-      "flex h-7 w-7 items-center justify-center transition-colors",
-      isActive
-        ? "bg-primary/10 text-primary"
-        : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-    );
+    onRightPanelModeChange(rightPanelOpen ? "closed" : "files");
   };
 
   return (
@@ -201,35 +185,31 @@ export function SessionTabs({
         })}
       </div>
 
-      {showRightPanelTabs ? (
-        <div className="flex shrink-0 items-center gap-0.5 border-l border-border px-1">
-          <button
-            type="button"
-            title="Files"
-            className={rightPanelButtonClass("files")}
-            onClick={() => togglePanelMode("files")}
-          >
-            <FolderTree className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            title="Git"
-            className={rightPanelButtonClass("git")}
-            onClick={() => togglePanelMode("git")}
-          >
-            <GitBranch className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      ) : null}
-
       {showNewButton && (
         <Link
           href="/sessions"
           className="flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+          title="New session"
         >
           <Plus className="h-3.5 w-3.5" />
         </Link>
       )}
+
+      {showPanelToggle ? (
+        <button
+          type="button"
+          onClick={toggleRightPanel}
+          title={rightPanelOpen ? "Collapse panel" : "Expand panel"}
+          className={cn(
+            "mr-1 flex h-8 w-8 shrink-0 items-center justify-center transition-colors",
+            rightPanelOpen
+              ? "text-primary"
+              : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+          )}
+        >
+          <PanelRight className="h-3.5 w-3.5" />
+        </button>
+      ) : null}
     </div>
   );
 }

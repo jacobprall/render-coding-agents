@@ -81,9 +81,7 @@ export function FilePreview({ sessionId, filePath, onBack }: FilePreviewProps) {
               <button
                 type="button"
                 className="truncate transition-colors hover:text-text-secondary"
-                onClick={() => {
-                  /* breadcrumb navigation placeholder */
-                }}
+                onClick={onBack}
               >
                 {seg}
               </button>

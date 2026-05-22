@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import { FolderTree, GitBranch, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { FolderTree, GitBranch, PanelLeft, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FileTree } from "@/components/session/file-tree";
 import { FilePreview } from "@/components/session/file-preview";
@@ -18,6 +18,12 @@ interface RightPanelProps {
   onClearSelection?: () => void;
 }
 
+function getModeAnnouncement(mode: RightPanelMode, width: number): string {
+  if (mode === "closed" || width === 0) return "Panel closed";
+  if (mode === "git") return "Git mode";
+  return "Files mode";
+}
+
 export function RightPanel({
   mode,
   sessionId,
@@ -27,8 +33,15 @@ export function RightPanel({
   onClearSelection,
 }: RightPanelProps) {
   const [localSelectedPath, setLocalSelectedPath] = useState<string | null>(null);
+  const [announcement, setAnnouncement] = useState(() =>
+    getModeAnnouncement(mode, width),
+  );
 
   const activePath = selectedPath ?? localSelectedPath;
+
+  useEffect(() => {
+    setAnnouncement(getModeAnnouncement(mode, width));
+  }, [mode, width]);
 
   const handleFileSelect = useCallback((path: string) => {
     setLocalSelectedPath(path);
@@ -40,88 +53,109 @@ export function RightPanel({
     onClearSelection?.();
   }, [onModeChange, onClearSelection]);
 
-  if (mode === "closed" || width === 0) {
-    return null;
-  }
+  const handleBackToTree = useCallback(() => {
+    setLocalSelectedPath(null);
+    onClearSelection?.();
+  }, [onClearSelection]);
 
+  const handleDeselect = useCallback(() => {
+    setLocalSelectedPath(null);
+    onClearSelection?.();
+  }, [onClearSelection]);
+
+  const isOpen = mode !== "closed" && width !== 0;
   const showSplit = mode === "files" && activePath;
 
   return (
-    <aside
-      className="flex h-full min-w-0 flex-col overflow-hidden border-l border-border bg-card"
-      style={{ width }}
-    >
-      <div className="flex shrink-0 items-center justify-between border-b border-stroke-subtle px-2 py-1.5">
-        <div className="flex items-center gap-0.5">
-          <PanelTabButton
-            active={mode === "files"}
-            onClick={() => onModeChange(mode === "files" ? "closed" : "files")}
-            title="Files"
-          >
-            <FolderTree className="size-3.5" />
-          </PanelTabButton>
-          <PanelTabButton
-            active={mode === "git"}
-            onClick={() => onModeChange(mode === "git" ? "closed" : "git")}
-            title="Git"
-          >
-            <GitBranch className="size-3.5" />
-          </PanelTabButton>
-        </div>
-        <button
-          type="button"
-          onClick={handleClose}
-          className="rounded p-1 text-text-tertiary transition-colors hover:bg-surface-2 hover:text-text-primary"
-          title="Close panel"
-        >
-          <X className="size-3.5" />
-        </button>
+    <>
+      <div className="sr-only" aria-live="polite" aria-atomic="true">
+        {announcement}
       </div>
-
-      <div className="min-h-0 flex-1 overflow-hidden">
-        {mode === "git" ? (
-          <GitPanel sessionId={sessionId} enabled={mode === "git"} />
-        ) : mode === "preview" && activePath ? (
-          <FilePreview
-            sessionId={sessionId}
-            filePath={activePath}
-            onBack={() => {
-              setLocalSelectedPath(null);
-              onClearSelection?.();
-              onModeChange("files");
-            }}
-          />
-        ) : showSplit ? (
-          <div className="flex h-full min-h-0">
-            <div className="w-2/5 min-w-[120px] shrink-0 overflow-y-auto border-r border-stroke-subtle">
-              <FileTree
-                sessionId={sessionId}
-                selectedPath={activePath}
-                onFileSelect={handleFileSelect}
-              />
+      {isOpen ? (
+        <aside
+          aria-label="File explorer panel"
+          className="flex h-full min-w-0 flex-col overflow-hidden border-l border-border bg-card transition-all duration-200"
+          style={{ width }}
+        >
+          <div className="flex shrink-0 items-center justify-between border-b border-stroke-subtle px-2 py-1.5">
+            <div className="flex items-center gap-0.5">
+              <PanelTabButton
+                active={mode === "files"}
+                onClick={() => onModeChange(mode === "files" ? "closed" : "files")}
+                title="Files"
+                ariaLabel="Switch to files mode"
+              >
+                <FolderTree className="size-3.5" />
+              </PanelTabButton>
+              <PanelTabButton
+                active={mode === "git"}
+                onClick={() => onModeChange(mode === "git" ? "closed" : "git")}
+                title="Git"
+                ariaLabel="Switch to git mode"
+              >
+                <GitBranch className="size-3.5" />
+              </PanelTabButton>
             </div>
-            <div className="min-w-0 flex-1 overflow-hidden">
+            <button
+              type="button"
+              onClick={handleClose}
+              className="rounded p-1 text-text-tertiary transition-colors hover:bg-surface-2 hover:text-text-primary"
+              title="Close panel"
+            >
+              <X className="size-3.5" />
+            </button>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-hidden transition-all duration-200">
+            {mode === "git" ? (
+              <GitPanel sessionId={sessionId} enabled={mode === "git"} />
+            ) : mode === "preview" && activePath ? (
               <FilePreview
                 sessionId={sessionId}
                 filePath={activePath}
                 onBack={() => {
                   setLocalSelectedPath(null);
                   onClearSelection?.();
+                  onModeChange("files");
                 }}
               />
-            </div>
+            ) : showSplit ? (
+              <div className="flex h-full min-h-0">
+                <div className="flex w-10 shrink-0 flex-col items-center border-r border-stroke-subtle bg-surface-1 py-2 transition-all duration-200">
+                  <button
+                    type="button"
+                    onClick={handleBackToTree}
+                    className="rounded p-1.5 text-text-tertiary transition-colors hover:bg-surface-2 hover:text-text-primary"
+                    title="Back to full tree"
+                  >
+                    <PanelLeft className="size-4" />
+                  </button>
+                  <div className="mt-2 flex flex-1 flex-col items-center pt-1">
+                    <FolderTree className="size-3.5 text-text-tertiary/40" aria-hidden />
+                  </div>
+                </div>
+                <div className="min-w-0 flex-1 overflow-hidden transition-all duration-200">
+                  <FilePreview
+                    sessionId={sessionId}
+                    filePath={activePath}
+                    onBack={handleBackToTree}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="h-full overflow-y-auto transition-all duration-200">
+                <FileTree
+                  sessionId={sessionId}
+                  selectedPath={activePath ?? undefined}
+                  onFileSelect={handleFileSelect}
+                  onDeselect={handleDeselect}
+                />
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="h-full overflow-y-auto">
-            <FileTree
-              sessionId={sessionId}
-              selectedPath={activePath ?? undefined}
-              onFileSelect={handleFileSelect}
-            />
-          </div>
-        )}
-      </div>
-    </aside>
+        </aside>
+      ) : null}
+    </>
   );
 }
 
@@ -129,11 +163,13 @@ function PanelTabButton({
   active,
   onClick,
   title,
+  ariaLabel,
   children,
 }: {
   active: boolean;
   onClick: () => void;
   title: string;
+  ariaLabel: string;
   children: React.ReactNode;
 }) {
   return (
@@ -141,6 +177,7 @@ function PanelTabButton({
       type="button"
       onClick={onClick}
       title={title}
+      aria-label={ariaLabel}
       className={cn(
         "rounded p-1.5 transition-colors",
         active
