@@ -20,11 +20,31 @@ export async function GET(
     const session = await requireSessionForUser(auth, id);
 
     if (!session.repoPath) {
-      return NextResponse.json({ error: "Session has no repository" }, { status: 404 });
+      return NextResponse.json({
+        branch: "main",
+        ahead: 0,
+        behind: 0,
+        changes: [],
+        clean: true,
+      });
     }
 
-    const result = await getGitStatus(id);
-    return NextResponse.json(result);
+    try {
+      const result = await getGitStatus(id);
+      return NextResponse.json(result);
+    } catch (sandboxErr) {
+      const msg = sandboxErr instanceof Error ? sandboxErr.message : "";
+      if (msg.includes("unreachable") || msg.includes("ECONNREFUSED")) {
+        return NextResponse.json({
+          branch: "main",
+          ahead: 0,
+          behind: 0,
+          changes: [],
+          clean: true,
+        });
+      }
+      throw sandboxErr;
+    }
   } catch (err) {
     if (err instanceof Response) return err;
     console.error("[sessions/git/status] failed:", err);

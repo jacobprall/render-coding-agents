@@ -1,15 +1,75 @@
-import { HttpSandboxAdapter } from "@coding-agents/sandbox";
-
-const SANDBOX_URL = process.env.SANDBOX_URL ?? "http://localhost:3001";
+const SANDBOX_HOST = process.env.SANDBOX_SERVICE_HOST ?? process.env.SANDBOX_URL ?? "http://localhost:3001";
+const SANDBOX_URL = (SANDBOX_HOST.startsWith("http") ? SANDBOX_HOST : `https://${SANDBOX_HOST}`).replace(/\/$/, "");
 const SANDBOX_SECRET = process.env.SANDBOX_SHARED_SECRET;
 
-let adapter: HttpSandboxAdapter | null = null;
+interface ExecResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  timedOut: boolean;
+  durationMs: number;
+}
 
-export function getSandboxAdapter(): HttpSandboxAdapter {
-  if (!adapter) {
-    adapter = new HttpSandboxAdapter(SANDBOX_URL, SANDBOX_SECRET);
+interface FileReadResult {
+  content: string;
+  exists: boolean;
+  errorCode?: "not_found" | "too_large" | "read_failed";
+  errorMessage?: string;
+}
+
+interface GitResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+}
+
+async function sandboxRequest<T>(
+  path: string,
+  sessionId: string,
+  body: Record<string, unknown>,
+  timeoutMs = 120_000,
+): Promise<T> {
+  const headers: Record<string, string> = {
+    "X-Session-Id": sessionId,
+    "Content-Type": "application/json",
+  };
+  if (SANDBOX_SECRET) {
+    headers["Authorization"] = `Bearer ${SANDBOX_SECRET}`;
   }
-  return adapter;
+
+  let res: Response;
+  try {
+    res = await fetch(`${SANDBOX_URL}${path}`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (err) {
+    throw new Error(
+      `Sandbox unreachable: ${err instanceof Error ? err.message : "network error"}`,
+      { cause: err },
+    );
+  }
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "unknown error");
+    throw new Error(`Sandbox request failed (${res.status}): ${text}`);
+  }
+
+  return res.json() as Promise<T>;
+}
+
+function sandboxExec(sessionId: string, command: string): Promise<ExecResult> {
+  return sandboxRequest<ExecResult>("/exec", sessionId, { command });
+}
+
+function sandboxReadFile(sessionId: string, filePath: string): Promise<FileReadResult> {
+  return sandboxRequest<FileReadResult>("/read", sessionId, { path: filePath });
+}
+
+function sandboxGit(sessionId: string, args: string[]): Promise<GitResult> {
+  return sandboxRequest<GitResult>("/git", sessionId, { args });
 }
 
 export interface DirectoryEntry {
@@ -79,11 +139,9 @@ export async function listDirectory(
   sessionId: string,
   dirPath: string,
 ): Promise<DirectoryListResult> {
-  const sandbox = getSandboxAdapter();
-
   const normalizedDir = dirPath === "/" ? "." : dirPath.replace(/^\//, "");
 
-  const result = await sandbox.exec(
+  const result = await sandboxExec(
     sessionId,
     `find "${normalizedDir}" -maxdepth 1 -not -path "${normalizedDir}" -printf "%y %s %f\\n" 2>/dev/null | head -500`,
   );
@@ -126,7 +184,6 @@ export async function readFileContent(
   sessionId: string,
   filePath: string,
 ): Promise<FileContentResult> {
-  const sandbox = getSandboxAdapter();
   const normalizedPath = filePath.replace(/^\//, "");
   const ext = getFileExtension(normalizedPath.split("/").pop() ?? "");
 
@@ -141,7 +198,7 @@ export async function readFileContent(
     };
   }
 
-  const result = await sandbox.readFile(sessionId, normalizedPath);
+  const result = await sandboxReadFile(sessionId, normalizedPath);
 
   if (!result.exists) {
     throw new Error(result.errorCode === "too_large" ? "File too large" : "File not found");
@@ -161,12 +218,10 @@ export async function readFileContent(
 }
 
 export async function getGitStatus(sessionId: string): Promise<GitStatusResult> {
-  const sandbox = getSandboxAdapter();
-
-  const branchResult = await sandbox.git(sessionId, ["branch", "--show-current"]);
+  const branchResult = await sandboxGit(sessionId, ["branch", "--show-current"]);
   const branch = branchResult.stdout.trim() || "main";
 
-  const statusResult = await sandbox.git(sessionId, ["status", "--porcelain=v1"]);
+  const statusResult = await sandboxGit(sessionId, ["status", "--porcelain=v1"]);
 
   if (statusResult.exitCode !== 0) {
     return { branch, ahead: 0, behind: 0, changes: [], clean: true };
@@ -179,7 +234,7 @@ export async function getGitStatus(sessionId: string): Promise<GitStatusResult> 
     const path = line.slice(3).trim();
     if (!path) continue;
 
-    const numstat = await sandbox.git(sessionId, ["diff", "--numstat", "--", path]);
+    const numstat = await sandboxGit(sessionId, ["diff", "--numstat", "--", path]);
     let linesAdded = 0;
     let linesRemoved = 0;
     const statLine = numstat.stdout.trim().split("\n")[0];
@@ -205,13 +260,12 @@ export async function getFileDiff(
   sessionId: string,
   filePath: string,
 ): Promise<GitDiffResult> {
-  const sandbox = getSandboxAdapter();
   const normalizedPath = filePath.replace(/^\//, "");
 
-  const result = await sandbox.git(sessionId, ["diff", "--", normalizedPath]);
+  const result = await sandboxGit(sessionId, ["diff", "--", normalizedPath]);
 
   if (result.exitCode !== 0 && !result.stdout.trim()) {
-    const stagedResult = await sandbox.git(sessionId, ["diff", "--cached", "--", normalizedPath]);
+    const stagedResult = await sandboxGit(sessionId, ["diff", "--cached", "--", normalizedPath]);
     if (stagedResult.stdout.trim()) {
       return {
         path: filePath,
@@ -221,7 +275,7 @@ export async function getFileDiff(
       };
     }
 
-    const untrackedResult = await sandbox.git(sessionId, [
+    const untrackedResult = await sandboxGit(sessionId, [
       "diff", "--no-index", "/dev/null", normalizedPath,
     ]);
     return {
@@ -243,8 +297,7 @@ export async function getFileDiff(
 }
 
 async function getGitStatusMap(sessionId: string): Promise<Map<string, string>> {
-  const sandbox = getSandboxAdapter();
-  const result = await sandbox.git(sessionId, ["status", "--porcelain=v1"]);
+  const result = await sandboxGit(sessionId, ["status", "--porcelain=v1"]);
   const map = new Map<string, string>();
 
   if (result.exitCode !== 0) return map;

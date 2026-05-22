@@ -97,7 +97,7 @@ A developer initiates a task. Before autonomous execution, the system's planner 
 
 - What happens when the persistent disk is full and a new mirror cannot be created?
 - How does the system handle concurrent webhook syncs on the same bare clone mirror?
-- What happens when a worktree creation fails due to a corrupted bare clone?
+- What happens when a worktree creation fails due to a corrupted bare clone? (Resolved: delete corrupted mirror, fall back to GitHub clone for current session, re-create mirror in background.)
 - How does the system handle a session that references a repo removed from the workspace?
 - What happens when multiple agents attempt to write to overlapping files across parallel sessions? (Resolved: isolated branches; conflicts surfaced at merge/PR time.)
 - How does the system handle secrets rotation while active sessions are running?
@@ -117,9 +117,10 @@ A developer initiates a task. Before autonomous execution, the system's planner 
 - **FR-008**: System MUST deliver steering events (user messages, interrupts) to active agent sessions within 2 seconds of submission.
 - **FR-009**: System MUST clean up git worktrees when a session ends (completion, failure, or cancellation).
 - **FR-010**: System MUST allow concurrent agent sessions within the same workspace without contention on shared resources (mirrors, config).
-- **FR-011**: System MUST maintain backward compatibility with existing SSE event consumers during the event taxonomy migration.
-- **FR-012**: System MUST support workspace-level inheritance of skills, rules, and environment configuration for all sessions.
-- **FR-013**: System MUST provide a planning/approval flow where agents can generate a plan and wait for user approval before executing. Planning runs on the agent worker (same execution path as execution), consuming a worker slot during the planning phase.
+- **FR-011**: System MUST detect corrupted bare clone mirrors and recover automatically by deleting and re-cloning from GitHub in the background, while the current session falls back to a direct GitHub clone.
+- **FR-012**: System MUST maintain backward compatibility with existing SSE event consumers during the event taxonomy migration.
+- **FR-013**: System MUST support workspace-level inheritance of skills, rules, and environment configuration for all sessions.
+- **FR-014**: System MUST provide a planning/approval flow where agents can generate a plan and wait for user approval before executing. Planning runs on the agent worker (same execution path as execution), consuming a worker slot during the planning phase.
 
 ### Key Entities
 
@@ -149,6 +150,7 @@ A developer initiates a task. Before autonomous execution, the system's planner 
 - Q: What is the mirror sync strategy and periodic fallback interval? → A: Three-layer freshness: (1) webhooks for real-time sync, (2) git fetch on every session start before worktree creation, (3) 24-hour background cron for idle mirrors with no recent sessions.
 - Q: Should the planner agent run on the web service or the agent worker? → A: Agent worker. Unified execution path reusing existing LLM tooling, crash recovery, and event infrastructure.
 - Q: What is the target concurrency limit per worker instance? → A: 10 concurrent sessions per instance (up from 5 today). Enables parallel workflows without resource exhaustion.
+- Q: How does the system recover from a corrupted bare clone mirror? → A: Delete and re-clone from GitHub. Mirrors are treated as disposable cache; current session falls back to GitHub clone while mirror is re-created in background.
 
 ## Assumptions
 

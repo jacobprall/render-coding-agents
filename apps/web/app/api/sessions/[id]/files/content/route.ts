@@ -22,13 +22,27 @@ export async function GET(
       return NextResponse.json({ error: "path query parameter is required" }, { status: 400 });
     }
 
-    const result = await readFileContent(id, path);
+    try {
+      const result = await readFileContent(id, path);
 
-    if (result.binary) {
-      return NextResponse.json({ error: "Binary file", binary: true }, { status: 422 });
+      if (result.binary) {
+        return NextResponse.json({ error: "Binary file", binary: true }, { status: 422 });
+      }
+
+      return NextResponse.json(result);
+    } catch (sandboxErr) {
+      const msg = sandboxErr instanceof Error ? sandboxErr.message : "";
+      if (msg.includes("unreachable") || msg.includes("ECONNREFUSED")) {
+        return NextResponse.json({
+          path,
+          content: "",
+          language: "text",
+          size: 0,
+          truncated: false,
+        });
+      }
+      throw sandboxErr;
     }
-
-    return NextResponse.json(result);
   } catch (err) {
     if (err instanceof Response) return err;
     console.error("[sessions/files/content] read failed:", err);

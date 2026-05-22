@@ -22,8 +22,16 @@ export async function GET(
       return NextResponse.json({ error: "path query parameter is required" }, { status: 400 });
     }
 
-    const result = await getFileDiff(id, path);
-    return NextResponse.json(result);
+    try {
+      const result = await getFileDiff(id, path);
+      return NextResponse.json(result);
+    } catch (sandboxErr) {
+      const msg = sandboxErr instanceof Error ? sandboxErr.message : "";
+      if (msg.includes("unreachable") || msg.includes("ECONNREFUSED")) {
+        return NextResponse.json({ path, diff: "", hunks: [] });
+      }
+      throw sandboxErr;
+    }
   } catch (err) {
     if (err instanceof Response) return err;
     console.error("[sessions/git/diff] failed:", err);
