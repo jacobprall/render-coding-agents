@@ -1,6 +1,7 @@
 import { defineTool } from "./define-tool";
 import { z } from "zod";
 import type { StreamEvent } from "../types";
+import { evt } from "../run-persistence";
 
 export const submitSpecInputSchema = z.object({
   goal: z.string(),
@@ -24,7 +25,7 @@ export function submitSpecTool(
       "Submit a structured implementation specification for human approval before coding.",
     inputSchema: submitSpecInputSchema,
     execute: async (spec) => {
-      await publish({ type: "spec", spec });
+      await publish(evt("agent:spec", { spec }));
 
       await persistSpec(spec);
 

@@ -1,6 +1,7 @@
 import type { AssistantPart } from "@/lib/ui";
 import { appendStreamEvent } from "@/lib/ui";
 import type { StreamEvent } from "@coding-agents/shared";
+import { isTerminalEvent } from "@coding-agents/shared";
 
 export const MAX_NO_RUN_RETRIES = 30;
 
@@ -81,10 +82,6 @@ function mergeLiveChange(
     ...list.filter((e) => e.path !== path),
     { path, additions, deletions, unifiedDiffPreview },
   ].sort((a, b) => a.path.localeCompare(b.path));
-}
-
-function isTerminalStreamEvent(event: StreamEvent): boolean {
-  return event.type === "done" || event.type === "aborted" || event.type === "error";
 }
 
 export function initialChatState(
@@ -181,23 +178,22 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       if (state.status === "idle") return state;
 
       const { event } = action;
+      const p = event.payload;
 
-      if (isTerminalStreamEvent(event)) {
+      if (isTerminalEvent(event)) {
         let partsToFlush = state.streamingParts;
-        if (partsToFlush.length === 0 && event.assistantParts && Array.isArray(event.assistantParts)) {
-          partsToFlush = event.assistantParts as AssistantPart[];
+        if (partsToFlush.length === 0 && p.assistantParts && Array.isArray(p.assistantParts)) {
+          partsToFlush = p.assistantParts as AssistantPart[];
         }
         const flushed = flushStreamingToMessages(state.messages, partsToFlush);
-        const terminalReason =
-          "terminalReason" in event && typeof event.terminalReason === "string"
-            ? event.terminalReason
-            : null;
+        const terminalReason = typeof p.terminalReason === "string" ? p.terminalReason : null;
         const isStepLimit = terminalReason === "step_limit";
-        if (event.type === "error") {
+
+        if (event.type === "session:failed") {
           return {
             ...state,
             ...flushed,
-            error: event.message ?? "An error occurred",
+            error: (typeof p.message === "string" ? p.message : null) ?? "An error occurred",
             status: "error",
             liveFileChanges: [],
             askUserPrompt: null,
@@ -222,22 +218,22 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       }
 
       let liveFileChanges = state.liveFileChanges;
-      if (event.type === "file_changed" && event.path) {
+      if (event.type === "agent:file_changed" && typeof p.path === "string") {
         liveFileChanges = mergeLiveChange(
           liveFileChanges,
-          event.path,
-          event.additions ?? 0,
-          event.deletions ?? 0,
-          event.unifiedDiffPreview,
+          p.path,
+          (p.additions ?? 0) as number,
+          (p.deletions ?? 0) as number,
+          p.unifiedDiffPreview as string | undefined,
         );
       }
 
       let askUserPrompt = state.askUserPrompt;
-      if (event.type === "ask_user") {
+      if (event.type === "agent:ask_user") {
         askUserPrompt = {
-          question: event.question ?? "",
-          options: event.options ?? [],
-          toolCallId: event.toolCallId,
+          question: (p.question ?? "") as string,
+          options: (p.options ?? []) as string[],
+          toolCallId: p.toolCallId as string | undefined,
         };
       }
 

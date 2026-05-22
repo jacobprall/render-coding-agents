@@ -10,7 +10,6 @@ import {
 } from "react";
 import { useEventSource } from "@/hooks/use-event-source";
 import { notifyFileTreeChange } from "@/hooks/use-file-tree";
-import { STREAM_EVENT } from "@/lib/stream-events";
 import { apiFetch } from "@/lib/api-fetch";
 import type { StreamEvent } from "@coding-agents/shared";
 import {
@@ -120,23 +119,18 @@ export function useAgentChat({
       typeof event.data === "string" ? event.data : String(event.data ?? "");
 
     try {
-      const raw = JSON.parse(rawData) as Record<string, unknown>;
-      delete raw._sid;
-      const type = raw.type as string;
+      const parsed = JSON.parse(rawData) as Record<string, unknown>;
+      delete parsed._sid;
 
-      if (type === STREAM_EVENT.CONNECTED) return;
+      const type = parsed.type as string | undefined;
 
-      if (type === STREAM_EVENT.FILE_CHANGED && typeof raw.path === "string") {
-        notifyFileTreeChange(raw.path);
-      }
+      if (type === "connected") return;
 
-      if (type === STREAM_EVENT.NO_ACTIVE_RUN) {
+      if (type === "no_active_run") {
         if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
-
         startTransition(() => {
           dispatch({ type: "NO_ACTIVE_RUN" });
         });
-
         if (state.noRunRetries < MAX_NO_RUN_RETRIES) {
           retryTimerRef.current = setTimeout(() => {
             esRef.current?.reconnect();
@@ -145,8 +139,17 @@ export function useAgentChat({
         return;
       }
 
+      const streamEvent = parsed as unknown as StreamEvent;
+
+      if (streamEvent.type === "agent:file_changed") {
+        const path = streamEvent.payload?.path;
+        if (typeof path === "string") {
+          notifyFileTreeChange(path);
+        }
+      }
+
       startTransition(() => {
-        dispatch({ type: "STREAM_EVENT", event: raw as unknown as StreamEvent });
+        dispatch({ type: "STREAM_EVENT", event: streamEvent });
       });
     } catch (e) {
       if (process.env.NODE_ENV === "development") {
@@ -174,7 +177,6 @@ export function useAgentChat({
   const startStreaming = useCallback(
     (runId?: string) => {
       seenIds.current.clear();
-      // New run / new stream session: do not reuse Last-Event-ID from a prior run.
       es.resetLastEventId();
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
       dispatch({ type: "START_STREAMING", runId });
@@ -282,13 +284,9 @@ export function useAgentChat({
     } catch {
       // best effort
     }
-    // Don't dispatch FINISH_STREAMING immediately — let the SSE terminal event
-    // (aborted with terminalReason: "stopped") drive the flush.
-    // Safety timeout in case the terminal event never arrives:
     const safetyTimeout = setTimeout(() => {
       dispatch({ type: "FINISH_STREAMING" });
     }, 10_000);
-    // Store timeout for cleanup
     if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     retryTimerRef.current = safetyTimeout;
   }, [sessionId]);

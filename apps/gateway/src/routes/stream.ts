@@ -15,7 +15,7 @@ import {
   readRunEventHistoryDetailed,
   readRunEventEntriesAfterId,
 } from "@coding-agents/platform";
-import { normalizeEvent, isTerminalEvent as isTerminalEventCheck } from "@coding-agents/shared";
+import { isTerminalEvent as isTerminalEventCheck } from "@coding-agents/shared";
 import type { GatewayEnv } from "../middleware/auth";
 import { getPlatform } from "../platform";
 
@@ -31,15 +31,6 @@ function checkTerminal(payload: string): boolean {
     return isTerminalEventCheck(parsed);
   } catch {
     return false;
-  }
-}
-
-function normalizePayload(payload: string): string {
-  try {
-    const parsed = JSON.parse(payload);
-    return JSON.stringify(normalizeEvent(parsed));
-  } catch {
-    return payload;
   }
 }
 
@@ -198,8 +189,11 @@ streamRoutes.get("/sessions/:id", async (c) => {
   if (!hasTerminal) {
     const runStatus = await cmd.get(`run:${runId}:status`).catch(() => null);
     if (runStatus === "completed" || runStatus === "failed" || runStatus === "aborted") {
-      const syntheticType =
-        runStatus === "completed" ? "done" : runStatus === "aborted" ? "aborted" : "error";
+      const typeMap: Record<string, string> = {
+        completed: "session:completed",
+        failed: "session:failed",
+        aborted: "session:aborted",
+      };
 
       let terminalReason: string | null = null;
       try {
@@ -212,10 +206,14 @@ streamRoutes.get("/sessions/:id", async (c) => {
       } catch { /* best-effort */ }
 
       syntheticTerminal = JSON.stringify({
-        type: syntheticType,
-        message: "Run already finished",
-        synthetic: true,
-        ...(terminalReason ? { terminalReason } : {}),
+        v: 2,
+        type: typeMap[runStatus],
+        ts: new Date().toISOString(),
+        payload: {
+          message: "Run already finished",
+          synthetic: true,
+          ...(terminalReason ? { terminalReason } : {}),
+        },
       });
     }
   }
@@ -234,7 +232,7 @@ streamRoutes.get("/sessions/:id", async (c) => {
     // Step 3: Replay history with SSE id fields
     for (const entry of historyEntries) {
       if (closed) return;
-      const normalized = normalizePayload(entry.payload);
+      const normalized = entry.payload;
       await stream.writeSSE({ id: entry.id, data: normalized });
       if (checkTerminal(entry.payload)) {
         await cleanup();
@@ -243,7 +241,7 @@ streamRoutes.get("/sessions/:id", async (c) => {
     }
 
     if (syntheticTerminal) {
-      await stream.writeSSE({ data: normalizePayload(syntheticTerminal) });
+      await stream.writeSSE({ data: syntheticTerminal });
       await cleanup();
       return;
     }
@@ -254,8 +252,7 @@ streamRoutes.get("/sessions/:id", async (c) => {
       if (closed) return;
       if (buffered.sid && lastHistoryId && buffered.sid <= lastHistoryId) continue;
       const sseId = buffered.sid ?? undefined;
-      const normalized = normalizePayload(buffered.payload);
-      await stream.writeSSE({ id: sseId, data: normalized });
+      await stream.writeSSE({ id: sseId, data: buffered.payload });
       if (checkTerminal(buffered.payload)) {
         await cleanup();
         return;
@@ -272,8 +269,7 @@ streamRoutes.get("/sessions/:id", async (c) => {
         sid = parsed._sid ?? null;
       } catch { /* use null sid */ }
       const sseId = sid ?? undefined;
-      const normalized = normalizePayload(message);
-      stream.writeSSE({ id: sseId, data: normalized }).catch(() => {});
+      stream.writeSSE({ id: sseId, data: message }).catch(() => {});
       if (checkTerminal(message)) {
         clearInterval(keepAlive);
         void cleanup();

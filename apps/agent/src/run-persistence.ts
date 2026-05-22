@@ -4,61 +4,12 @@ import { nanoid } from "nanoid";
 import { agentRuns, chats, chatMessages, sessions } from "@coding-agents/db";
 import type { PlatformDb, EventBus, TerminalReason } from "@coding-agents/platform";
 import type { LLMMessage } from "./llm";
-import type { StreamEventV2 } from "@coding-agents/shared";
-import type { AgentJob, StreamEvent, AssistantPart } from "./types";
+import type { StreamEvent } from "@coding-agents/shared";
+import type { AgentJob, AssistantPart } from "./types";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const EVENT_STREAM_TTL = 86_400; // 24h
-
-const V1_TO_V2_TYPE_MAP: Record<string, string> = {
-  token: "agent:message",
-  tool_call: "agent:tool_call",
-  tool_result: "agent:tool_result",
-  heartbeat: "agent:heartbeat",
-  file_changed: "agent:file_changed",
-  done: "session:completed",
-  error: "session:failed",
-  aborted: "session:aborted",
-  ask_user: "agent:ask_user",
-  task_start: "step:started",
-  task_done: "step:completed",
-  task_error: "step:failed",
-  spec: "plan:generated",
-  step_persisted: "agent:step_persisted",
-  phase_changed: "session:phase_changed",
-  verification: "agent:verification",
-  verify_failed: "agent:verify_failed",
-  // Namespaced v2 events pass through unchanged
-  "planner:started": "planner:started",
-  "planner:thinking": "planner:thinking",
-  "planner:completed": "planner:completed",
-  "plan:generated": "plan:generated",
-  "plan:approved": "plan:approved",
-  "plan:rejected": "plan:rejected",
-  "user:message": "user:message",
-  "user:interrupt": "user:interrupt",
-  "user:plan_approved": "user:plan_approved",
-  "user:plan_rejected": "user:plan_rejected",
-  "step:started": "step:started",
-  "step:completed": "step:completed",
-  "step:failed": "step:failed",
-};
-
-function mapEventType(v1Type: string): string {
-  return V1_TO_V2_TYPE_MAP[v1Type] ?? v1Type;
-}
-
-function extractPayload(event: StreamEvent): Record<string, unknown> {
-  const { type, ...rest } = event;
-  const payload: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(rest)) {
-    if (value !== undefined) {
-      payload[key] = value;
-    }
-  }
-  return payload;
-}
 
 // ─── Event streaming ─────────────────────────────────────────────────────────
 
@@ -68,14 +19,12 @@ export async function publishEvent(
   event: StreamEvent,
   requestId?: string,
 ): Promise<void> {
-  const v2: StreamEventV2 = {
-    v: 2,
-    type: mapEventType(event.type),
-    ts: new Date().toISOString(),
-    requestId,
-    payload: extractPayload(event),
-  };
-  await events.publish(runId, JSON.stringify(v2));
+  const toPublish: StreamEvent = requestId ? { ...event, requestId } : event;
+  await events.publish(runId, JSON.stringify(toPublish));
+}
+
+export function evt(type: string, payload: Record<string, unknown> = {}): StreamEvent {
+  return { v: 2, type, ts: new Date().toISOString(), payload };
 }
 
 /** Expire the run event stream after a terminal event so keys don't accumulate. */
@@ -150,12 +99,11 @@ export async function upsertAssistantMessage(
       })
       .where(eq(chatMessages.id, existingMessageId));
 
-    await publishEvent(events, job.runId, {
-      type: "step_persisted",
+    await publishEvent(events, job.runId, evt("agent:step_persisted", {
       step: mergedParts.length,
       partCount: mergedParts.length,
       assistantMessageId: existingMessageId,
-    }, requestId);
+    }), requestId);
 
     return existingMessageId;
   }
@@ -170,12 +118,11 @@ export async function upsertAssistantMessage(
     runId: job.runId,
   });
 
-  await publishEvent(events, job.runId, {
-    type: "step_persisted",
+  await publishEvent(events, job.runId, evt("agent:step_persisted", {
     step: mergedParts.length,
     partCount: mergedParts.length,
     assistantMessageId: id,
-  }, requestId);
+  }), requestId);
 
   return id;
 }

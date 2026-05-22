@@ -12,6 +12,10 @@ function makeState(overrides: Partial<ChatState> = {}): ChatState {
   return { ...initialChatState([]), ...overrides };
 }
 
+function ev(type: string, payload: Record<string, unknown> = {}): StreamEvent {
+  return { v: 2, type, ts: new Date().toISOString(), payload };
+}
+
 describe("chatReducer", () => {
   describe("START_STREAMING", () => {
     test("transitions from idle to waitingForRun when no runId", () => {
@@ -76,21 +80,21 @@ describe("chatReducer", () => {
   describe("STREAM_EVENT - terminal state lockout", () => {
     test("drops events when status is done", () => {
       const state = makeState({ status: "done" });
-      const event: StreamEvent = { type: "token", token: "hi" };
+      const event = ev("agent:message", { content: "hi" });
       const next = chatReducer(state, { type: "STREAM_EVENT", event });
       expect(next).toBe(state);
     });
 
     test("drops events when status is error", () => {
       const state = makeState({ status: "error" });
-      const event: StreamEvent = { type: "token", token: "hi" };
+      const event = ev("agent:message", { content: "hi" });
       const next = chatReducer(state, { type: "STREAM_EVENT", event });
       expect(next).toBe(state);
     });
 
     test("drops events when status is idle", () => {
       const state = makeState({ status: "idle" });
-      const event: StreamEvent = { type: "token", token: "hi" };
+      const event = ev("agent:message", { content: "hi" });
       const next = chatReducer(state, { type: "STREAM_EVENT", event });
       expect(next).toBe(state);
     });
@@ -99,7 +103,7 @@ describe("chatReducer", () => {
   describe("STREAM_EVENT - token processing", () => {
     test("appends token to streaming parts", () => {
       const state = makeState({ status: "streaming" });
-      const event: StreamEvent = { type: "token", token: "hello" };
+      const event = ev("agent:message", { content: "hello" });
       const next = chatReducer(state, { type: "STREAM_EVENT", event });
       expect(next.streamingParts).toHaveLength(1);
       expect(next.streamingParts[0]).toMatchObject({ type: "text", text: "hello" });
@@ -107,7 +111,7 @@ describe("chatReducer", () => {
 
     test("transitions waitingForRun to streaming on first event", () => {
       const state = makeState({ status: "waitingForRun" });
-      const event: StreamEvent = { type: "token", token: "first" };
+      const event = ev("agent:message", { content: "first" });
       const next = chatReducer(state, { type: "STREAM_EVENT", event });
       expect(next.status).toBe("streaming");
     });
@@ -116,12 +120,11 @@ describe("chatReducer", () => {
   describe("STREAM_EVENT - tool_call idempotency", () => {
     test("appends a new tool_call part", () => {
       const state = makeState({ status: "streaming" });
-      const event: StreamEvent = {
-        type: "tool_call",
+      const event = ev("agent:tool_call", {
         toolCallId: "tc-1",
-        toolName: "bash",
+        tool: "bash",
         args: { cmd: "ls" },
-      };
+      });
       const next = chatReducer(state, { type: "STREAM_EVENT", event });
       expect(next.streamingParts).toHaveLength(1);
       expect(next.streamingParts[0]).toMatchObject({
@@ -138,40 +141,39 @@ describe("chatReducer", () => {
           { type: "tool_call", toolCallId: "tc-1", toolName: "bash", id: "tc-1" },
         ],
       });
-      const event: StreamEvent = {
-        type: "tool_call",
+      const event = ev("agent:tool_call", {
         toolCallId: "tc-1",
-        toolName: "bash",
-      };
+        tool: "bash",
+      });
       const next = chatReducer(state, { type: "STREAM_EVENT", event });
       expect(next.streamingParts).toHaveLength(1);
     });
   });
 
   describe("STREAM_EVENT - terminal events", () => {
-    test("done event flushes parts and transitions to done", () => {
+    test("session:completed event flushes parts and transitions to done", () => {
       const state = makeState({
         status: "streaming",
         streamingParts: [{ type: "text", text: "result", id: "text-0" }],
       });
-      const event: StreamEvent = { type: "done" };
+      const event = ev("session:completed");
       const next = chatReducer(state, { type: "STREAM_EVENT", event });
       expect(next.status).toBe("done");
       expect(next.streamingParts).toEqual([]);
       expect(next.messages).toHaveLength(1);
     });
 
-    test("error event sets error message and transitions to error", () => {
+    test("session:failed event sets error message and transitions to error", () => {
       const state = makeState({ status: "streaming" });
-      const event: StreamEvent = { type: "error", message: "something broke" };
+      const event = ev("session:failed", { message: "something broke" });
       const next = chatReducer(state, { type: "STREAM_EVENT", event });
       expect(next.status).toBe("error");
       expect(next.error).toBe("something broke");
     });
 
-    test("aborted event flushes parts and transitions to done", () => {
+    test("session:aborted event flushes parts and transitions to done", () => {
       const state = makeState({ status: "streaming", streamingParts: [] });
-      const event: StreamEvent = { type: "aborted" };
+      const event = ev("session:aborted");
       const next = chatReducer(state, { type: "STREAM_EVENT", event });
       expect(next.status).toBe("done");
     });
@@ -180,23 +182,21 @@ describe("chatReducer", () => {
   describe("STREAM_EVENT - file_changed", () => {
     test("updates liveFileChanges with dedup by path", () => {
       const state = makeState({ status: "streaming" });
-      const event: StreamEvent = {
-        type: "file_changed",
+      const event = ev("agent:file_changed", {
         path: "src/app.ts",
         additions: 5,
         deletions: 2,
-      };
+      });
       let next = chatReducer(state, { type: "STREAM_EVENT", event });
       expect(next.liveFileChanges).toEqual([
         { path: "src/app.ts", additions: 5, deletions: 2 },
       ]);
 
-      const event2: StreamEvent = {
-        type: "file_changed",
+      const event2 = ev("agent:file_changed", {
         path: "src/app.ts",
         additions: 10,
         deletions: 3,
-      };
+      });
       next = chatReducer(next, { type: "STREAM_EVENT", event: event2 });
       expect(next.liveFileChanges).toHaveLength(1);
       expect(next.liveFileChanges[0]).toEqual({
@@ -210,12 +210,11 @@ describe("chatReducer", () => {
   describe("STREAM_EVENT - ask_user", () => {
     test("sets askUserPrompt", () => {
       const state = makeState({ status: "streaming" });
-      const event: StreamEvent = {
-        type: "ask_user",
+      const event = ev("agent:ask_user", {
         question: "Continue?",
         options: ["yes", "no"],
         toolCallId: "ask-1",
-      };
+      });
       const next = chatReducer(state, { type: "STREAM_EVENT", event });
       expect(next.askUserPrompt).toEqual({
         question: "Continue?",
@@ -284,33 +283,33 @@ describe("chatReducer", () => {
   });
 
   describe("STREAM_EVENT - terminalReason and stepLimitReached", () => {
-    test("done event with terminalReason='step_limit' sets stepLimitReached", () => {
+    test("session:completed with terminalReason='step_limit' sets stepLimitReached", () => {
       const state = makeState({ status: "streaming" });
-      const event: StreamEvent = { type: "done", terminalReason: "step_limit" };
+      const event = ev("session:completed", { terminalReason: "step_limit" });
       const next = chatReducer(state, { type: "STREAM_EVENT", event });
       expect(next.stepLimitReached).toBe(true);
       expect(next.terminalReason).toBe("step_limit");
     });
 
-    test("done event with terminalReason='end_turn' does not set stepLimitReached", () => {
+    test("session:completed with terminalReason='end_turn' does not set stepLimitReached", () => {
       const state = makeState({ status: "streaming" });
-      const event: StreamEvent = { type: "done", terminalReason: "end_turn" };
+      const event = ev("session:completed", { terminalReason: "end_turn" });
       const next = chatReducer(state, { type: "STREAM_EVENT", event });
       expect(next.stepLimitReached).toBe(false);
       expect(next.terminalReason).toBe("end_turn");
     });
 
-    test("aborted event with terminalReason='stopped' sets terminalReason", () => {
+    test("session:aborted with terminalReason='stopped' sets terminalReason", () => {
       const state = makeState({ status: "streaming" });
-      const event: StreamEvent = { type: "aborted", terminalReason: "stopped" };
+      const event = ev("session:aborted", { terminalReason: "stopped" });
       const next = chatReducer(state, { type: "STREAM_EVENT", event });
       expect(next.status).toBe("done");
       expect(next.terminalReason).toBe("stopped");
     });
 
-    test("error event with terminalReason='provider_transient' sets terminalReason", () => {
+    test("session:failed with terminalReason='provider_transient' sets terminalReason", () => {
       const state = makeState({ status: "streaming" });
-      const event: StreamEvent = { type: "error", message: "Rate limited", terminalReason: "provider_transient" };
+      const event = ev("session:failed", { message: "Rate limited", terminalReason: "provider_transient" });
       const next = chatReducer(state, { type: "STREAM_EVENT", event });
       expect(next.status).toBe("error");
       expect(next.terminalReason).toBe("provider_transient");
@@ -318,10 +317,9 @@ describe("chatReducer", () => {
 
     test("terminal event uses server assistantParts when streamingParts is empty", () => {
       const state = makeState({ status: "streaming", streamingParts: [] });
-      const event: StreamEvent = {
-        type: "done",
+      const event = ev("session:completed", {
         assistantParts: [{ type: "text", text: "server content" }],
-      };
+      });
       const next = chatReducer(state, { type: "STREAM_EVENT", event });
       expect(next.messages).toHaveLength(1);
       expect(next.messages[0]!.parts[0]).toMatchObject({ type: "text", text: "server content" });

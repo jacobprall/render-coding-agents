@@ -60,67 +60,60 @@ export type AssistantPart =
   | AssistantFileChangedPart
   | AssistantFileAttachmentPart;
 
+/**
+ * Append a v2 StreamEvent to the running assistant parts list.
+ * The event's `payload` contains all relevant fields.
+ */
 export function appendStreamEvent(
   parts: AssistantPart[],
   event: StreamEvent,
   seqCounter?: { current: number },
 ): AssistantPart[] {
   const seq = seqCounter ?? { current: 0 };
+  const p = event.payload;
+
   switch (event.type) {
-    case "token": {
-      if (!event.token) return parts;
+    case "agent:message": {
+      const text = p.content as string | undefined;
+      if (!text) return parts;
       const last = parts[parts.length - 1];
       if (last?.type === "text") {
-        return [...parts.slice(0, -1), { ...last, text: last.text + event.token }];
+        return [...parts.slice(0, -1), { ...last, text: last.text + text }];
       }
-      return [
-        ...parts,
-        { type: "text", text: event.token, id: `text-${seq.current++}` },
-      ];
+      return [...parts, { type: "text", text, id: `text-${seq.current++}` }];
     }
 
-    case "tool_call": {
-      if (!event.toolCallId) return parts;
-      if (
-        parts.some(
-          (p) =>
-            p.type === "tool_call" &&
-            (p.toolCallId === event.toolCallId || p.id === event.toolCallId),
-        )
-      ) {
+    case "agent:tool_call": {
+      const toolCallId = p.toolCallId as string | undefined;
+      if (!toolCallId) return parts;
+      if (parts.some((x) => x.type === "tool_call" && x.toolCallId === toolCallId)) {
         return parts;
       }
       return [
         ...parts,
         {
           type: "tool_call",
-          toolName: event.toolName ?? "tool",
-          toolCallId: event.toolCallId,
-          args: event.args,
-          id: event.toolCallId,
+          toolName: (p.tool ?? p.toolName ?? "tool") as string,
+          toolCallId,
+          args: p.args,
+          id: toolCallId,
         },
       ];
     }
 
-    case "tool_result": {
-      if (!event.toolCallId) return parts;
-      return parts.map((p) =>
-        p.type === "tool_call" && p.toolCallId === event.toolCallId
-          ? { ...p, result: event.result }
-          : p,
+    case "agent:tool_result": {
+      const toolCallId = p.toolCallId as string | undefined;
+      if (!toolCallId) return parts;
+      return parts.map((x) =>
+        x.type === "tool_call" && x.toolCallId === toolCallId
+          ? { ...x, result: p.result }
+          : x,
       );
     }
 
-    case "ask_user": {
-      const toolCallId = event.toolCallId;
-      if (
-        toolCallId &&
-        parts.some(
-          (p) =>
-            p.type === "ask_user" &&
-            (p.toolCallId === toolCallId || p.id === `ask-${toolCallId}`),
-        )
-      ) {
+    case "agent:ask_user": {
+      const toolCallId = p.toolCallId as string | undefined;
+      if (toolCallId && parts.some((x) => x.type === "ask_user" && x.toolCallId === toolCallId)) {
         return parts;
       }
       const id = toolCallId ? `ask-${toolCallId}` : `ask-${seq.current++}`;
@@ -128,22 +121,17 @@ export function appendStreamEvent(
         ...parts,
         {
           type: "ask_user",
-          question: event.question ?? "",
-          options: event.options,
+          question: (p.question ?? "") as string,
+          options: p.options as string[] | undefined,
           toolCallId,
           id,
         },
       ];
     }
 
-    case "task_start": {
-      const taskId = event.taskId;
-      if (
-        taskId &&
-        parts.some(
-          (p) => p.type === "task" && (p.taskId === taskId || p.id === `task-${taskId}`),
-        )
-      ) {
+    case "step:started": {
+      const taskId = (p.stepId ?? p.taskId) as string | undefined;
+      if (taskId && parts.some((x) => x.type === "task" && x.taskId === taskId)) {
         return parts;
       }
       const id = taskId ? `task-${taskId}` : `task-${seq.current++}`;
@@ -151,7 +139,7 @@ export function appendStreamEvent(
         ...parts,
         {
           type: "task",
-          task: event.task ?? "",
+          task: (p.task ?? "") as string,
           taskId,
           status: "running" as const,
           id,
@@ -159,45 +147,42 @@ export function appendStreamEvent(
       ];
     }
 
-    case "task_done": {
-      return parts.map((p) =>
-        p.type === "task" &&
-        (event.taskId ? p.taskId === event.taskId : !p.taskId && p.task === event.task)
-          ? {
-              ...p,
-              status: "done" as const,
-              result: typeof event.result === "string" ? event.result : undefined,
-            }
-          : p,
+    case "step:completed": {
+      const taskId = (p.stepId ?? p.taskId) as string | undefined;
+      return parts.map((x) =>
+        x.type === "task" && (taskId ? x.taskId === taskId : !x.taskId && x.task === (p.task as string))
+          ? { ...x, status: "done" as const, result: typeof p.result === "string" ? p.result : undefined }
+          : x,
       );
     }
 
-    case "task_error": {
-      return parts.map((p) =>
-        p.type === "task" &&
-        (event.taskId ? p.taskId === event.taskId : !p.taskId && p.task === event.task)
-          ? { ...p, status: "error" as const, error: event.message }
-          : p,
+    case "step:failed": {
+      const taskId = (p.stepId ?? p.taskId) as string | undefined;
+      return parts.map((x) =>
+        x.type === "task" && (taskId ? x.taskId === taskId : !x.taskId && x.task === (p.task as string))
+          ? { ...x, status: "error" as const, error: (p.error ?? p.message) as string | undefined }
+          : x,
       );
     }
 
-    case "file_changed": {
-      if (!event.path) return parts;
+    case "agent:file_changed": {
+      const path = p.path as string | undefined;
+      if (!path) return parts;
       return [
         ...parts,
         {
           type: "file_changed" as const,
-          path: event.path,
-          additions: event.additions ?? 0,
-          deletions: event.deletions ?? 0,
-          unifiedDiffPreview: event.unifiedDiffPreview,
+          path,
+          additions: (p.additions ?? 0) as number,
+          deletions: (p.deletions ?? 0) as number,
+          unifiedDiffPreview: p.unifiedDiffPreview as string | undefined,
           id: `file-${seq.current++}`,
         },
       ];
     }
 
-    case "heartbeat":
-    case "step_persisted":
+    case "agent:heartbeat":
+    case "agent:step_persisted":
       return parts;
 
     default:

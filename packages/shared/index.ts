@@ -1,12 +1,8 @@
 // ── Direct exports (owned by shared) ─────────────────────────────────────────
 
 // Lib - Stream event types
-export type { StreamEvent, StreamEventV2 } from "./lib/stream-types";
-export {
-  normalizeEvent,
-  isTerminalEvent,
-  isTerminalEventV2,
-} from "./lib/stream-types";
+export type { StreamEvent, StreamEventType } from "./lib/stream-types";
+export { isTerminalEvent } from "./lib/stream-types";
 
 // Lib - Workspace config types
 export type {

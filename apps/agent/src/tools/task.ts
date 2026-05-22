@@ -7,6 +7,8 @@ import type { LLMProvider } from "../llm";
 import { agentLoop } from "../loop";
 import { zodToJsonSchema } from "../zod-to-json-schema";
 import type { AgentTool } from "../loop";
+import type { StreamEvent } from "../types";
+import { evt } from "../run-persistence";
 
 const MAX_SUBAGENT_STEPS = 20;
 
@@ -31,7 +33,7 @@ export interface SubagentModelResolver {
 }
 
 export function taskTool(
-  publishFn: (event: Record<string, unknown>) => Promise<void>,
+  publishFn: (event: StreamEvent) => Promise<void>,
   buildSubTools: () => Record<string, ToolConfig>,
   modelResolver: SubagentModelResolver,
   forgeContext: ForgeAgentContext,
@@ -42,7 +44,7 @@ export function taskTool(
     inputSchema: taskInputSchema,
     execute: async ({ task, context: taskContext, model: requestedModel }) => {
       const taskId = nanoid();
-      await publishFn({ type: "task_start", task, taskId });
+      await publishFn(evt("step:started", { task, stepId: taskId }));
 
       try {
         const { provider: subProvider, modelId: subModelId } = modelResolver.resolve(requestedModel);
@@ -77,11 +79,11 @@ export function taskTool(
         });
 
         const summary = result.text || `Completed ${result.steps} steps with ${result.totalUsage.outputTokens} output tokens.`;
-        await publishFn({ type: "task_done", task, taskId, result: summary });
+        await publishFn(evt("step:completed", { task, stepId: taskId, result: summary }));
         return { success: true, result: summary };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        await publishFn({ type: "task_error", task, taskId, message });
+        await publishFn(evt("step:failed", { task, stepId: taskId, error: message }));
         return { success: false, error: message };
       }
     },

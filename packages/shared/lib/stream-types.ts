@@ -1,265 +1,50 @@
+/**
+ * StreamEvent — the canonical event envelope for all agent/session events.
+ *
+ * All events flow as this shape through Redis, SSE, and the UI.
+ */
 export interface StreamEvent {
-  type:
-    | "token"
-    | "tool_call"
-    | "tool_result"
-    | "spec"
-    | "verification"
-    | "verify_failed"
-    | "done"
-    | "error"
-    | "aborted"
-    | "ask_user"
-    | "task_start"
-    | "task_done"
-    | "task_error"
-    | "file_changed"
-    | "heartbeat"
-    | "step_persisted"
-    | "phase_changed"
-    // Planning events
-    | "planner:started"
-    | "planner:thinking"
-    | "planner:completed"
-    | "plan:generated"
-    | "plan:approved"
-    | "plan:rejected"
-    // Steering events
-    | "user:message"
-    | "user:interrupt"
-    | "user:plan_approved"
-    | "user:plan_rejected"
-    // Setup step events
-    | "step:started"
-    | "step:completed"
-    | "step:failed";
-  token?: string;
-  toolName?: string;
-  toolCallId?: string;
-  args?: unknown;
-  result?: unknown;
-  spec?: unknown;
-  results?: unknown[];
-  message?: string;
-  code?: string;
+  v: 2;
+  type: string;
+  ts: string;
   requestId?: string;
-  retryable?: boolean;
-  question?: string;
-  options?: string[];
-  task?: string;
-  taskId?: string;
-  assistantMessageId?: string;
-  assistantParts?: unknown[];
-  nextRunId?: string;
-  fixAttempt?: number;
-  maxFixAttempts?: number;
-  path?: string;
-  additions?: number;
-  deletions?: number;
-  unifiedDiffPreview?: string;
-  // Heartbeat fields
-  timestamp?: string;
-  activity?: string;
-  step?: number;
-  // Step persisted fields
-  partCount?: number;
-  // Terminal reason field
-  terminalReason?: string;
-  // Planning fields
-  plan?: unknown;
-  phase?: string;
-  // Steering fields
-  content?: string;
-  reason?: string;
-  // Step fields
-  stepName?: string;
-  stepId?: string;
-  durationMs?: number;
-  metadata?: Record<string, unknown>;
+  payload: Record<string, unknown>;
 }
 
-export interface StreamEventV2 {
-  v: 2
-  type: string
-  ts: string
-  requestId?: string
-  payload: Record<string, unknown>
-}
+export type StreamEventType =
+  | "agent:message"
+  | "agent:tool_call"
+  | "agent:tool_result"
+  | "agent:heartbeat"
+  | "agent:file_changed"
+  | "agent:ask_user"
+  | "agent:step_persisted"
+  | "agent:verification"
+  | "agent:verify_failed"
+  | "session:completed"
+  | "session:failed"
+  | "session:aborted"
+  | "session:phase_changed"
+  | "plan:generated"
+  | "plan:approved"
+  | "plan:rejected"
+  | "planner:started"
+  | "planner:thinking"
+  | "planner:completed"
+  | "user:message"
+  | "user:interrupt"
+  | "user:plan_approved"
+  | "user:plan_rejected"
+  | "step:started"
+  | "step:completed"
+  | "step:failed";
 
-const V1_TO_V2_TYPE_MAP: Record<string, string> = {
-  token: "agent:message",
-  tool_call: "agent:tool_call",
-  tool_result: "agent:tool_result",
-  heartbeat: "agent:heartbeat",
-  file_changed: "agent:file_changed",
-  done: "session:completed",
-  error: "session:failed",
-  aborted: "session:aborted",
-  ask_user: "agent:ask_user",
-  task_start: "step:started",
-  task_done: "step:completed",
-  task_error: "step:failed",
-  spec: "plan:generated",
-  step_persisted: "agent:step_persisted",
-  phase_changed: "session:phase_changed",
-  verification: "agent:verification",
-  verify_failed: "agent:verify_failed",
-  // New planning/steering/step events pass through as-is (already namespaced)
-  "planner:started": "planner:started",
-  "planner:thinking": "planner:thinking",
-  "planner:completed": "planner:completed",
-  "plan:generated": "plan:generated",
-  "plan:approved": "plan:approved",
-  "plan:rejected": "plan:rejected",
-  "user:message": "user:message",
-  "user:interrupt": "user:interrupt",
-  "user:plan_approved": "user:plan_approved",
-  "user:plan_rejected": "user:plan_rejected",
-  "step:started": "step:started",
-  "step:completed": "step:completed",
-  "step:failed": "step:failed",
-}
+const TERMINAL_TYPES = new Set<string>([
+  "session:completed",
+  "session:failed",
+  "session:aborted",
+]);
 
-export function normalizeEvent(raw: StreamEvent | StreamEventV2): StreamEventV2 {
-  if ("v" in raw && raw.v === 2) return raw as StreamEventV2
-
-  const v1 = raw as StreamEvent
-  const type = V1_TO_V2_TYPE_MAP[v1.type] ?? v1.type
-
-  const { type: _type, ...rest } = v1
-  const payload: Record<string, unknown> = {}
-
-  switch (v1.type) {
-    case "token":
-      if (v1.token !== undefined) payload.content = v1.token
-      break
-    case "tool_call":
-      if (v1.toolName !== undefined) payload.tool = v1.toolName
-      if (v1.toolCallId !== undefined) payload.toolCallId = v1.toolCallId
-      if (v1.args !== undefined) payload.args = v1.args
-      break
-    case "tool_result":
-      if (v1.toolCallId !== undefined) payload.toolCallId = v1.toolCallId
-      if (v1.result !== undefined) payload.result = v1.result
-      break
-    case "heartbeat":
-      if (v1.activity !== undefined) payload.activity = v1.activity
-      if (v1.step !== undefined) payload.step = v1.step
-      if (v1.timestamp !== undefined) payload.timestamp = v1.timestamp
-      break
-    case "file_changed":
-      if (v1.path !== undefined) payload.path = v1.path
-      if (v1.additions !== undefined) payload.additions = v1.additions
-      if (v1.deletions !== undefined) payload.deletions = v1.deletions
-      if (v1.unifiedDiffPreview !== undefined) payload.unifiedDiffPreview = v1.unifiedDiffPreview
-      break
-    case "done":
-      if (v1.assistantMessageId !== undefined) payload.assistantMessageId = v1.assistantMessageId
-      if (v1.assistantParts !== undefined) payload.assistantParts = v1.assistantParts
-      if (v1.terminalReason !== undefined) payload.terminalReason = v1.terminalReason
-      break
-    case "error":
-      if (v1.message !== undefined) payload.message = v1.message
-      if (v1.code !== undefined) payload.code = v1.code
-      if (v1.retryable !== undefined) payload.retryable = v1.retryable
-      if (v1.terminalReason !== undefined) payload.terminalReason = v1.terminalReason
-      break
-    case "aborted":
-      if (v1.terminalReason !== undefined) payload.terminalReason = v1.terminalReason
-      break
-    case "ask_user":
-      if (v1.question !== undefined) payload.question = v1.question
-      if (v1.options !== undefined) payload.options = v1.options
-      if (v1.toolCallId !== undefined) payload.toolCallId = v1.toolCallId
-      break
-    case "task_start":
-      if (v1.task !== undefined) payload.task = v1.task
-      if (v1.taskId !== undefined) payload.stepId = v1.taskId
-      break
-    case "task_done":
-      if (v1.taskId !== undefined) payload.stepId = v1.taskId
-      break
-    case "task_error":
-      if (v1.taskId !== undefined) payload.stepId = v1.taskId
-      if (v1.message !== undefined) payload.error = v1.message
-      break
-    case "spec":
-      if (v1.spec !== undefined) payload.spec = v1.spec
-      break
-    case "step_persisted":
-      if (v1.step !== undefined) payload.step = v1.step
-      if (v1.partCount !== undefined) payload.partCount = v1.partCount
-      if (v1.assistantMessageId !== undefined) payload.assistantMessageId = v1.assistantMessageId
-      break
-    case "phase_changed":
-      if (v1.phase !== undefined) payload.phase = v1.phase
-      break
-    case "planner:started":
-    case "planner:thinking":
-    case "planner:completed":
-      if (v1.plan !== undefined) payload.plan = v1.plan
-      if (v1.durationMs !== undefined) payload.durationMs = v1.durationMs
-      break
-    case "plan:generated":
-      if (v1.plan !== undefined) payload.plan = v1.plan
-      if (v1.spec !== undefined) payload.spec = v1.spec
-      break
-    case "plan:approved":
-    case "plan:rejected":
-      if (v1.reason !== undefined) payload.reason = v1.reason
-      break
-    case "user:message":
-      if (v1.content !== undefined) payload.content = v1.content
-      break
-    case "user:interrupt":
-      if (v1.reason !== undefined) payload.reason = v1.reason
-      break
-    case "user:plan_approved":
-    case "user:plan_rejected":
-      if (v1.reason !== undefined) payload.reason = v1.reason
-      break
-    case "step:started":
-      if (v1.stepName !== undefined) payload.stepName = v1.stepName
-      if (v1.stepId !== undefined) payload.stepId = v1.stepId
-      if (v1.task !== undefined) payload.task = v1.task
-      if (v1.taskId !== undefined) payload.stepId = v1.taskId
-      break
-    case "step:completed":
-      if (v1.stepName !== undefined) payload.stepName = v1.stepName
-      if (v1.stepId !== undefined) payload.stepId = v1.stepId
-      if (v1.durationMs !== undefined) payload.durationMs = v1.durationMs
-      if (v1.taskId !== undefined) payload.stepId = v1.taskId
-      if (v1.metadata !== undefined) payload.metadata = v1.metadata
-      break
-    case "step:failed":
-      if (v1.stepName !== undefined) payload.stepName = v1.stepName
-      if (v1.stepId !== undefined) payload.stepId = v1.stepId
-      if (v1.message !== undefined) payload.error = v1.message
-      if (v1.taskId !== undefined) payload.stepId = v1.taskId
-      break
-    default:
-      Object.assign(payload, rest)
-  }
-
-  return {
-    v: 2,
-    type,
-    ts: v1.timestamp ?? new Date().toISOString(),
-    requestId: v1.requestId,
-    payload,
-  }
-}
-
-export function isTerminalEventV2(event: StreamEventV2): boolean {
-  return event.type === "session:completed"
-    || event.type === "session:failed"
-    || event.type === "session:aborted"
-}
-
-export function isTerminalEvent(event: StreamEvent | StreamEventV2): boolean {
-  if ("v" in event && event.v === 2) {
-    return isTerminalEventV2(event as StreamEventV2)
-  }
-  const v1 = event as StreamEvent
-  return v1.type === "done" || v1.type === "error" || v1.type === "aborted"
+export function isTerminalEvent(event: StreamEvent | { type: string }): boolean {
+  return TERMINAL_TYPES.has(event.type);
 }

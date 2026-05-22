@@ -1,9 +1,9 @@
 import type Redis from "ioredis";
 import type { EventBus, PlatformDb } from "@coding-agents/platform";
 import type { SandboxAdapter } from "@coding-agents/sandbox";
-import type { AgentJob, StreamEvent } from "./types";
+import type { AgentJob } from "./types";
 import type { ToolConfig } from "./tools/define-tool";
-import { publishEvent } from "./run-persistence";
+import { publishEvent, evt } from "./run-persistence";
 import { toolConfigsToAgentTools } from "./tool-registry";
 import { agentLoop } from "./loop";
 import { getModel } from "./models";
@@ -83,7 +83,7 @@ export async function runPlanner(params: {
   const { job, events, db, adapter } = params;
   const reqId = job.requestId;
 
-  await publishEvent(events, job.runId, { type: "planner:started" } as StreamEvent, reqId);
+  await publishEvent(events, job.runId, evt("planner:started"), reqId);
 
   const llmKeys = await resolveLlmApiKeys(db, job.userId);
   const { provider, modelId } = getModel(job.modelId, llmKeys);
@@ -123,22 +123,20 @@ export async function runPlanner(params: {
     tools,
     maxSteps: PLANNER_MAX_STEPS,
     onToken: (token) => {
-      publishEvent(events, job.runId, { type: "planner:thinking", token } as unknown as StreamEvent, reqId).catch(() => {});
+      publishEvent(events, job.runId, evt("planner:thinking", { token }), reqId).catch(() => {});
     },
   });
 
   const planResult = parsePlanOutput(result.text);
   const durationMs = Date.now() - startTime;
 
-  await publishEvent(events, job.runId, {
-    type: "planner:completed",
+  await publishEvent(events, job.runId, evt("planner:completed", {
     durationMs,
-  } as unknown as StreamEvent, reqId);
+  }), reqId);
 
-  await publishEvent(events, job.runId, {
-    type: "plan:generated",
+  await publishEvent(events, job.runId, evt("plan:generated", {
     plan: planResult,
-  } as unknown as StreamEvent, reqId);
+  }), reqId);
 
   return planResult;
 }

@@ -6,7 +6,7 @@ import {
   readRunEventHistoryDetailed,
   readRunEventEntriesAfterId,
 } from "@coding-agents/platform";
-import { normalizeEvent, isTerminalEvent as isTerminalEventCheck } from "@coding-agents/shared";
+import { isTerminalEvent as isTerminalEventCheck } from "@coding-agents/shared";
 import { requireForgeAuth, getPlatform } from "@/lib/platform";
 import { getRedisUrl } from "@/lib/redis";
 
@@ -21,15 +21,6 @@ function checkTerminal(payload: string): boolean {
     return isTerminalEventCheck(parsed);
   } catch {
     return false;
-  }
-}
-
-function normalizePayload(payload: string): string {
-  try {
-    const parsed = JSON.parse(payload);
-    return JSON.stringify(normalizeEvent(parsed));
-  } catch {
-    return payload;
   }
 }
 
@@ -202,10 +193,16 @@ export async function GET(
   if (!hasTerminal) {
     const runStatus = await cmd.get(`run:${runId}:status`).catch(() => null);
     if (runStatus === "completed" || runStatus === "failed" || runStatus === "aborted") {
-      const syntheticType =
-        runStatus === "completed" ? "done" : runStatus === "aborted" ? "aborted" : "error";
+      const typeMap: Record<string, string> = {
+        completed: "session:completed",
+        failed: "session:failed",
+        aborted: "session:aborted",
+      };
       syntheticTerminal = JSON.stringify({
-        type: syntheticType, message: "Run already finished", synthetic: true,
+        v: 2,
+        type: typeMap[runStatus],
+        ts: new Date().toISOString(),
+        payload: { message: "Run already finished", synthetic: true },
       });
     }
   }
@@ -231,7 +228,7 @@ export async function GET(
 
       for (const entry of historyEntries) {
         if (closed) { await cleanup(); return; }
-        write(entry.id, normalizePayload(entry.payload));
+        write(entry.id, entry.payload);
         if (checkTerminal(entry.payload)) {
           await cleanup();
           controller.close();
@@ -240,7 +237,7 @@ export async function GET(
       }
 
       if (syntheticTerminal) {
-        write(undefined, normalizePayload(syntheticTerminal));
+        write(undefined, syntheticTerminal);
         await cleanup();
         controller.close();
         return;
@@ -250,7 +247,7 @@ export async function GET(
       for (const buffered of pubsubBuffer) {
         if (closed) { await cleanup(); return; }
         if (buffered.sid && lastHistoryId && buffered.sid <= lastHistoryId) continue;
-        write(buffered.sid ?? undefined, normalizePayload(buffered.payload));
+        write(buffered.sid ?? undefined, buffered.payload);
         if (checkTerminal(buffered.payload)) {
           await cleanup();
           controller.close();
@@ -266,7 +263,7 @@ export async function GET(
           const parsed = JSON.parse(message) as { _sid?: string };
           sid = parsed._sid ?? null;
         } catch { /* use null sid */ }
-        write(sid ?? undefined, normalizePayload(message));
+        write(sid ?? undefined, message);
         if (checkTerminal(message)) {
           clearInterval(keepAlive);
           void cleanup().then(() => {

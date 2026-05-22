@@ -10,11 +10,11 @@ import { jobMessagesToLLMMessages, sanitizeMessages } from "./messages";
 import { buildAgentSystemPrompt, FORGE_LABELS } from "./system-prompt";
 import { listBuiltinSummaries } from "./skills";
 import { getModel, getModelDef } from "./models";
-import type { AgentJob, StreamEvent, AssistantPart } from "./types";
+import type { AgentJob, AssistantPart } from "./types";
 import { isDeliverComplete, transitionToComplete } from "./lib/deliver";
 import { getForgeProviderForSession, getAdapter } from "./providers";
 import { buildToolSet } from "./tool-registry";
-import { publishEvent, expireRunStream, mergeToolResults, updateRunStatus, upsertAssistantMessage, updateHeartbeat } from "./run-persistence";
+import { publishEvent, evt, expireRunStream, mergeToolResults, updateRunStatus, upsertAssistantMessage, updateHeartbeat } from "./run-persistence";
 import { agentLoop } from "./loop";
 import { ObservabilityRecorder } from "./observability";
 import { runPlanner } from "./planner";
@@ -239,14 +239,12 @@ async function buildForgeContext(params: {
     branch: sessionRow?.branch ?? "main",
     baseBranch: sessionRow?.baseBranch ?? "main",
     onFileChanged: async (p) => {
-      const ev: StreamEvent = {
-        type: "file_changed",
+      await publishEvent(events, job.runId, evt("agent:file_changed", {
         path: p.path,
         additions: p.additions,
         deletions: p.deletions,
         unifiedDiffPreview: p.unifiedDiffPreview,
-      };
-      await publishEvent(events, job.runId, ev, reqId);
+      }), reqId);
       assistantParts.push({ type: "file_changed", ...p });
     },
     onPrCreated: async ({ prNumber }) => {
@@ -343,12 +341,11 @@ async function runTurn(params: {
   let currentActivity = "idle";
   const heartbeatInterval = setInterval(async () => {
     await updateHeartbeat(db, job.runId);
-    publishEvent(events, job.runId, {
-      type: "heartbeat",
+    publishEvent(events, job.runId, evt("agent:heartbeat", {
       timestamp: new Date().toISOString(),
       activity: currentActivity,
       step: 0,
-    }, reqId).catch(() => {});
+    }), reqId).catch(() => {});
   }, 15_000);
 
   const { forgeContext, sessionRow } = await buildForgeContext({ job, db, events, adapter, assistantParts });
@@ -418,7 +415,7 @@ async function runTurn(params: {
       },
       onToken: (token) => {
         currentActivity = "llm_call";
-        publishEvent(events, job.runId, { type: "token", token }, reqId).catch((err) => {
+        publishEvent(events, job.runId, evt("agent:message", { content: token }), reqId).catch((err) => {
           console.warn("[agent] Failed to publish token event:", err);
         });
       },
@@ -430,15 +427,13 @@ async function runTurn(params: {
         }
 
         for (const tc of toolCalls) {
-          const ev: StreamEvent = { type: "tool_call", toolName: tc.toolName, toolCallId: tc.toolCallId, args: tc.input };
           assistantParts.push({ type: "tool_call", toolName: tc.toolName, toolCallId: tc.toolCallId, args: tc.input });
-          await publishEvent(events, job.runId, ev, reqId);
+          await publishEvent(events, job.runId, evt("agent:tool_call", { toolName: tc.toolName, toolCallId: tc.toolCallId, args: tc.input }), reqId);
         }
 
         for (const tr of toolResults) {
-          const ev: StreamEvent = { type: "tool_result", toolCallId: tr.toolCallId, result: tr.output };
           assistantParts.push({ type: "tool_result", toolCallId: tr.toolCallId, result: tr.output });
-          await publishEvent(events, job.runId, ev, reqId);
+          await publishEvent(events, job.runId, evt("agent:tool_result", { toolCallId: tr.toolCallId, result: tr.output }), reqId);
         }
 
         try {
@@ -459,7 +454,7 @@ async function runTurn(params: {
   if (result.hitStepLimit) {
     const limitMsg = `Reached the maximum step limit (${MAX_STEPS}). Send another message to continue where I left off.`;
     assistantParts.push({ type: "text", text: limitMsg });
-    await publishEvent(events, job.runId, { type: "token", token: limitMsg }, reqId);
+    await publishEvent(events, job.runId, evt("agent:message", { content: limitMsg }), reqId);
   }
 
   return {
@@ -648,13 +643,12 @@ async function emitDegradedCloneEvent(
   await publishEvent(
     events,
     job.runId,
-    {
-      type: "step:completed",
+    evt("step:completed", {
       stepName: "fallback_clone",
       stepId: "setup",
       durationMs,
       metadata: { degraded: true, repo: repoPath, reason },
-    },
+    }),
     job.requestId,
   );
 }
@@ -669,10 +663,10 @@ async function setupWorkspace(params: {
   const sessionId = job.sessionId;
 
   if (!job.repos?.length) {
-    await publishEvent(events, job.runId, { type: "step:started", stepName: "mirror_check", stepId: "setup" }, job.requestId);
+    await publishEvent(events, job.runId, evt("step:started", { stepName: "mirror_check", stepId: "setup" }), job.requestId);
     const cloneStart = Date.now();
     await ensureRepoCloned(db, job, adapter);
-    await publishEvent(events, job.runId, { type: "step:completed", stepName: "mirror_check", stepId: "setup", durationMs: Date.now() - cloneStart }, job.requestId);
+    await publishEvent(events, job.runId, evt("step:completed", { stepName: "mirror_check", stepId: "setup", durationMs: Date.now() - cloneStart }), job.requestId);
     return { workdir: `/workspace/${sessionId}`, repoCount: 1 };
   }
 
@@ -699,27 +693,27 @@ async function setupWorkspace(params: {
       const cloneUrl = forge.git.authenticatedCloneUrl(owner, name);
 
       try {
-        await publishEvent(events, job.runId, { type: "step:started", stepName: "mirror_check", stepId: "setup" }, job.requestId);
+        await publishEvent(events, job.runId, evt("step:started", { stepName: "mirror_check", stepId: "setup" }), job.requestId);
         const mirrorStart = Date.now();
         // ensureMirror performs `fetch --all --prune` when the mirror already exists,
         // guaranteeing the worktree will be based on fresh upstream refs.
         const mirror = await adapter.ensureMirror(sessionId, workspaceId, repo.repoPath, cloneUrl);
-        await publishEvent(events, job.runId, { type: "step:completed", stepName: "mirror_check", stepId: "setup", durationMs: Date.now() - mirrorStart }, job.requestId);
+        await publishEvent(events, job.runId, evt("step:completed", { stepName: "mirror_check", stepId: "setup", durationMs: Date.now() - mirrorStart }), job.requestId);
 
         if (mirror.status === "error") {
           throw new Error("mirror unavailable");
         }
 
-        await publishEvent(events, job.runId, { type: "step:started", stepName: "worktree_create", stepId: "setup" }, job.requestId);
+        await publishEvent(events, job.runId, evt("step:started", { stepName: "worktree_create", stepId: "setup" }), job.requestId);
         const wtStart = Date.now();
         await adapter.createWorktree(sessionId, workspaceId, repo.repoPath, branchName, repo.defaultBranch);
-        await publishEvent(events, job.runId, { type: "step:completed", stepName: "worktree_create", stepId: "setup", durationMs: Date.now() - wtStart }, job.requestId);
+        await publishEvent(events, job.runId, evt("step:completed", { stepName: "worktree_create", stepId: "setup", durationMs: Date.now() - wtStart }), job.requestId);
         console.log(`[worktree] created for ${repo.repoPath} in session ${sessionId}`);
       } catch (worktreeErr) {
         const reason = worktreeErr instanceof Error ? worktreeErr.message : "worktree failed";
         console.warn(`[worktree] fallback to clone for ${repo.repoPath}:`, reason);
         try {
-          await publishEvent(events, job.runId, { type: "step:started", stepName: "fallback_clone", stepId: "setup" }, job.requestId);
+          await publishEvent(events, job.runId, evt("step:started", { stepName: "fallback_clone", stepId: "setup" }), job.requestId);
           const fallbackStart = Date.now();
           await cloneRepoIntoSubdir({
             adapter,
@@ -1006,14 +1000,13 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
           console.info(`[agent][${job.runId}] plan ${approval.type === "user:plan_approved" ? "approved" : "rejected"}`, { waitMs: Date.now() - approvalStart });
           if (approval.type === "user:plan_approved") {
             approved = true;
-            await publishEvent(events, job.runId, { type: "plan:approved", reason: approval.reason } as StreamEvent, job.requestId);
+            await publishEvent(events, job.runId, evt("plan:approved", { reason: approval.reason }), job.requestId);
           } else {
-            await publishEvent(events, job.runId, { type: "plan:rejected", reason: approval.reason } as StreamEvent, job.requestId);
+            await publishEvent(events, job.runId, evt("plan:rejected", { reason: approval.reason }), job.requestId);
             await updateRunStatus(db, job, "completed", undefined, "end_turn");
-            await publishEvent(events, job.runId, {
-              type: "done",
+            await publishEvent(events, job.runId, evt("session:completed", {
               terminalReason: "plan_rejected",
-            } as StreamEvent, job.requestId);
+            }), job.requestId);
             await events.setKey(`run:${job.runId}:status`, "completed", RUN_STATUS_TTL);
             await expireRunStream(redis, job.runId);
             return;
@@ -1024,12 +1017,11 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
       }
 
       if (!approved) {
-        await publishEvent(events, job.runId, { type: "plan:rejected", reason: "approval_timeout" } as StreamEvent, job.requestId);
+        await publishEvent(events, job.runId, evt("plan:rejected", { reason: "approval_timeout" }), job.requestId);
         await updateRunStatus(db, job, "completed", undefined, "end_turn");
-        await publishEvent(events, job.runId, {
-          type: "done",
+        await publishEvent(events, job.runId, evt("session:completed", {
           terminalReason: "plan_rejected",
-        } as StreamEvent, job.requestId);
+        }), job.requestId);
         await events.setKey(`run:${job.runId}:status`, "completed", RUN_STATUS_TTL);
         await expireRunStream(redis, job.runId);
         return;
@@ -1096,7 +1088,7 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
     await publishEvent(
       events,
       job.runId,
-      { type: "done", assistantMessageId: finalMessageId, assistantParts: assistantParts as unknown[], terminalReason },
+      evt("session:completed", { assistantMessageId: finalMessageId, assistantParts: assistantParts as unknown[], terminalReason }),
       job.requestId,
     );
     await events.setKey(`run:${job.runId}:status`, "completed", RUN_STATUS_TTL);
@@ -1109,7 +1101,7 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
       .limit(1);
     if (session && isDeliverComplete(session)) {
       await transitionToComplete(db, job.sessionId);
-      await publishEvent(events, job.runId, { type: "phase_changed", phase: "complete" } as unknown as StreamEvent, job.requestId);
+      await publishEvent(events, job.runId, evt("session:phase_changed", { phase: "complete" }), job.requestId);
     }
   } catch (error) {
     // Handle user-initiated abort
@@ -1124,7 +1116,7 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
         assistantParts: error.parts,
         ...prMeta,
       });
-      await publishEvent(events, job.runId, { type: "aborted", terminalReason: "stopped" }, job.requestId);
+      await publishEvent(events, job.runId, evt("session:aborted", { terminalReason: "stopped" }), job.requestId);
       await events.setKey(`run:${job.runId}:status`, "aborted", RUN_STATUS_TTL);
       await expireRunStream(redis, job.runId);
       return;
@@ -1141,7 +1133,7 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
         assistantParts: summaryParts,
         ...prMeta,
       });
-      await publishEvent(events, job.runId, { type: "aborted", terminalReason: "timeout" }, job.requestId);
+      await publishEvent(events, job.runId, evt("session:aborted", { terminalReason: "timeout" }), job.requestId);
       await events.setKey(`run:${job.runId}:status`, "aborted", RUN_STATUS_TTL);
       await expireRunStream(redis, job.runId);
       return;
@@ -1160,14 +1152,13 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
     await publishEvent(
       events,
       job.runId,
-      {
-        type: "error",
+      evt("session:failed", {
         message: error instanceof Error ? error.message : String(error),
         code: error instanceof AppError ? error.code : "INTERNAL_ERROR",
         requestId: job.requestId,
         retryable: error instanceof AppError ? error.retryable : false,
         terminalReason,
-      },
+      }),
       job.requestId,
     );
     await events.setKey(`run:${job.runId}:status`, "failed", RUN_STATUS_TTL);

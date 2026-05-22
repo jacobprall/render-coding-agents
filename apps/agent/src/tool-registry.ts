@@ -132,8 +132,8 @@ export function buildToolSet(
 ): Map<string, AgentTool> {
   const reqId = job.requestId;
   const makeSubToolConfigs = () => buildSubagentToolConfigs(hasRepo);
-  const publishFn = async (event: Record<string, unknown>) => {
-    await publishEvent(events, job.runId, event as unknown as StreamEvent, reqId);
+  const publishFn = async (event: StreamEvent) => {
+    await publishEvent(events, job.runId, event, reqId);
   };
 
   const baseConfigs = makeSubToolConfigs();

@@ -4,6 +4,8 @@ import { z } from "zod";
 import { nanoid } from "nanoid";
 import { askUserReplyQueueKey } from "@coding-agents/platform";
 import { abortableBlpop } from "../lib/abortable-blpop";
+import type { StreamEvent } from "../types";
+import { evt } from "../run-persistence";
 
 const askUserInputSchema = z.object({
   question: z.string().describe("The question to ask the user"),
@@ -13,7 +15,7 @@ const askUserInputSchema = z.object({
 export function askUserQuestionTool(
   runId: string,
   duplicateRedis: () => Redis,
-  publishFn: (event: Record<string, unknown>) => Promise<void>,
+  publishFn: (event: StreamEvent) => Promise<void>,
 ) {
   const timeoutSec = Math.min(
     Math.max(Number(process.env.ASK_USER_TIMEOUT_SEC ?? "900"), 1),
@@ -25,7 +27,7 @@ export function askUserQuestionTool(
     inputSchema: askUserInputSchema,
     execute: async ({ question, options }, execOptions) => {
       const toolCallId = execOptions.toolCallId ?? nanoid();
-      await publishFn({ type: "ask_user", question, options, toolCallId });
+      await publishFn(evt("agent:ask_user", { question, options, toolCallId }));
 
       const key = askUserReplyQueueKey(runId, toolCallId);
       const blocker = duplicateRedis();
