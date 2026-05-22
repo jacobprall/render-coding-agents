@@ -8,7 +8,6 @@ import { PrSummaryPanel } from "./pr-summary-panel";
 import { ReviewBar } from "./review-bar";
 import type { Message, LiveFileChange } from "./chat-panel";
 import type { SessionTab } from "@/components/layout/session-tabs";
-import { useRightPanelOptional } from "@/components/layout/right-panel-context";
 import { notifyGitStatusRefresh } from "@/hooks/use-git-status";
 import { apiFetch } from "@/lib/api-fetch";
 
@@ -42,7 +41,16 @@ const FilesView = dynamic(
   },
 );
 
-type ViewTab = "chat" | "files";
+const GitPanel = dynamic(
+  () => import("./git-panel").then((m) => ({ default: m.GitPanel })),
+  {
+    loading: () => (
+      <div className="flex h-full items-center justify-center text-sm text-text-tertiary">Loading git…</div>
+    ),
+  },
+);
+
+type ViewTab = "chat" | "files" | "git";
 
 interface SessionInfo {
   id: string;
@@ -95,8 +103,8 @@ export function SessionWorkspace({
   const [liveFileChanges, setLiveFileChanges] = useState<LiveFileChange[]>([]);
   const [isCommitting, setIsCommitting] = useState(false);
   const [commitToast, setCommitToast] = useState<string | null>(null);
+  const [pendingFilePath, setPendingFilePath] = useState<string | null>(null);
   const clearChatFileChangesRef = useRef<(() => void) | null>(null);
-  const rightPanel = useRightPanelOptional();
 
   useEffect(() => {
     const stored = readStoredModelId(session.id);
@@ -144,14 +152,15 @@ export function SessionWorkspace({
 
   const handleFileSelect = useCallback(
     (path: string) => {
-      rightPanel?.openFile(path);
+      setPendingFilePath(path);
+      startTransition(() => setActiveView("files"));
     },
-    [rightPanel],
+    [],
   );
 
   const handleReviewClick = useCallback(() => {
-    rightPanel?.setMode("git");
-  }, [rightPanel]);
+    startTransition(() => setActiveView("git"));
+  }, []);
 
   const handleCommit = useCallback(async () => {
     if (isCommitting || liveFileChanges.length === 0) return;
@@ -211,10 +220,19 @@ export function SessionWorkspace({
           </TabButton>
           <TabButton
             active={activeView === "files"}
-            onClick={() => startTransition(() => setActiveView("files"))}
+            onClick={() => {
+              setPendingFilePath(null);
+              startTransition(() => setActiveView("files"));
+            }}
             badge={fileCount > 0 ? fileCount : undefined}
           >
             Files
+          </TabButton>
+          <TabButton
+            active={activeView === "git"}
+            onClick={() => startTransition(() => setActiveView("git"))}
+          >
+            Git
           </TabButton>
         </div>
       </header>
@@ -308,6 +326,13 @@ export function SessionWorkspace({
           <FilesView
             sessionId={session.id}
             fileChanges={liveFileChanges}
+            initialFilePath={pendingFilePath}
+          />
+        </div>
+        <div className={activeView === "git" ? "h-full" : "hidden"}>
+          <GitPanel
+            sessionId={session.id}
+            enabled={activeView === "git"}
           />
         </div>
       </div>

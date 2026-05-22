@@ -11,11 +11,8 @@ import {
   CheckCircle2,
   AlertCircle,
   PanelLeft,
-  PanelRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { RightPanelMode } from "./right-panel";
-import { useRightPanelOptional } from "./right-panel-context";
 
 export interface SessionTab {
   id: string;
@@ -58,20 +55,15 @@ function StatusIcon({ status }: { status: string }) {
 interface SessionTabsProps {
   onToggleSidebar?: () => void;
   sidebarOpen?: boolean;
-  rightPanelMode?: RightPanelMode;
-  onRightPanelModeChange?: (mode: RightPanelMode) => void;
 }
 
 export function SessionTabs({
   onToggleSidebar,
   sidebarOpen = true,
-  rightPanelMode = "closed",
-  onRightPanelModeChange,
 }: SessionTabsProps) {
   const [tabs, setTabs] = useState<SessionTab[]>([]);
   const pathname = usePathname();
   const router = useRouter();
-  const rightPanelCtx = useRightPanelOptional();
 
   useEffect(() => {
     setTabs(getStoredTabs());
@@ -126,24 +118,6 @@ export function SessionTabs({
   if (!pathname.startsWith("/sessions")) return null;
 
   const showNewButton = pathname !== "/sessions";
-  const panelMode = rightPanelCtx?.mode ?? rightPanelMode;
-  const rightPanelOpen = panelMode !== "closed";
-  const showPanelToggle = Boolean(
-    activeSessionId && (rightPanelCtx || onRightPanelModeChange),
-  );
-
-  const toggleRightPanel = () => {
-    if (rightPanelCtx) {
-      if (rightPanelOpen) {
-        rightPanelCtx.toggleMode("files");
-      } else {
-        rightPanelCtx.toggleMode("files");
-      }
-      return;
-    }
-    if (!onRightPanelModeChange) return;
-    onRightPanelModeChange(rightPanelOpen ? "closed" : "files");
-  };
 
   return (
     <div className="flex h-9 shrink-0 items-end border-b border-border bg-card/50">
@@ -195,21 +169,6 @@ export function SessionTabs({
         </Link>
       )}
 
-      {showPanelToggle ? (
-        <button
-          type="button"
-          onClick={toggleRightPanel}
-          title={rightPanelOpen ? "Collapse panel" : "Expand panel"}
-          className={cn(
-            "mr-1 flex h-8 w-8 shrink-0 items-center justify-center transition-colors",
-            rightPanelOpen
-              ? "text-primary"
-              : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-          )}
-        >
-          <PanelRight className="h-3.5 w-3.5" />
-        </button>
-      ) : null}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { usePanelResize } from "@/hooks/use-panel-resize";
 import { useLayoutState } from "@/hooks/use-layout-state";
@@ -121,21 +121,12 @@ function AppShellGrid({ user, children, layout, rightPanelResize }: AppShellGrid
     sidebarWidth,
     setSidebarOpen,
     setSidebarWidth,
-    setRightPanelOpen,
-    setRightPanelMode,
     toggleSidebar,
   } = layout;
 
   const {
-    mode: rightPanelMode,
-    setMode: setRightPanelModeContext,
-    sessionId,
-    selectedPath,
-    openFile,
     setWidth: setContextWidth,
   } = useRightPanel();
-
-  const rightPanelOpen = rightPanelMode !== "closed";
 
   const sidebarResize = usePanelResize({
     direction: "horizontal",
@@ -149,19 +140,6 @@ function AppShellGrid({ user, children, layout, rightPanelResize }: AppShellGrid
   useEffect(() => {
     setContextWidth(rightPanelResize.size);
   }, [rightPanelResize.size, setContextWidth]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    setRightPanelMode(rightPanelMode);
-  }, [hydrated, rightPanelMode, setRightPanelMode]);
-
-  const handleRightPanelModeChange = useCallback(
-    (mode: Parameters<typeof setRightPanelModeContext>[0]) => {
-      setRightPanelModeContext(mode);
-      setRightPanelMode(mode);
-    },
-    [setRightPanelMode, setRightPanelModeContext],
-  );
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -180,16 +158,9 @@ function AppShellGrid({ user, children, layout, rightPanelResize }: AppShellGrid
     function enforceViewportConstraints() {
       const viewport = window.innerWidth;
       const sidebarSpace = sidebarOpen ? sidebarResize.size + 4 : 0;
-      const rightSpace = rightPanelOpen ? rightPanelResize.size + 4 : 0;
-      const required = sidebarSpace + rightSpace + CHAT_MIN_WIDTH;
+      const required = sidebarSpace + CHAT_MIN_WIDTH;
 
       if (required <= viewport) return;
-
-      if (rightPanelOpen) {
-        handleRightPanelModeChange("closed");
-        setRightPanelOpen(false);
-        return;
-      }
 
       if (sidebarOpen) {
         setSidebarOpen(false);
@@ -201,10 +172,6 @@ function AppShellGrid({ user, children, layout, rightPanelResize }: AppShellGrid
     return () => window.removeEventListener("resize", enforceViewportConstraints);
   }, [
     hydrated,
-    handleRightPanelModeChange,
-    rightPanelOpen,
-    rightPanelResize.size,
-    setRightPanelOpen,
     setSidebarOpen,
     sidebarOpen,
     sidebarResize.size,
@@ -213,14 +180,8 @@ function AppShellGrid({ user, children, layout, rightPanelResize }: AppShellGrid
   const gridTemplateColumns = useMemo(() => {
     const sidebarCol = sidebarOpen ? `${sidebarResize.size}px` : "0px";
     const sidebarHandleCol = sidebarOpen ? "4px" : "0px";
-    const rightCol = rightPanelOpen ? `${rightPanelResize.size}px` : "0px";
-    const rightHandleCol = rightPanelOpen ? "4px" : "0px";
-    return `${sidebarCol} ${sidebarHandleCol} minmax(var(--chat-min-width), 1fr) ${rightHandleCol} ${rightCol}`;
-  }, [sidebarOpen, sidebarResize.size, rightPanelOpen, rightPanelResize.size]);
-
-  const handleClearSelection = useCallback(() => {
-    openFile("");
-  }, [openFile]);
+    return `${sidebarCol} ${sidebarHandleCol} minmax(var(--chat-min-width), 1fr)`;
+  }, [sidebarOpen, sidebarResize.size]);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
@@ -231,7 +192,6 @@ function AppShellGrid({ user, children, layout, rightPanelResize }: AppShellGrid
             gridTemplateColumns,
             transition: "grid-template-columns var(--panel-transition)",
             "--sidebar-width": `${sidebarResize.size}px`,
-            "--right-panel-width": `${rightPanelResize.size}px`,
           } as React.CSSProperties
         }
       >
@@ -249,29 +209,8 @@ function AppShellGrid({ user, children, layout, rightPanelResize }: AppShellGrid
           <SessionTabs
             onToggleSidebar={toggleSidebar}
             sidebarOpen={sidebarOpen}
-            rightPanelMode={rightPanelMode}
-            onRightPanelModeChange={handleRightPanelModeChange}
           />
           <main className="relative min-h-0 flex-1 overflow-y-auto">{children}</main>
-        </div>
-
-        {rightPanelOpen ? (
-          <PanelResizer handleProps={rightPanelResize.handleProps} />
-        ) : (
-          <div className="w-0" aria-hidden />
-        )}
-
-        <div className="min-h-0 overflow-hidden">
-          {sessionId ? (
-            <RightPanel
-              mode={rightPanelMode}
-              sessionId={sessionId}
-              onModeChange={handleRightPanelModeChange}
-              width={rightPanelResize.size}
-              selectedPath={selectedPath}
-              onClearSelection={handleClearSelection}
-            />
-          ) : null}
         </div>
       </div>
 

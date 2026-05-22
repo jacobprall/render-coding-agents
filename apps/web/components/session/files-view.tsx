@@ -1,26 +1,154 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import type { LiveFileChange } from "./chat-panel";
 import { SingleFileDiffViewer } from "@/components/diff-viewer";
+import { FileTree } from "@/components/session/file-tree";
+import { FilePreview } from "@/components/session/file-preview";
+
+type FilesSubView = "tree" | "changes";
 
 interface FilesViewProps {
   sessionId: string;
   fileChanges: LiveFileChange[];
+  initialFilePath?: string | null;
 }
 
-export function FilesView({ sessionId, fileChanges }: FilesViewProps) {
-  void sessionId;
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+export function FilesView({ sessionId, fileChanges, initialFilePath }: FilesViewProps) {
+  const [subView, setSubView] = useState<FilesSubView>(
+    initialFilePath ? "tree" : "changes",
+  );
+  const [selectedTreeFile, setSelectedTreeFile] = useState<string | null>(
+    initialFilePath ?? null,
+  );
+  const [selectedDiffFile, setSelectedDiffFile] = useState<string | null>(null);
+
+  const handleTreeFileSelect = useCallback((path: string) => {
+    setSelectedTreeFile(path);
+  }, []);
+
+  const handleTreeDeselect = useCallback(() => {
+    setSelectedTreeFile(null);
+  }, []);
+
+  const handleBackToTree = useCallback(() => {
+    setSelectedTreeFile(null);
+  }, []);
 
   const totalAdded = fileChanges.reduce((s, f) => s + f.additions, 0);
   const totalRemoved = fileChanges.reduce((s, f) => s + f.deletions, 0);
 
   const selectedMeta = useMemo(
-    () => (selectedFile ? fileChanges.find((x) => x.path === selectedFile) : undefined),
-    [fileChanges, selectedFile],
+    () => (selectedDiffFile ? fileChanges.find((x) => x.path === selectedDiffFile) : undefined),
+    [fileChanges, selectedDiffFile],
   );
 
+  const changeCount = fileChanges.length;
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex shrink-0 items-center gap-0.5 border-b border-stroke-subtle px-3">
+        <SubTabButton
+          active={subView === "tree"}
+          onClick={() => setSubView("tree")}
+        >
+          Explorer
+        </SubTabButton>
+        <SubTabButton
+          active={subView === "changes"}
+          onClick={() => setSubView("changes")}
+          badge={changeCount > 0 ? changeCount : undefined}
+        >
+          Changes
+        </SubTabButton>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-hidden">
+        {subView === "tree" ? (
+          <TreeAndPreview
+            sessionId={sessionId}
+            selectedPath={selectedTreeFile}
+            onFileSelect={handleTreeFileSelect}
+            onDeselect={handleTreeDeselect}
+            onBack={handleBackToTree}
+          />
+        ) : (
+          <ChangesView
+            fileChanges={fileChanges}
+            selectedFile={selectedDiffFile}
+            onSelectFile={setSelectedDiffFile}
+            totalAdded={totalAdded}
+            totalRemoved={totalRemoved}
+            selectedMeta={selectedMeta}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TreeAndPreview({
+  sessionId,
+  selectedPath,
+  onFileSelect,
+  onDeselect,
+  onBack,
+}: {
+  sessionId: string;
+  selectedPath: string | null;
+  onFileSelect: (path: string) => void;
+  onDeselect: () => void;
+  onBack: () => void;
+}) {
+  if (selectedPath) {
+    return (
+      <div className="flex h-full min-h-0">
+        <div className="w-52 shrink-0 overflow-y-auto border-r border-stroke-subtle">
+          <FileTree
+            sessionId={sessionId}
+            selectedPath={selectedPath}
+            onFileSelect={onFileSelect}
+            onDeselect={onDeselect}
+          />
+        </div>
+        <div className="min-w-0 flex-1 overflow-hidden">
+          <FilePreview
+            sessionId={sessionId}
+            filePath={selectedPath}
+            onBack={onBack}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full overflow-y-auto">
+      <FileTree
+        sessionId={sessionId}
+        selectedPath={undefined}
+        onFileSelect={onFileSelect}
+        onDeselect={onDeselect}
+      />
+    </div>
+  );
+}
+
+function ChangesView({
+  fileChanges,
+  selectedFile,
+  onSelectFile,
+  totalAdded,
+  totalRemoved,
+  selectedMeta,
+}: {
+  fileChanges: LiveFileChange[];
+  selectedFile: string | null;
+  onSelectFile: (path: string | null) => void;
+  totalAdded: number;
+  totalRemoved: number;
+  selectedMeta: LiveFileChange | undefined;
+}) {
   if (fileChanges.length === 0) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -64,7 +192,7 @@ export function FilesView({ sessionId, fileChanges }: FilesViewProps) {
               <button
                 key={file.path}
                 type="button"
-                onClick={() => setSelectedFile(isSelected ? null : file.path)}
+                onClick={() => onSelectFile(isSelected ? null : file.path)}
                 className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors duration-(--of-duration-instant) ${
                   isSelected
                     ? "bg-surface-2/80 text-text-primary"
@@ -125,5 +253,36 @@ export function FilesView({ sessionId, fileChanges }: FilesViewProps) {
         )}
       </div>
     </div>
+  );
+}
+
+function SubTabButton({
+  active,
+  onClick,
+  badge,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  badge?: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium transition-colors duration-(--of-duration-instant) ${
+        active
+          ? "border-b-2 border-accent text-text-primary"
+          : "border-b-2 border-transparent text-text-tertiary hover:text-text-secondary"
+      }`}
+    >
+      {children}
+      {badge !== undefined ? (
+        <span className="flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-surface-3 px-1 text-[9px] tabular-nums text-text-secondary">
+          {badge}
+        </span>
+      ) : null}
+    </button>
   );
 }
