@@ -13,7 +13,7 @@ import { handleGlob, handleGrep, handleRead, handleWrite } from "./handlers/file
 import { handleGit } from "./handlers/git-http";
 import { handleHealth } from "./handlers/health";
 import { handleRestore, handleSnapshot } from "./handlers/snapshots";
-import { handleMirrorEnsure, handleMirrorFetch, handleDiskStatus } from "./handlers/mirror";
+import { handleMirrorEnsure, handleMirrorFetch, handleDiskStatus, handleMirrorStatus } from "./handlers/mirror";
 import { evictLRU } from "./services/disk-monitor";
 import { handleVerify } from "./handlers/verify";
 import { handleWorktreeCreate, handleWorktreeRemove } from "./handlers/worktree";
@@ -131,6 +131,9 @@ const server = Bun.serve({
         }
         if (method === "GET" && path === "/disk/status") {
           return handleDiskStatus();
+        }
+        if (method === "GET" && path === "/mirror/status") {
+          return handleMirrorStatus();
         }
         if (method === "POST" && path === "/worktree/create") {
           const body = asRecordBody(await parseLimitedJsonBody(req, MAX_REQUEST_BODY_BYTES));

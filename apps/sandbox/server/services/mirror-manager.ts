@@ -405,11 +405,16 @@ export function removeMirror(workspaceId: string, repoPath: string): boolean {
   }
 }
 
-const SYNC_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
+const SYNC_INTERVAL_MS = parseInt(
+  process.env.MIRROR_IDLE_SYNC_INTERVAL_MS ?? String(24 * 60 * 60 * 1000),
+  10,
+); // default 24h
 
 export function startPeriodicSync(): void {
+  console.info(`[mirror] periodic sync configured with interval=${SYNC_INTERVAL_MS}ms`);
   setInterval(() => {
     const mirrors = listMirrors();
+    console.info(`[mirror] periodic sync tick: ${mirrors.length} mirror(s) to refresh`);
     for (const mirror of mirrors) {
       try {
         fetchMirror(mirror.workspaceId, mirror.repoPath);

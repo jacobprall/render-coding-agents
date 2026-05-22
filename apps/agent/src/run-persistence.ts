@@ -29,6 +29,20 @@ const V1_TO_V2_TYPE_MAP: Record<string, string> = {
   phase_changed: "session:phase_changed",
   verification: "agent:verification",
   verify_failed: "agent:verify_failed",
+  // Namespaced v2 events pass through unchanged
+  "planner:started": "planner:started",
+  "planner:thinking": "planner:thinking",
+  "planner:completed": "planner:completed",
+  "plan:generated": "plan:generated",
+  "plan:approved": "plan:approved",
+  "plan:rejected": "plan:rejected",
+  "user:message": "user:message",
+  "user:interrupt": "user:interrupt",
+  "user:plan_approved": "user:plan_approved",
+  "user:plan_rejected": "user:plan_rejected",
+  "step:started": "step:started",
+  "step:completed": "step:completed",
+  "step:failed": "step:failed",
 };
 
 function mapEventType(v1Type: string): string {

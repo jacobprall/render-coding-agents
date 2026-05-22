@@ -7,4 +7,7 @@ export {
   readRunEventEntriesAfterId,
   askUserReplyQueueKey,
   trimOldStreamEntries,
+  steeringChannelKey,
+  publishSteeringEvent,
+  consumeSteeringEvents,
 } from "./run-stream";

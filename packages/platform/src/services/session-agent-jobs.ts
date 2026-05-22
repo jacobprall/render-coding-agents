@@ -6,6 +6,7 @@ import { getDefaultForgeProvider, getForgeProviderForAuth } from "../forge/facto
 import type { ForgeProvider } from "../forge/provider";
 import { normalizeActiveSkills, type ActiveSkillRef } from "./session-skills";
 import { decryptTokenSafe } from "../auth/encryption";
+import { resolveWorkspaceConfig, mergeSessionOverrides, decryptSecrets } from "./workspace";
 
 /**
  * Forge token / provider resolution for sessions (GitHub OAuth).
@@ -108,6 +109,46 @@ function getActiveSkillRefs(
 }
 
 // ---------------------------------------------------------------------------
+// Workspace config resolution for job payloads
+// ---------------------------------------------------------------------------
+
+async function resolveWorkspacePayload(
+  db: PlatformDb,
+  projectId: string | null,
+  sessionEnvOverrides?: Record<string, string>,
+  sessionSkillsOverrides?: Array<{ source: "builtin" | "user" | "repo"; slug: string }>,
+): Promise<Record<string, unknown>> {
+  if (!projectId) return {};
+
+  try {
+    const workspace = await resolveWorkspaceConfig(db, projectId);
+    const { mergedEnv, mergedSkills } = mergeSessionOverrides(
+      workspace,
+      sessionEnvOverrides ?? {},
+      sessionSkillsOverrides ?? [],
+    );
+
+    const decryptedSecrets = decryptSecrets(workspace.secretsConfig);
+    const resolvedSecrets: Record<string, string> = {
+      ...(decryptedSecrets.env ?? {}),
+    };
+    for (const [key, value] of Object.entries(decryptedSecrets.runtime ?? {})) {
+      resolvedSecrets[`__SECRET__${key}`] = value;
+    }
+
+    return {
+      workspaceId: projectId,
+      resolvedEnv: mergedEnv,
+      resolvedSecrets,
+      resolvedSkills: mergedSkills,
+      repos: workspace.repos,
+    };
+  } catch {
+    return {};
+  }
+}
+
+// ---------------------------------------------------------------------------
 // startAgentJob
 // ---------------------------------------------------------------------------
 
@@ -151,7 +192,12 @@ export async function startAgentJob(
       : {};
   Object.assign(baseConfig, projectConfigPatch ?? {});
 
-  const activeSkillRefs = getActiveSkillRefs(sessionRow);
+  const workspacePayload = await resolveWorkspacePayload(db, sessionRow.projectId);
+
+  const activeSkillRefs =
+    (workspacePayload.resolvedSkills as ActiveSkillRef[] | undefined)?.length
+      ? (workspacePayload.resolvedSkills as ActiveSkillRef[])
+      : getActiveSkillRefs(sessionRow);
 
   await db.insert(agentRuns).values({
     id: runId,
@@ -185,6 +231,7 @@ export async function startAgentJob(
     requestId,
     maxRetries: 3,
     trigger: "user_message",
+    ...workspacePayload,
   });
 
   return runId;
@@ -258,7 +305,12 @@ export async function enqueueSessionTriggerJob(
   const modelMsgs = collectModelMessages(rows);
   const runId = crypto.randomUUID();
 
-  const activeSkillRefs = getActiveSkillRefs(sessionRow);
+  const workspacePayload = await resolveWorkspacePayload(db, sessionRow.projectId);
+
+  const activeSkillRefs =
+    (workspacePayload.resolvedSkills as ActiveSkillRef[] | undefined)?.length
+      ? (workspacePayload.resolvedSkills as ActiveSkillRef[])
+      : getActiveSkillRefs(sessionRow);
   const effectiveModelId = modelId ?? DEFAULT_MODEL_ID;
 
   await db.insert(agentRuns).values({
@@ -297,6 +349,7 @@ export async function enqueueSessionTriggerJob(
     fixContext,
     trigger,
     maxRetries: 3,
+    ...workspacePayload,
   });
 
   return { runId, chatId };

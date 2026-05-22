@@ -139,6 +139,7 @@ export async function agentLoop(params: {
   thinking?: { type: "enabled" | "adaptive"; budgetTokens: number };
   onStep?: (step: AgentStep) => Promise<void>;
   shouldAbort?: () => Promise<boolean>;
+  onSteeringCheck?: () => Promise<{ messages: Array<{ type: string; content?: string }> }>;
   onToken?: (token: string) => void;
   resultStore?: Map<string, string>;
   recorder?: ObservabilityRecorder;
@@ -156,6 +157,7 @@ export async function agentLoop(params: {
     thinking,
     onStep,
     shouldAbort,
+    onSteeringCheck,
     onToken,
     resultStore = new Map<string, string>(),
     recorder,
@@ -414,6 +416,20 @@ export async function agentLoop(params: {
         toolResults: stepToolResults,
         usage: response.usage,
       });
+    }
+
+    if (onSteeringCheck) {
+      const steering = await onSteeringCheck();
+      for (const msg of steering.messages) {
+        if (msg.type === "user:interrupt") {
+          terminationReason = "abort";
+          break;
+        }
+        if (msg.type === "user:message" && msg.content) {
+          allMessages.push({ role: "user", content: msg.content });
+        }
+      }
+      if (terminationReason === "abort") break;
     }
   }
 

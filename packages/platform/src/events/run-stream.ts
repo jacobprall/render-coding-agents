@@ -105,6 +105,41 @@ export function askUserReplyQueueKey(runId: string, toolCallId: string): string 
   return `run:${runId}:ask:${toolCallId}`;
 }
 
+// ─── Steering channel helpers ─────────────────────────────────────────────────
+
+export function steeringChannelKey(runId: string): string {
+  return `run:${runId}:steering`;
+}
+
+export async function publishSteeringEvent(
+  redis: Redis,
+  runId: string,
+  event: { type: string; content?: string; reason?: string; timestamp?: string },
+): Promise<void> {
+  const payload = JSON.stringify({ ...event, ts: event.timestamp ?? new Date().toISOString() });
+  await redis.publish(steeringChannelKey(runId), payload);
+  await redis.rpush(`run:${runId}:steering:queue`, payload);
+  await redis.expire(`run:${runId}:steering:queue`, 3600);
+}
+
+export async function consumeSteeringEvents(
+  redis: Redis,
+  runId: string,
+): Promise<Array<{ type: string; content?: string; reason?: string; ts: string }>> {
+  const key = `run:${runId}:steering:queue`;
+  const items = await redis.lrange(key, 0, -1);
+  if (items.length > 0) {
+    await redis.del(key);
+  }
+  return items.map((item) => {
+    try {
+      return JSON.parse(item);
+    } catch {
+      return { type: "unknown", ts: new Date().toISOString() };
+    }
+  });
+}
+
 export async function trimOldStreamEntries(
   redis: Redis,
   maxAgeMs: number = 7 * 24 * 60 * 60 * 1000,

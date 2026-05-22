@@ -4,6 +4,8 @@ import {
   readRunEventHistory,
   readRunEventHistoryDetailed,
   readRunEventPayloadsAfterId,
+  publishSteeringEvent,
+  consumeSteeringEvents,
 } from "../events/run-stream";
 
 /**
@@ -27,6 +29,10 @@ export interface EventBus {
   getKey(key: string): Promise<string | null>;
   /** Push to a Redis list (for ask_user reply queue). */
   listPush(key: string, value: string): Promise<void>;
+  /** Publish a steering event (user message/interrupt) to an active run. */
+  publishSteering(runId: string, event: { type: string; content?: string; reason?: string }): Promise<void>;
+  /** Consume queued steering events for a run (drains the queue). */
+  consumeSteering(runId: string): Promise<Array<{ type: string; content?: string; reason?: string; ts: string }>>;
 }
 
 /**
@@ -63,5 +69,13 @@ export class RedisEventBus implements EventBus {
 
   async listPush(key: string, value: string): Promise<void> {
     await this.redis.rpush(key, value);
+  }
+
+  async publishSteering(runId: string, event: { type: string; content?: string; reason?: string }): Promise<void> {
+    await publishSteeringEvent(this.redis, runId, event);
+  }
+
+  async consumeSteering(runId: string): Promise<Array<{ type: string; content?: string; reason?: string; ts: string }>> {
+    return consumeSteeringEvents(this.redis, runId);
   }
 }

@@ -61,6 +61,9 @@ export {
   readRunEventPayloadsAfterId,
   runEventStreamKey,
   trimOldStreamEntries,
+  steeringChannelKey,
+  publishSteeringEvent,
+  consumeSteeringEvents,
 } from "./events/run-stream";
 
 // LLM API keys (encrypted storage + resolution)

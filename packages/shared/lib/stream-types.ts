@@ -15,7 +15,24 @@ export interface StreamEvent {
     | "task_error"
     | "file_changed"
     | "heartbeat"
-    | "step_persisted";
+    | "step_persisted"
+    | "phase_changed"
+    // Planning events
+    | "planner:started"
+    | "planner:thinking"
+    | "planner:completed"
+    | "plan:generated"
+    | "plan:approved"
+    | "plan:rejected"
+    // Steering events
+    | "user:message"
+    | "user:interrupt"
+    | "user:plan_approved"
+    | "user:plan_rejected"
+    // Setup step events
+    | "step:started"
+    | "step:completed"
+    | "step:failed";
   token?: string;
   toolName?: string;
   toolCallId?: string;
@@ -48,6 +65,17 @@ export interface StreamEvent {
   partCount?: number;
   // Terminal reason field
   terminalReason?: string;
+  // Planning fields
+  plan?: unknown;
+  phase?: string;
+  // Steering fields
+  content?: string;
+  reason?: string;
+  // Step fields
+  stepName?: string;
+  stepId?: string;
+  durationMs?: number;
+  metadata?: Record<string, unknown>;
 }
 
 export interface StreamEventV2 {
@@ -76,6 +104,20 @@ const V1_TO_V2_TYPE_MAP: Record<string, string> = {
   phase_changed: "session:phase_changed",
   verification: "agent:verification",
   verify_failed: "agent:verify_failed",
+  // New planning/steering/step events pass through as-is (already namespaced)
+  "planner:started": "planner:started",
+  "planner:thinking": "planner:thinking",
+  "planner:completed": "planner:completed",
+  "plan:generated": "plan:generated",
+  "plan:approved": "plan:approved",
+  "plan:rejected": "plan:rejected",
+  "user:message": "user:message",
+  "user:interrupt": "user:interrupt",
+  "user:plan_approved": "user:plan_approved",
+  "user:plan_rejected": "user:plan_rejected",
+  "step:started": "step:started",
+  "step:completed": "step:completed",
+  "step:failed": "step:failed",
 }
 
 export function normalizeEvent(raw: StreamEvent | StreamEventV2): StreamEventV2 {
@@ -148,6 +190,52 @@ export function normalizeEvent(raw: StreamEvent | StreamEventV2): StreamEventV2 
       if (v1.step !== undefined) payload.step = v1.step
       if (v1.partCount !== undefined) payload.partCount = v1.partCount
       if (v1.assistantMessageId !== undefined) payload.assistantMessageId = v1.assistantMessageId
+      break
+    case "phase_changed":
+      if (v1.phase !== undefined) payload.phase = v1.phase
+      break
+    case "planner:started":
+    case "planner:thinking":
+    case "planner:completed":
+      if (v1.plan !== undefined) payload.plan = v1.plan
+      if (v1.durationMs !== undefined) payload.durationMs = v1.durationMs
+      break
+    case "plan:generated":
+      if (v1.plan !== undefined) payload.plan = v1.plan
+      if (v1.spec !== undefined) payload.spec = v1.spec
+      break
+    case "plan:approved":
+    case "plan:rejected":
+      if (v1.reason !== undefined) payload.reason = v1.reason
+      break
+    case "user:message":
+      if (v1.content !== undefined) payload.content = v1.content
+      break
+    case "user:interrupt":
+      if (v1.reason !== undefined) payload.reason = v1.reason
+      break
+    case "user:plan_approved":
+    case "user:plan_rejected":
+      if (v1.reason !== undefined) payload.reason = v1.reason
+      break
+    case "step:started":
+      if (v1.stepName !== undefined) payload.stepName = v1.stepName
+      if (v1.stepId !== undefined) payload.stepId = v1.stepId
+      if (v1.task !== undefined) payload.task = v1.task
+      if (v1.taskId !== undefined) payload.stepId = v1.taskId
+      break
+    case "step:completed":
+      if (v1.stepName !== undefined) payload.stepName = v1.stepName
+      if (v1.stepId !== undefined) payload.stepId = v1.stepId
+      if (v1.durationMs !== undefined) payload.durationMs = v1.durationMs
+      if (v1.taskId !== undefined) payload.stepId = v1.taskId
+      if (v1.metadata !== undefined) payload.metadata = v1.metadata
+      break
+    case "step:failed":
+      if (v1.stepName !== undefined) payload.stepName = v1.stepName
+      if (v1.stepId !== undefined) payload.stepId = v1.stepId
+      if (v1.message !== undefined) payload.error = v1.message
+      if (v1.taskId !== undefined) payload.stepId = v1.taskId
       break
     default:
       Object.assign(payload, rest)

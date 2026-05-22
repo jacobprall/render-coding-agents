@@ -1,5 +1,5 @@
 import { getDiskStatus } from "../services/disk-monitor";
-import { ensureMirror, fetchMirror } from "../services/mirror-manager";
+import { ensureMirror, fetchMirror, listMirrors } from "../services/mirror-manager";
 import { getRequestId, jsonError } from "../lib/http-response";
 import { logger } from "../lib/logger";
 
@@ -52,4 +52,9 @@ export async function handleMirrorFetch(
 export function handleDiskStatus(): Response {
   const status = getDiskStatus();
   return Response.json(status);
+}
+
+export function handleMirrorStatus(): Response {
+  const mirrors = listMirrors();
+  return Response.json({ mirrors, count: mirrors.length });
 }

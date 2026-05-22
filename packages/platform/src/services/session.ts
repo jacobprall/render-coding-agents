@@ -452,6 +452,9 @@ export class SessionService {
         forgeUsername: sessions.forgeUsername,
         projectConfig: sessions.projectConfig,
         projectContext: sessions.projectContext,
+        projectId: sessions.projectId,
+        sessionEnvOverrides: sessions.sessionEnvOverrides,
+        sessionSkillsOverrides: sessions.sessionSkillsOverrides,
       })
       .from(sessions)
       .where(and(eq(sessions.id, sessionId), eq(sessions.userId, auth.userId)))
@@ -567,6 +570,36 @@ export class SessionService {
 
     const activeSkillRefs = normalizeActiveSkills(sessionRow.activeSkills as ActiveSkillRef[] | null);
 
+    let workspaceJobPayload: Record<string, unknown> = {};
+    if (sessionRow.projectId) {
+      try {
+        const workspace = await resolveWorkspaceConfig(this.db, sessionRow.projectId);
+        const { mergedEnv, mergedSkills } = mergeSessionOverrides(
+          workspace,
+          (sessionRow.sessionEnvOverrides as Record<string, string>) ?? {},
+          (sessionRow.sessionSkillsOverrides as Array<{ source: "builtin" | "user" | "repo"; slug: string }>) ?? [],
+        );
+
+        const decryptedSecrets = decryptSecrets(workspace.secretsConfig);
+        const resolvedSecrets: Record<string, string> = {
+          ...(decryptedSecrets.env ?? {}),
+        };
+        for (const [key, value] of Object.entries(decryptedSecrets.runtime ?? {})) {
+          resolvedSecrets[`__SECRET__${key}`] = value;
+        }
+
+        workspaceJobPayload = {
+          workspaceId: sessionRow.projectId,
+          resolvedEnv: mergedEnv,
+          resolvedSecrets,
+          resolvedSkills: mergedSkills,
+          repos: workspace.repos,
+        };
+      } catch {
+        // Non-critical: proceed without workspace config
+      }
+    }
+
     await this.queue.ensureGroup();
     await this.queue.enqueue({
       runId,
@@ -580,6 +613,7 @@ export class SessionService {
       modelId,
       requestId,
       maxRetries: 3,
+      ...workspaceJobPayload,
     });
 
     // Detect first message (caller can use this to trigger auto-title)

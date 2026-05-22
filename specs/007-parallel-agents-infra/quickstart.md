@@ -62,25 +62,39 @@ bun run cli session create --workspace <workspace-id> --message "Fix the login b
 
 ### 4. Testing Steering
 
-While a session is running:
+While a session is running (available via both web app and gateway):
 
 ```bash
-# Send a mid-flight message
+# Send a mid-flight message (web app endpoint)
+curl -X POST http://localhost:3000/api/sessions/{id}/steer \
+  -H "Content-Type: application/json" \
+  -H "Cookie: <auth-cookie>" \
+  -d '{"type": "message", "content": "Focus on the auth module, skip tests for now"}'
+
+# Send an interrupt (gateway endpoint)
 curl -X POST http://localhost:4000/api/sessions/{id}/steer \
   -H "Content-Type: application/json" \
-  -d '{"content": "Focus on the auth module, skip tests for now"}'
+  -H "Cookie: <auth-cookie>" \
+  -d '{"type": "interrupt", "reason": "Wrong direction"}'
 ```
 
 ### 5. Testing Planning Flow
 
-Start a session with planning mode enabled:
+Enable planning mode by setting `PLANNING_ENABLED=true` in `.env`, then start a session:
 
 ```bash
 # The agent will generate a plan and pause
-# Approve it:
+# Approve it (web app endpoint):
+curl -X POST http://localhost:3000/api/sessions/{id}/approve-plan \
+  -H "Content-Type: application/json" \
+  -H "Cookie: <auth-cookie>" \
+  -d '{"action": "approve"}'
+
+# Or reject with feedback (gateway endpoint):
 curl -X POST http://localhost:4000/api/sessions/{id}/approve-plan \
   -H "Content-Type: application/json" \
-  -d '{"approved": true}'
+  -H "Cookie: <auth-cookie>" \
+  -d '{"action": "reject", "reason": "Please include error handling"}'
 ```
 
 ### 6. Simulating Webhook

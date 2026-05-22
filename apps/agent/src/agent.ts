@@ -17,12 +17,16 @@ import { buildToolSet } from "./tool-registry";
 import { publishEvent, expireRunStream, mergeToolResults, updateRunStatus, upsertAssistantMessage, updateHeartbeat } from "./run-persistence";
 import { agentLoop } from "./loop";
 import { ObservabilityRecorder } from "./observability";
+import { runPlanner } from "./planner";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MAX_STEPS = parseInt(process.env.MAX_AGENT_STEPS ?? "100", 10);
 const RUN_STATUS_TTL = 3600;
 const TURN_TIMEOUT_MS = parseInt(process.env.TURN_TIMEOUT_MS ?? String(10 * 60 * 1000), 10);
+const PLANNING_ENABLED = process.env.PLANNING_ENABLED === "true";
+const APPROVAL_POLL_INTERVAL_MS = 2000;
+const APPROVAL_TIMEOUT_MS = 10 * 60 * 1000;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -370,6 +374,15 @@ async function runTurn(params: {
   const tools = buildToolSet(events, redis, db, job, provider, modelId, forgeContext, skillsSuffix, !isScratch, resultStore, llmKeys);
   const inputMessages = buildModelMessages(job);
 
+  const redactionSecrets: Record<string, string> = { ...job.resolvedSecrets };
+  if (job.resolvedEnv) {
+    for (const [key, value] of Object.entries(job.resolvedEnv)) {
+      if (key.startsWith("__SECRET__") && value) {
+        redactionSecrets[key] = value;
+      }
+    }
+  }
+
   console.log(
     `[agent] runId=${job.runId} skills=${job.resolvedSkills.map((s) => s.slug).join(",")} messages=${inputMessages.length}`,
   );
@@ -389,12 +402,19 @@ async function runTurn(params: {
       thinking: thinkingParams,
       resultStore,
       recorder,
-      secrets: job.resolvedSecrets,
+      secrets: redactionSecrets,
       shouldAbort: async () => {
         if (await isAborted(events, job.runId)) {
           throw new AbortError(assistantParts);
         }
         return false;
+      },
+      onSteeringCheck: async () => {
+        const queued = await events.consumeSteering(job.runId);
+        if (queued.length > 0) {
+          console.info(`[agent][${job.runId}] consumed ${queued.length} steering event(s)`, { types: queued.map((e) => e.type) });
+        }
+        return { messages: queued };
       },
       onToken: (token) => {
         currentActivity = "llm_call";
@@ -623,14 +643,17 @@ async function emitDegradedCloneEvent(
   job: AgentJob,
   repoPath: string,
   reason: string,
+  durationMs: number,
 ): Promise<void> {
   await publishEvent(
     events,
     job.runId,
     {
-      type: "heartbeat",
-      activity: `Mirror unavailable for ${repoPath}, fell back to clone (${reason})`,
-      timestamp: new Date().toISOString(),
+      type: "step:completed",
+      stepName: "fallback_clone",
+      stepId: "setup",
+      durationMs,
+      metadata: { degraded: true, repo: repoPath, reason },
     },
     job.requestId,
   );
@@ -646,7 +669,10 @@ async function setupWorkspace(params: {
   const sessionId = job.sessionId;
 
   if (!job.repos?.length) {
+    await publishEvent(events, job.runId, { type: "step:started", stepName: "mirror_check", stepId: "setup" }, job.requestId);
+    const cloneStart = Date.now();
     await ensureRepoCloned(db, job, adapter);
+    await publishEvent(events, job.runId, { type: "step:completed", stepName: "mirror_check", stepId: "setup", durationMs: Date.now() - cloneStart }, job.requestId);
     return { workdir: `/workspace/${sessionId}`, repoCount: 1 };
   }
 
@@ -673,16 +699,28 @@ async function setupWorkspace(params: {
       const cloneUrl = forge.git.authenticatedCloneUrl(owner, name);
 
       try {
+        await publishEvent(events, job.runId, { type: "step:started", stepName: "mirror_check", stepId: "setup" }, job.requestId);
+        const mirrorStart = Date.now();
+        // ensureMirror performs `fetch --all --prune` when the mirror already exists,
+        // guaranteeing the worktree will be based on fresh upstream refs.
         const mirror = await adapter.ensureMirror(sessionId, workspaceId, repo.repoPath, cloneUrl);
+        await publishEvent(events, job.runId, { type: "step:completed", stepName: "mirror_check", stepId: "setup", durationMs: Date.now() - mirrorStart }, job.requestId);
+
         if (mirror.status === "error") {
           throw new Error("mirror unavailable");
         }
+
+        await publishEvent(events, job.runId, { type: "step:started", stepName: "worktree_create", stepId: "setup" }, job.requestId);
+        const wtStart = Date.now();
         await adapter.createWorktree(sessionId, workspaceId, repo.repoPath, branchName, repo.defaultBranch);
+        await publishEvent(events, job.runId, { type: "step:completed", stepName: "worktree_create", stepId: "setup", durationMs: Date.now() - wtStart }, job.requestId);
         console.log(`[worktree] created for ${repo.repoPath} in session ${sessionId}`);
       } catch (worktreeErr) {
         const reason = worktreeErr instanceof Error ? worktreeErr.message : "worktree failed";
         console.warn(`[worktree] fallback to clone for ${repo.repoPath}:`, reason);
         try {
+          await publishEvent(events, job.runId, { type: "step:started", stepName: "fallback_clone", stepId: "setup" }, job.requestId);
+          const fallbackStart = Date.now();
           await cloneRepoIntoSubdir({
             adapter,
             db,
@@ -691,7 +729,8 @@ async function setupWorkspace(params: {
             defaultBranch: repo.defaultBranch,
             branchName,
           });
-          await emitDegradedCloneEvent(events, job, repo.repoPath, reason);
+          const fallbackDuration = Date.now() - fallbackStart;
+          await emitDegradedCloneEvent(events, job, repo.repoPath, reason, fallbackDuration);
         } catch (cloneErr) {
           console.error(`[agent] Failed to set up repo ${repo.repoPath}:`, cloneErr);
         }
@@ -945,7 +984,57 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
     await db.update(agentRuns).set({ status: "running", startedAt: new Date() }).where(eq(agentRuns.id, job.runId));
     await events.setKey(`run:${job.runId}:status`, "running", RUN_STATUS_TTL);
 
+    const setupStart = Date.now();
     const workspaceSetup = await setupWorkspace({ job, db, adapter, events });
+    console.info(`[agent][${job.runId}] workspace setup complete`, { durationMs: Date.now() - setupStart, ...workspaceSetup });
+
+    const isContinuation = (job.modelMessages?.length ?? 0) > 0;
+    if (PLANNING_ENABLED && !isContinuation) {
+      console.info(`[agent][${job.runId}] entering planning phase`);
+      await runPlanner({ job, redis, events, db, adapter });
+
+      await events.setKey(`run:${job.runId}:awaiting_approval`, "1", APPROVAL_TIMEOUT_MS / 1000);
+
+      let approved = false;
+      const approvalStart = Date.now();
+      while (Date.now() - approvalStart < APPROVAL_TIMEOUT_MS) {
+        const steeringEvents = await events.consumeSteering(job.runId);
+        const approval = steeringEvents.find(
+          (e) => e.type === "user:plan_approved" || e.type === "user:plan_rejected",
+        );
+        if (approval) {
+          console.info(`[agent][${job.runId}] plan ${approval.type === "user:plan_approved" ? "approved" : "rejected"}`, { waitMs: Date.now() - approvalStart });
+          if (approval.type === "user:plan_approved") {
+            approved = true;
+            await publishEvent(events, job.runId, { type: "plan:approved", reason: approval.reason } as StreamEvent, job.requestId);
+          } else {
+            await publishEvent(events, job.runId, { type: "plan:rejected", reason: approval.reason } as StreamEvent, job.requestId);
+            await updateRunStatus(db, job, "completed", undefined, "end_turn");
+            await publishEvent(events, job.runId, {
+              type: "done",
+              terminalReason: "plan_rejected",
+            } as StreamEvent, job.requestId);
+            await events.setKey(`run:${job.runId}:status`, "completed", RUN_STATUS_TTL);
+            await expireRunStream(redis, job.runId);
+            return;
+          }
+          break;
+        }
+        await new Promise((r) => setTimeout(r, APPROVAL_POLL_INTERVAL_MS));
+      }
+
+      if (!approved) {
+        await publishEvent(events, job.runId, { type: "plan:rejected", reason: "approval_timeout" } as StreamEvent, job.requestId);
+        await updateRunStatus(db, job, "completed", undefined, "end_turn");
+        await publishEvent(events, job.runId, {
+          type: "done",
+          terminalReason: "plan_rejected",
+        } as StreamEvent, job.requestId);
+        await events.setKey(`run:${job.runId}:status`, "completed", RUN_STATUS_TTL);
+        await expireRunStream(redis, job.runId);
+        return;
+      }
+    }
 
     const llmKeys = await resolveLlmApiKeys(db, job.userId);
 

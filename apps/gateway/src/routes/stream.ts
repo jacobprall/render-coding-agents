@@ -10,6 +10,7 @@ import { streamSSE } from "hono/streaming";
 import Redis from "ioredis";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { agentRuns, sessions, chats, prEvents } from "@coding-agents/db";
+import { z } from "zod";
 import {
   readRunEventHistoryDetailed,
   readRunEventEntriesAfterId,
@@ -311,6 +312,70 @@ streamRoutes.get("/sessions/:id", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /sessions/:id/steer — mid-flight steering
+// ---------------------------------------------------------------------------
+
+streamRoutes.post("/sessions/:id/steer", async (c) => {
+  const auth = c.get("auth");
+  const sessionId = c.req.param("id");
+  const db = getPlatform().db;
+  const events = getPlatform().events;
+
+  let body: { type?: string; content?: string };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+
+  const { type, content } = body;
+  if (type !== "message" && type !== "interrupt") {
+    return c.json({ error: "type must be 'message' or 'interrupt'" }, 400);
+  }
+
+  const [sessionRow, chatRow] = await Promise.all([
+    db
+      .select({ id: sessions.id })
+      .from(sessions)
+      .where(and(eq(sessions.id, sessionId), eq(sessions.userId, auth.userId)))
+      .limit(1)
+      .then((r) => r[0]),
+    db
+      .select({ activeRunId: chats.activeRunId })
+      .from(chats)
+      .where(eq(chats.sessionId, sessionId))
+      .orderBy(desc(chats.createdAt))
+      .limit(1)
+      .then((r) => r[0]),
+  ]);
+
+  if (!sessionRow) return c.json({ error: "Session not found" }, 404);
+
+  const runId = chatRow?.activeRunId;
+  if (!runId) return c.json({ error: "No active run" }, 409);
+
+  const steerEvent = {
+    type: `user:${type}`,
+    ...(content ? { content } : {}),
+    ...(type === "interrupt" ? { reason: content ?? "user_interrupt" } : {}),
+  };
+
+  await events.publishSteering(runId, steerEvent);
+
+  await events.publish(
+    runId,
+    JSON.stringify({
+      v: 2,
+      type: `user:${type}`,
+      ts: new Date().toISOString(),
+      payload: { content, reason: type === "interrupt" ? (content ?? "user_interrupt") : undefined },
+    }),
+  );
+
+  return c.json({ ok: true, runId });
+});
+
+// ---------------------------------------------------------------------------
 // GET /inbox — inbox count polling stream
 // ---------------------------------------------------------------------------
 
@@ -365,4 +430,67 @@ streamRoutes.get("/inbox", async (c) => {
       });
     });
   });
+});
+
+// ---------------------------------------------------------------------------
+// POST /sessions/:id/approve-plan — plan approval / rejection
+// ---------------------------------------------------------------------------
+
+const ApprovePlanSchema = z.object({
+  action: z.enum(["approve", "reject"]),
+  reason: z.string().optional(),
+});
+
+streamRoutes.post("/sessions/:id/approve-plan", async (c) => {
+  const auth = c.get("auth");
+  const sessionId = c.req.param("id");
+  const db = getPlatform().db;
+  const events = getPlatform().events;
+
+  const body = ApprovePlanSchema.safeParse(await c.req.json().catch(() => null));
+  if (!body.success) {
+    return c.json({ error: "action must be 'approve' or 'reject'" }, 400);
+  }
+
+  const { action, reason } = body.data;
+
+  const [sessionRow, chatRow] = await Promise.all([
+    db
+      .select({ id: sessions.id })
+      .from(sessions)
+      .where(and(eq(sessions.id, sessionId), eq(sessions.userId, auth.userId)))
+      .limit(1)
+      .then((r) => r[0]),
+    db
+      .select({ activeRunId: chats.activeRunId })
+      .from(chats)
+      .where(eq(chats.sessionId, sessionId))
+      .orderBy(desc(chats.createdAt))
+      .limit(1)
+      .then((r) => r[0]),
+  ]);
+
+  if (!sessionRow) return c.json({ error: "Session not found" }, 404);
+
+  const runId = chatRow?.activeRunId;
+  if (!runId) return c.json({ error: "No active run" }, 409);
+
+  const steerEvent = {
+    type: action === "approve" ? "user:plan_approved" : "user:plan_rejected",
+    ...(reason ? { reason } : {}),
+  };
+
+  await events.publishSteering(runId, steerEvent);
+
+  await events.publish(
+    runId,
+    JSON.stringify({
+      v: 2,
+      type: steerEvent.type,
+      ts: new Date().toISOString(),
+      payload: { reason },
+    }),
+  );
+
+  return c.json({ ok: true, runId });
 });
