@@ -186,9 +186,9 @@ export function MessageArea({
       {isStreaming && streamingParts.length === 0 ? (
         <div className="flex items-center gap-2.5 text-xs text-text-tertiary">
           <span className="inline-flex items-center gap-1">
-            <span className="h-1.5 w-1.5 rounded-full bg-accent/70 animate-[bounce_1.4s_ease-in-out_infinite]" />
-            <span className="h-1.5 w-1.5 rounded-full bg-accent/70 animate-[bounce_1.4s_ease-in-out_0.2s_infinite]" />
-            <span className="h-1.5 w-1.5 rounded-full bg-accent/70 animate-[bounce_1.4s_ease-in-out_0.4s_infinite]" />
+            <span className="h-1.5 w-1.5 rounded-full bg-accent animate-[orb-float_1.4s_ease-in-out_infinite]" />
+            <span className="h-1.5 w-1.5 rounded-full bg-accent animate-[orb-float_1.4s_ease-in-out_0.2s_infinite]" />
+            <span className="h-1.5 w-1.5 rounded-full bg-accent animate-[orb-float_1.4s_ease-in-out_0.4s_infinite]" />
           </span>
           Thinking…
         </div>

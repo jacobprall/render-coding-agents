@@ -225,6 +225,11 @@ h1, h2, h3, h4, h5, h6 {
   to { width: 100%; opacity: 0; }
 }
 
+@keyframes orb-float {
+  0%, 100% { transform: translateY(0); opacity: 0.45; }
+  50% { transform: translateY(-4px); opacity: 1; }
+}
+
 @utility animate-route-progress {
   animation: route-progress 500ms ease-out forwards;
 }

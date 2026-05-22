@@ -187,9 +187,9 @@ export function AssistantParts({
       })}
       {streaming ? (
         <span className="inline-flex items-center gap-0.5 py-1">
-          <span className="h-1.5 w-1.5 rounded-full bg-accent/60 animate-[bounce_1.4s_ease-in-out_infinite]" />
-          <span className="h-1.5 w-1.5 rounded-full bg-accent/60 animate-[bounce_1.4s_ease-in-out_0.2s_infinite]" />
-          <span className="h-1.5 w-1.5 rounded-full bg-accent/60 animate-[bounce_1.4s_ease-in-out_0.4s_infinite]" />
+          <span className="h-1.5 w-1.5 rounded-full bg-accent animate-[orb-float_1.4s_ease-in-out_infinite]" />
+          <span className="h-1.5 w-1.5 rounded-full bg-accent animate-[orb-float_1.4s_ease-in-out_0.2s_infinite]" />
+          <span className="h-1.5 w-1.5 rounded-full bg-accent animate-[orb-float_1.4s_ease-in-out_0.4s_infinite]" />
         </span>
       ) : null}
     </div>
