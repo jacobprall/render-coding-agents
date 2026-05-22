@@ -33,7 +33,7 @@ const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT_RUNS ?? "10", 10);
 const WORKER_ID = `worker-${process.pid}-${Date.now()}`;
 const HEARTBEAT_TTL = 30;
 const RECLAIM_INTERVAL_MS = 60_000;
-const STALE_PENDING_MS = 90_000;
+const STALE_PENDING_MS = 10 * 60_000; // 10 minutes — agent turns can easily exceed 90s
 const BLOCK_READ_MS = 5_000;
 const DRAIN_TIMEOUT_MS = 60_000;
 

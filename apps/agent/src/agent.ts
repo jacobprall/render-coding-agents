@@ -1,6 +1,6 @@
 import type Redis from "ioredis";
 import { eq } from "drizzle-orm";
-import { agentRuns, chatMessages, sessions, prEvents, projects, projectRepos } from "@coding-agents/db";
+import { agentRuns, sessions, prEvents, projects, projectRepos } from "@coding-agents/db";
 import { AppError, type SessionSummary } from "@coding-agents/shared";
 import { resolveLlmApiKeys, type ResolvedLlmKeys, type PlatformContainer, type PlatformDb, type EventBus } from "@coding-agents/platform";
 import type { SandboxAdapter } from "@coding-agents/sandbox";
@@ -942,7 +942,8 @@ async function persistSessionSummary(params: {
 export async function runAgentTurn(job: AgentJob, redis: Redis, platform: PlatformContainer): Promise<void> {
   const { db, events } = platform;
 
-  // Idempotency guard: skip if run is already terminal or already has work
+  // Idempotency guard: atomically claim the run (queued → running).
+  // If another worker already claimed it, skip.
   const [existingRun] = await db
     .select({ status: agentRuns.status })
     .from(agentRuns)
@@ -957,16 +958,8 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
     }
 
     if (existingRun.status === "running") {
-      const [existingMsg] = await db
-        .select({ id: chatMessages.id })
-        .from(chatMessages)
-        .where(eq(chatMessages.runId, job.runId))
-        .limit(1);
-
-      if (existingMsg) {
-        console.info(`[agent] Skipping duplicate run ${job.runId} (already running with assistant message)`);
-        return;
-      }
+      console.info(`[agent] Skipping duplicate run ${job.runId} (already running)`);
+      return;
     }
   }
 
@@ -975,7 +968,7 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
   let prMeta = { prUrls: [] as string[], reposTouched: [] as string[], linesAdded: 0, linesRemoved: 0 };
 
   try {
-    await db.update(agentRuns).set({ status: "running", startedAt: new Date() }).where(eq(agentRuns.id, job.runId));
+    await db.update(agentRuns).set({ status: "running", startedAt: new Date(), lastHeartbeatAt: new Date() }).where(eq(agentRuns.id, job.runId));
     await events.setKey(`run:${job.runId}:status`, "running", RUN_STATUS_TTL);
 
     const setupStart = Date.now();

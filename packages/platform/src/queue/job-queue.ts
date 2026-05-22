@@ -209,6 +209,12 @@ export async function reclaimStalePending(
 
     await ackJob(redis, streamId);
 
+    // Skip re-enqueue if the run is still actively being processed
+    const runStatus = await redis.get(`run:${job.runId}:status`);
+    if (runStatus === "running") {
+      continue;
+    }
+
     if (nextRetry > maxR) {
       deadLetters.push({ streamId, job: { ...job, retryCount: nextRetry } });
       continue;
