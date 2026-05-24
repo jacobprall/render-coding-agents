@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
-import { Activity, ArrowRight } from "lucide-react";
+import { Activity, ArrowRight, ChevronDown, ChevronRight } from "lucide-react";
 import { EmptyState } from "@/components/primitives/empty-state";
 import type { EventRow } from "@/app/(authenticated)/observability/use-events";
 
@@ -64,6 +65,76 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   error: "Error",
   system: "System",
 };
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function EventItem({ event }: { event: EventRow }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <li className="border border-border bg-card">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="flex w-full items-start gap-2 px-2 py-1.5 text-left hover:bg-muted/50"
+      >
+        {expanded ? (
+          <ChevronDown className="mt-0.5 size-3 shrink-0 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="mt-0.5 size-3 shrink-0 text-muted-foreground" />
+        )}
+        <span className="mt-0.5 shrink-0 font-mono text-[10px] text-muted-foreground">
+          {EVENT_TYPE_LABELS[event.eventType] ?? event.eventType}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-xs text-foreground">{event.status}</p>
+          <p className="text-[10px] text-muted-foreground">
+            {formatRelativeTime(event.createdAt)}
+          </p>
+        </div>
+      </button>
+      {expanded && (
+        <div className="space-y-1 border-t border-border px-2 py-1.5 text-[10px] text-muted-foreground">
+          {event.durationMs != null && (
+            <p>
+              <span className="font-medium text-foreground">Duration:</span>{" "}
+              {formatDuration(event.durationMs)}
+            </p>
+          )}
+          {event.sessionId && (
+            <p>
+              <span className="font-medium text-foreground">Session:</span>{" "}
+              <span className="font-mono">{event.sessionId.slice(0, 8)}</span>
+            </p>
+          )}
+          {event.userName && (
+            <p>
+              <span className="font-medium text-foreground">User:</span> {event.userName}
+            </p>
+          )}
+          {event.trigger && (
+            <p>
+              <span className="font-medium text-foreground">Trigger:</span> {event.trigger}
+            </p>
+          )}
+          {event.metadata && Object.keys(event.metadata).length > 0 && (
+            <details className="mt-1">
+              <summary className="cursor-pointer font-medium text-foreground">
+                Metadata
+              </summary>
+              <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-all font-mono text-[9px]">
+                {JSON.stringify(event.metadata, null, 2)}
+              </pre>
+            </details>
+          )}
+        </div>
+      )}
+    </li>
+  );
+}
 
 export function ObservabilityMini() {
   const { data: usage, isLoading: usageLoading } = useSWR<UsageData>(
@@ -146,20 +217,7 @@ export function ObservabilityMini() {
             </h3>
             <ul className="space-y-1">
               {events.map((event) => (
-                <li
-                  key={event.id}
-                  className="flex items-start gap-2 border border-border bg-card px-2 py-1.5"
-                >
-                  <span className="mt-0.5 shrink-0 font-mono text-[10px] text-muted-foreground">
-                    {EVENT_TYPE_LABELS[event.eventType] ?? event.eventType}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs text-foreground">{event.status}</p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {formatRelativeTime(event.createdAt)}
-                    </p>
-                  </div>
-                </li>
+                <EventItem key={event.id} event={event} />
               ))}
             </ul>
           </div>
