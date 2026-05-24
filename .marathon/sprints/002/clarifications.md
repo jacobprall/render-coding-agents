@@ -22,13 +22,26 @@ The InboundRouter becomes the single dispatch orchestrator for all inbound event
 
 ---
 
-### C2: Scheduler Concurrency — Single Instance vs. Distributed
+### C2: Scheduler Concurrency — Timer-Based with Pub/Sub Coordination
 
-**Ambiguity**: The spec says "polling worker on a 30-second interval, backed by a Redis-based lock." But the gateway may run N instances on Render. How exactly is at-most-once guaranteed?
+**Ambiguity**: The gateway may run N instances on Render. How is at-most-once guaranteed without polling?
 
-**Resolution**: The scheduler runs as a background interval inside the gateway process. It uses a Redis `SET NX EX` lock (`automation:scheduler:lock`, 25s TTL) before polling. Only the instance that acquires the lock runs the poll. The lock TTL (25s) is shorter than the poll interval (30s) to handle lock holder crashes.
+**Resolution**: Timer-based scheduler with Redis pub/sub coordination:
 
-Additionally, each due automation is claimed atomically: `UPDATE automations SET next_run_at = <next>, last_run_at = NOW() WHERE id = ? AND next_run_at = <expected>`. The WHERE clause ensures only one instance processes each due automation even if the lock is somehow bypassed.
+1. **On startup**, each gateway instance queries `SELECT id, next_run_at FROM automations WHERE status = 'active' AND trigger_type = 'schedule' ORDER BY next_run_at ASC LIMIT 1`
+2. **Sets a `setTimeout`** for exactly `nextRunAt - now` milliseconds
+3. **When the timer fires**, it attempts an atomic claim: `UPDATE automations SET next_run_at = <computed_next>, last_run_at = NOW() WHERE id = ? AND next_run_at = <expected_value>`. Only the instance whose UPDATE affects 1 row wins (compare-and-swap).
+4. **The winner** enqueues the agent session via Redis Streams, then re-queries for the next due automation and sets a new timer.
+5. **Losers** (affected rows = 0) simply re-query and re-set their timer — no work done.
+6. **On automation CRUD**, the API handler publishes to Redis channel `automation:schedule:changed`. All instances subscribe and re-compute their next wakeup.
+
+This gives:
+- **Zero polling waste** — no periodic queries when nothing is due
+- **Millisecond precision** — fires exactly when scheduled, not up to 30s late
+- **Multi-instance safe** — atomic DB CAS guarantees at-most-once
+- **Reactive to changes** — pub/sub ensures new/updated automations are picked up immediately
+
+**Fallback**: A 5-minute safety-net interval re-queries unconditionally, catching edge cases where pub/sub messages are lost (Redis restart, network partition). This is a recovery mechanism, not the primary scheduling path.
 
 ---
 
@@ -205,12 +218,14 @@ Addressed in C5 above. The spec contained both "optional FK on sessions" and "jo
 
 | Approach | Pros | Cons | Decision |
 |----------|------|------|----------|
-| **A) Polling worker inside gateway** | No new service, reuses existing infra, simple deployment | Ties scheduling to gateway lifecycle, polls even when no automations exist | **Selected** |
-| B) Dedicated Render cron job | Clean separation of concerns, Render-native, no polling waste | New service to deploy/maintain, cold start latency (up to 60s), harder to share DB/Redis connections | Rejected |
-| C) Redis-based delayed queue (ZADD + ZPOPMIN) | Precise timing, no polling interval, event-driven | Complex implementation, requires custom consumer, harder to debug, no standard tooling | Rejected |
-| D) pg_cron (PostgreSQL extension) | No application code for scheduling, highly reliable | Render PostgreSQL may not support pg_cron, couples scheduling to DB, limited observability | Rejected |
+| **A) Timer-based scheduler with Redis pub/sub coordination** | Zero polling waste, millisecond precision, event-driven, reactive to CRUD changes | Slightly more complex than polling, requires pub/sub subscription management, needs safety-net fallback | **Selected** |
+| B) Polling worker inside gateway (30s interval) | Simple implementation, easy to reason about | Wasteful (queries every 30s even with no due automations), up to 30s late on execution, burns DB connections | Rejected |
+| C) Dedicated Render cron job | Clean separation of concerns, Render-native | New service to deploy/maintain, cold start latency (up to 60s), minimum granularity is 1 minute, can't share DB/Redis connections | Rejected |
+| D) Redis sorted set delay queue (ZADD + blocking pop) | Precise timing, event-driven | Complex implementation, can't easily inspect/modify scheduled items, requires custom consumer, poor observability | Rejected |
+| E) Redis keyspace notifications (TTL-based) | Clever, zero application-level scheduling code | Redis doesn't guarantee expiration event delivery (can miss events under memory pressure), unreliable for production scheduling | Rejected |
+| F) pg_cron (PostgreSQL extension) | No application code for scheduling, highly reliable | Render PostgreSQL may not support pg_cron, couples scheduling to DB, limited observability, minimum 1-minute granularity | Rejected |
 
-**Rationale for A**: The gateway already runs persistently, has Redis and DB connections, and the polling overhead (one SELECT every 30s) is negligible. Constitution principle IX (Performance) says "Agent work MUST be processed via background workers" — the scheduler enqueues to Redis Streams, it doesn't execute sessions itself.
+**Rationale for A**: Constitution principle IX (Performance) says no blocking/polling patterns. A timer-based approach is truly event-driven — the process sleeps until the exact moment work is due. Redis pub/sub provides instant reactivity when automations change. The atomic DB claim (CAS) is the same pattern regardless of scheduling approach, providing multi-instance safety.
 
 ---
 

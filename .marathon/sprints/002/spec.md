@@ -101,7 +101,7 @@ For common scheduling patterns, the builder offers preset buttons ("Every hour",
 - How does the system handle cron expressions that resolve to sub-minute intervals? → Reject at validation: minimum interval is 1 minute.
 - What happens when a GitHub webhook arrives but the automation's owner no longer has access to the repo? → Verify repo access at dispatch time; skip and log if access revoked.
 - How does timezone handling work for scheduled automations? → Store all times in UTC internally; display in user's timezone in the UI. Cron expressions evaluate in UTC.
-- What happens when hundreds of automations are due at the same second (thundering herd)? → Scheduler distributes work via Redis job queue; worker pool handles parallelism naturally.
+- What happens when hundreds of automations are due at the same second (thundering herd)? → Each gateway instance's timer fires at the same moment. The atomic DB claim (CAS) ensures each automation is claimed by exactly one instance. Losers re-query and pick up unclaimed automations. Work fans out naturally across instances.
 - What if the same webhook event matches both static routes AND automation rules? → Both fire. The refactored multi-match router evaluates all routes and returns all matching actions. The dispatcher executes each independently.
 
 ## Requirements *(mandatory)*
@@ -112,8 +112,8 @@ For common scheduling patterns, the builder offers preset buttons ("Every hour",
 - **FR-002**: System MUST support trigger types: `schedule` (cron expression) and `github_event` (event kind + filter conditions). Additional trigger types (slack, linear) are out of scope for this sprint.
 - **FR-003**: System MUST validate cron expressions at creation/update time and reject invalid expressions with descriptive error messages.
 - **FR-004**: System MUST compute and persist `nextRunAt` for schedule-type automations, recalculating after each run completes.
-- **FR-005**: System MUST include a scheduler service that polls for automations where `nextRunAt <= now AND enabled = true`, creating agent sessions for each due automation.
-- **FR-006**: System MUST guarantee at-most-once execution per scheduled interval via idempotent dispatch (compare `nextRunAt` atomically during poll).
+- **FR-005**: System MUST include a timer-based scheduler that sets precise timeouts for the next due automation, fires exactly at `nextRunAt`, claims the automation atomically (compare-and-swap on `nextRunAt`), and enqueues the agent session. Redis pub/sub coordinates across multiple gateway instances so that schedule changes trigger re-computation of the next wakeup.
+- **FR-006**: System MUST guarantee at-most-once execution per scheduled interval via atomic claim (`UPDATE automations SET next_run_at = <next> WHERE id = ? AND next_run_at = <expected>` — only the winner proceeds).
 - **FR-007**: System MUST extend the `InboundRouter` to support automation dispatch — either by making it multi-match (evaluate all routes and return all matching actions) or by integrating automation matching directly into the router. The existing first-match-wins contract may be broken.
 - **FR-008**: System MUST add `SessionService.createFromAutomation(automationId, triggerContext)` to create fresh agent sessions from automation configurations.
 - **FR-009**: [REMOVED — backward compatibility with existing InboundRouter routes is NOT required. Breaking changes to the routing layer are acceptable.]
@@ -135,19 +135,19 @@ For common scheduling patterns, the builder offers preset buttons ("Every hour",
 
 ### Measurable Outcomes
 
-- **SC-001**: A schedule-type automation fires within 60 seconds of its `nextRunAt` time under normal load.
+- **SC-001**: A schedule-type automation fires within 1 second of its `nextRunAt` time under normal load (timer-based precision).
 - **SC-002**: GitHub event automations dispatch a session within 5 seconds of webhook receipt (matching existing InboundRouter latency).
 - **SC-003**: The automation list page loads in under 2 seconds with 100 automations (meeting LCP < 2.5s constraint).
 - **SC-004**: Existing webhook-to-session behavior continues to work after refactoring (verified by integration tests, but breaking API changes to InboundRouter are acceptable).
 - **SC-005**: Automation CRUD API responds in under 200ms p95 (meeting gateway performance constraint).
-- **SC-006**: The scheduler correctly handles clock skew: no duplicate executions and no missed executions under normal operating conditions (single scheduler instance).
+- **SC-006**: The scheduler correctly handles multi-instance deployment: at-most-once execution guaranteed via atomic DB claim, no duplicate sessions.
 - **SC-007**: Users can create a working scheduled automation through the builder UI in under 2 minutes without consulting documentation.
 
 ## Clarifications
 
 ### Session 2026-05-24
 
-- Q: Should the scheduler be a dedicated Render cron job or a polling worker? → A: Polling worker on a 30-second interval, backed by a Redis-based lock to prevent duplicate scheduling across multiple gateway instances. Simpler than a separate cron service and consistent with existing architecture patterns.
+- Q: Should the scheduler be a dedicated Render cron job or a polling worker? → A: **Timer-based scheduler** inside the gateway process. On startup (and whenever automations change), it queries the next due automation and sets a precise `setTimeout` for that exact moment. When the timer fires, it claims the automation atomically (DB CAS) and enqueues the session. Redis pub/sub coordinates across gateway instances — when automations are created/updated/deleted, a notification triggers all instances to re-compute their next wakeup. This eliminates polling waste and fires within milliseconds of the due time.
 - Q: How does automation dispatch differ from existing InboundDispatcher trigger_session? → A: Existing `trigger_session` triggers an **existing** running session. Automation dispatch creates a **new** session from scratch using the automation's prompt/tools/repo config. New method `SessionService.createFromAutomation()` handles this.
 - Q: Should automation runs reuse existing sessions or always create fresh ones? → A: Always fresh sessions. Each automation run is independent and self-contained. This prevents state bleeding between runs.
 - Q: How is the automation builder UI structured? → A: Single-page form with collapsible sections (not a multi-step wizard). Product principles demand "data density over chrome" and "keyboard-first." All fields visible on one page with progressive disclosure via collapsible sections.
@@ -168,7 +168,7 @@ For common scheduling patterns, the builder offers preset buttons ("Every hour",
 
 ## Assumptions
 
-- The existing Redis infrastructure has sufficient capacity for scheduler polling (one SETNX lock per 30s) without requiring scaling changes.
+- The existing Redis pub/sub infrastructure supports the `automation:schedule:changed` channel without requiring new Redis connections (reuses existing ioredis subscriber).
 - The InboundRouter will be refactored to support automation dispatch natively — no backward compatibility constraint applies. Breaking changes to the routing API are acceptable.
 - The gateway API already has auth middleware that will apply to new automation endpoints without additional work.
 - The existing agent worker pool has capacity for automation-spawned sessions alongside user-initiated sessions (no dedicated pool needed for Sprint 2).
