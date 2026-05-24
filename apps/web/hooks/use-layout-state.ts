@@ -5,12 +5,16 @@ import type { RightPanelMode } from "@/components/layout/right-panel-context";
 
 const LAYOUT_KEY = "layout:v1";
 
+export type HomePanelMode = "observability" | "automations";
+
 export interface LayoutState {
   sidebarOpen: boolean;
   sidebarWidth: number;
   rightPanelOpen: boolean;
   rightPanelWidth: number;
   rightPanelMode: RightPanelMode;
+  homePanelOpen: boolean;
+  homePanelMode: HomePanelMode;
 }
 
 const DEFAULTS: LayoutState = {
@@ -19,6 +23,8 @@ const DEFAULTS: LayoutState = {
   rightPanelOpen: false,
   rightPanelWidth: 400,
   rightPanelMode: "closed",
+  homePanelOpen: false,
+  homePanelMode: "observability",
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -45,6 +51,9 @@ function loadLayoutState(): LayoutState {
         600,
       ),
       rightPanelMode: parsed.rightPanelMode ?? DEFAULTS.rightPanelMode,
+      homePanelOpen: parsed.homePanelOpen ?? DEFAULTS.homePanelOpen,
+      homePanelMode:
+        parsed.homePanelMode === "automations" ? "automations" : "observability",
     };
   } catch {
     return DEFAULTS;
@@ -122,6 +131,30 @@ export function useLayoutState() {
     setSidebarOpen((open) => !open);
   }, [setSidebarOpen]);
 
+  const setHomePanelOpen = useCallback((open: boolean | ((prev: boolean) => boolean)) => {
+    setState((prev) => ({
+      ...prev,
+      homePanelOpen: typeof open === "function" ? open(prev.homePanelOpen) : open,
+    }));
+  }, []);
+
+  const setHomePanelMode = useCallback((mode: HomePanelMode) => {
+    setState((prev) => ({
+      ...prev,
+      homePanelMode: mode,
+      homePanelOpen: true,
+    }));
+  }, []);
+
+  const toggleHomePanelMode = useCallback((mode: HomePanelMode) => {
+    setState((prev) => {
+      if (prev.homePanelOpen && prev.homePanelMode === mode) {
+        return { ...prev, homePanelOpen: false };
+      }
+      return { ...prev, homePanelOpen: true, homePanelMode: mode };
+    });
+  }, []);
+
   return {
     ...state,
     hydrated,
@@ -132,5 +165,8 @@ export function useLayoutState() {
     setRightPanelMode,
     toggleRightPanelMode,
     toggleSidebar,
+    setHomePanelOpen,
+    setHomePanelMode,
+    toggleHomePanelMode,
   };
 }

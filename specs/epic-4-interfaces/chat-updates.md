@@ -1,0 +1,3 @@
+- slash commands for skills
+- Improve Agent chat formatting/presentation
+- Improve O11y, fix bugs in O11y

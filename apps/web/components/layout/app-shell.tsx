@@ -15,7 +15,8 @@ import { RightPanelProvider, useRightPanel } from "./right-panel-context";
 import { MobileBottomNav, type MobileView } from "./mobile-bottom-nav";
 import { MobileHeader } from "./mobile-header";
 import { MobileSessionsView } from "./mobile-sessions-view";
-import type { LayoutState } from "@/hooks/use-layout-state";
+import { HomePanel } from "./home-panel";
+import type { HomePanelMode, LayoutState } from "@/hooks/use-layout-state";
 
 interface AppShellProps {
   user: {
@@ -41,6 +42,9 @@ type LayoutStateReturn = LayoutState & {
     mode: Exclude<import("./right-panel-context").RightPanelMode, "closed">,
   ) => void;
   toggleSidebar: () => void;
+  setHomePanelOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
+  setHomePanelMode: (mode: HomePanelMode) => void;
+  toggleHomePanelMode: (mode: HomePanelMode) => void;
 };
 
 interface AppShellGridProps extends AppShellProps {
@@ -114,6 +118,8 @@ function MobileShell({ user, children }: AppShellProps) {
 
 function AppShellGrid({ user, children, layout, rightPanelResize }: AppShellGridProps) {
   useSessionTabsSync();
+  const pathname = usePathname();
+  const isHomePage = pathname === "/sessions";
 
   const {
     hydrated,
@@ -122,7 +128,14 @@ function AppShellGrid({ user, children, layout, rightPanelResize }: AppShellGrid
     setSidebarOpen,
     setSidebarWidth,
     toggleSidebar,
+    homePanelOpen,
+    homePanelMode,
+    setHomePanelOpen,
+    setHomePanelMode,
+    toggleHomePanelMode,
   } = layout;
+
+  const showHomePanel = isHomePage && homePanelOpen;
 
   const {
     setWidth: setContextWidth,
@@ -147,10 +160,14 @@ function AppShellGrid({ user, children, layout, rightPanelResize }: AppShellGrid
         e.preventDefault();
         toggleSidebar();
       }
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "o" && isHomePage) {
+        e.preventDefault();
+        toggleHomePanelMode("observability");
+      }
     }
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
-  }, [toggleSidebar]);
+  }, [toggleSidebar, toggleHomePanelMode, isHomePage]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -158,9 +175,15 @@ function AppShellGrid({ user, children, layout, rightPanelResize }: AppShellGrid
     function enforceViewportConstraints() {
       const viewport = window.innerWidth;
       const sidebarSpace = sidebarOpen ? sidebarResize.size + 4 : 0;
-      const required = sidebarSpace + CHAT_MIN_WIDTH;
+      const homePanelSpace = showHomePanel ? rightPanelResize.size + 4 : 0;
+      const required = sidebarSpace + homePanelSpace + CHAT_MIN_WIDTH;
 
       if (required <= viewport) return;
+
+      if (showHomePanel) {
+        setHomePanelOpen(false);
+        return;
+      }
 
       if (sidebarOpen) {
         setSidebarOpen(false);
@@ -173,15 +196,23 @@ function AppShellGrid({ user, children, layout, rightPanelResize }: AppShellGrid
   }, [
     hydrated,
     setSidebarOpen,
+    setHomePanelOpen,
     sidebarOpen,
     sidebarResize.size,
+    showHomePanel,
+    rightPanelResize.size,
   ]);
 
   const gridTemplateColumns = useMemo(() => {
     const sidebarCol = sidebarOpen ? `${sidebarResize.size}px` : "0px";
     const sidebarHandleCol = sidebarOpen ? "4px" : "0px";
-    return `${sidebarCol} ${sidebarHandleCol} minmax(var(--chat-min-width), 1fr)`;
-  }, [sidebarOpen, sidebarResize.size]);
+    const mainCol = "minmax(var(--chat-min-width), 1fr)";
+    if (!showHomePanel) {
+      return `${sidebarCol} ${sidebarHandleCol} ${mainCol}`;
+    }
+    const homePanelCol = `${rightPanelResize.size}px`;
+    return `${sidebarCol} ${sidebarHandleCol} ${mainCol} 4px ${homePanelCol}`;
+  }, [sidebarOpen, sidebarResize.size, showHomePanel, rightPanelResize.size]);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
@@ -209,9 +240,27 @@ function AppShellGrid({ user, children, layout, rightPanelResize }: AppShellGrid
           <SessionTabs
             onToggleSidebar={toggleSidebar}
             sidebarOpen={sidebarOpen}
+            isHomePage={isHomePage}
+            homePanelOpen={homePanelOpen}
+            homePanelMode={homePanelMode}
+            onToggleHomePanelMode={toggleHomePanelMode}
           />
           <main className="relative min-h-0 flex-1 overflow-y-auto">{children}</main>
         </div>
+
+        {showHomePanel ? (
+          <>
+            <PanelResizer handleProps={rightPanelResize.handleProps} />
+            <div className="min-h-0 overflow-hidden">
+              <HomePanel
+                mode={homePanelMode}
+                width={rightPanelResize.size}
+                onModeChange={setHomePanelMode}
+                onClose={() => setHomePanelOpen(false)}
+              />
+            </div>
+          </>
+        ) : null}
       </div>
 
       <StatusBar />

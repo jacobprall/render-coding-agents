@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
-import { Plus, Archive, Search } from "lucide-react";
+import { Plus, Archive, Search, Activity, Zap, ArrowRight } from "lucide-react";
+import Link from "next/link";
 import { apiFetch } from "@/lib/api-fetch";
 import { cn } from "@/lib/utils";
 
@@ -84,6 +85,31 @@ export function MobileSessionsView({ onClose }: MobileSessionsViewProps) {
         >
           <Archive className="size-4" />
         </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 border-b border-border px-3 py-2">
+        <Link
+          href="/observability"
+          className="flex items-center gap-2 border border-border bg-card px-3 py-2.5 transition-colors active:bg-surface-1"
+        >
+          <Activity className="size-4 shrink-0 text-primary" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium text-foreground">Observability</p>
+            <p className="text-[10px] text-muted-foreground">Events & usage</p>
+          </div>
+          <ArrowRight className="size-3 shrink-0 text-muted-foreground" />
+        </Link>
+        <Link
+          href="/automations"
+          className="flex items-center gap-2 border border-border bg-card px-3 py-2.5 transition-colors active:bg-surface-1"
+        >
+          <Zap className="size-4 shrink-0 text-primary" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium text-foreground">Automations</p>
+            <p className="text-[10px] text-muted-foreground">Triggers & runs</p>
+          </div>
+          <ArrowRight className="size-3 shrink-0 text-muted-foreground" />
+        </Link>
       </div>
 
       <div className="flex-1 overflow-y-auto">

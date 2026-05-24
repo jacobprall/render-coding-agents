@@ -11,8 +11,11 @@ import {
   CheckCircle2,
   AlertCircle,
   PanelLeft,
+  Activity,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { HomePanelMode } from "@/hooks/use-layout-state";
 
 export interface SessionTab {
   id: string;
@@ -55,11 +58,19 @@ function StatusIcon({ status }: { status: string }) {
 interface SessionTabsProps {
   onToggleSidebar?: () => void;
   sidebarOpen?: boolean;
+  isHomePage?: boolean;
+  homePanelOpen?: boolean;
+  homePanelMode?: HomePanelMode;
+  onToggleHomePanelMode?: (mode: HomePanelMode) => void;
 }
 
 export function SessionTabs({
   onToggleSidebar,
   sidebarOpen = true,
+  isHomePage = false,
+  homePanelOpen = false,
+  homePanelMode = "observability",
+  onToggleHomePanelMode,
 }: SessionTabsProps) {
   const [tabs, setTabs] = useState<SessionTab[]>([]);
   const pathname = usePathname();
@@ -168,6 +179,37 @@ export function SessionTabs({
           <Plus className="h-3.5 w-3.5" />
         </Link>
       )}
+
+      {isHomePage && onToggleHomePanelMode ? (
+        <div className="mr-1 flex shrink-0 items-center gap-0.5 border-l border-border pl-1">
+          <button
+            type="button"
+            onClick={() => onToggleHomePanelMode("observability")}
+            title="Observability (⌘⇧O)"
+            className={cn(
+              "flex h-8 w-8 items-center justify-center transition-colors",
+              homePanelOpen && homePanelMode === "observability"
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+            )}
+          >
+            <Activity className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => onToggleHomePanelMode("automations")}
+            title="Automations"
+            className={cn(
+              "flex h-8 w-8 items-center justify-center transition-colors",
+              homePanelOpen && homePanelMode === "automations"
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+            )}
+          >
+            <Zap className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ) : null}
 
     </div>
   );
