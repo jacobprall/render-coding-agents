@@ -299,6 +299,112 @@ export async function getFileDiff(
   };
 }
 
+export interface CommitSessionOptions {
+  message: string;
+  branch?: string;
+  createBranch?: boolean;
+  push?: boolean;
+}
+
+export interface CommitSessionResult {
+  commitSha: string;
+  branch: string;
+  pushed: boolean;
+  pushError?: string;
+  filesChanged: number;
+  linesAdded: number;
+  linesRemoved: number;
+}
+
+function parseNumstat(stdout: string): { filesChanged: number; linesAdded: number; linesRemoved: number } {
+  let linesAdded = 0;
+  let linesRemoved = 0;
+  let filesChanged = 0;
+  for (const line of stdout.trim().split("\n")) {
+    if (!line.trim()) continue;
+    const [added, removed] = line.split("\t");
+    if (added === "-" && removed === "-") {
+      filesChanged += 1;
+      continue;
+    }
+    filesChanged += 1;
+    linesAdded += parseInt(added, 10) || 0;
+    linesRemoved += parseInt(removed, 10) || 0;
+  }
+  return { filesChanged, linesAdded, linesRemoved };
+}
+
+function gitError(result: GitResult, fallback: string): Error {
+  const detail = (result.stderr || result.stdout || fallback).trim();
+  return new Error(detail || fallback);
+}
+
+export async function commitSessionChanges(
+  sessionId: string,
+  opts: CommitSessionOptions,
+): Promise<CommitSessionResult> {
+  const { message, branch, createBranch, push } = opts;
+
+  const status = await sandboxGit(sessionId, ["status", "--porcelain=v1"]);
+  const changedLines = status.stdout.split("\n").filter((l) => l.trim());
+  if (changedLines.length === 0) {
+    throw new Error("No changes to commit");
+  }
+
+  const add = await sandboxGit(sessionId, ["add", "-A"]);
+  if (add.exitCode !== 0) {
+    throw gitError(add, "Failed to stage changes");
+  }
+
+  const numstat = await sandboxGit(sessionId, ["diff", "--numstat", "--cached"]);
+  const stats = parseNumstat(numstat.stdout);
+
+  let currentBranch = branch?.trim() || "";
+  if (createBranch && branch?.trim()) {
+    const co = await sandboxGit(sessionId, ["checkout", "-b", branch.trim()]);
+    if (co.exitCode !== 0) {
+      throw gitError(co, "Failed to create branch");
+    }
+    currentBranch = branch.trim();
+  } else if (!currentBranch) {
+    const br = await sandboxGit(sessionId, ["branch", "--show-current"]);
+    currentBranch = br.stdout.trim() || "main";
+  }
+
+  const commit = await sandboxGit(sessionId, ["commit", "-m", message]);
+  if (commit.exitCode !== 0) {
+    throw gitError(commit, "Failed to commit changes");
+  }
+
+  const rev = await sandboxGit(sessionId, ["rev-parse", "HEAD"]);
+  if (rev.exitCode !== 0) {
+    throw gitError(rev, "Failed to read commit hash");
+  }
+  const fullSha = rev.stdout.trim();
+  const commitSha = fullSha.slice(0, 7);
+
+  let pushed = false;
+  let pushError: string | undefined;
+  if (push) {
+    const pushRes = await sandboxGit(sessionId, ["push"]);
+    if (pushRes.exitCode !== 0) {
+      pushError = (pushRes.stderr || pushRes.stdout || "Push failed").trim();
+    } else {
+      pushed = true;
+    }
+  }
+
+  return {
+    commitSha,
+    branch: currentBranch,
+    pushed,
+    pushError,
+    filesChanged: stats.filesChanged,
+    linesAdded: stats.linesAdded,
+    linesRemoved: stats.linesRemoved,
+  };
+}
+
 async function getGitStatusMap(sessionId: string): Promise<Map<string, string>> {
   const result = await sandboxGit(sessionId, ["status", "--porcelain=v1"]);
   const map = new Map<string, string>();

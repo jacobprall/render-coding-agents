@@ -21,6 +21,7 @@ interface ChatPanelProps {
   onViewFiles?: () => void;
   onFileSelect?: (path: string) => void;
   onTitleChange?: (title: string) => void;
+  activeSkills?: Array<{ source: string; slug: string }>;
   /** Automatically start streaming when mounted */
   autoStream?: boolean;
   /** Run ID to pass when auto-starting the stream */
@@ -42,6 +43,7 @@ export function ChatPanel({
   onViewFiles,
   onFileSelect,
   onTitleChange,
+  activeSkills = [],
   autoStream,
   autoStreamRunId,
   aboveInput,
@@ -175,8 +177,9 @@ export function ChatPanel({
       <ChatInput
         isStreaming={isStreaming}
         modelId={modelId}
+        activeSkills={activeSkills}
         onModelChange={onModelChange}
-        onSend={(content) => void chat.sendMessage(content)}
+        onSend={(content, turnSkillRefs) => void chat.sendMessage(content, turnSkillRefs)}
         onStop={() => void chat.stopStreaming()}
       />
     </div>

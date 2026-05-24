@@ -122,13 +122,14 @@ export function AssistantParts({
 
           case "tool_call":
             return (
-              <ToolCallLazy
-                key={key}
-                toolName={part.toolName ?? "tool"}
-                args={part.args as Record<string, unknown> | undefined}
-                result={part.result as Record<string, unknown> | undefined}
-                status={part.result !== undefined ? "success" : streaming ? "running" : "idle"}
-              />
+              <div key={key} className="flex w-full min-w-0 items-start">
+                <ToolCallLazy
+                  toolName={part.toolName ?? "tool"}
+                  args={part.args as Record<string, unknown> | undefined}
+                  result={part.result as Record<string, unknown> | undefined}
+                  status={part.result !== undefined ? "success" : streaming ? "running" : "idle"}
+                />
+              </div>
             );
 
           case "file_changed":

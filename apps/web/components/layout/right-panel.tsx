@@ -1,11 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { FolderTree, GitBranch, PanelLeft, X } from "lucide-react";
+import { PanelLeft, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FileTree } from "@/components/session/file-tree";
 import { FilePreview } from "@/components/session/file-preview";
-import { GitPanel } from "@/components/session/git-panel";
 export type { RightPanelMode } from "./right-panel-context";
 import type { RightPanelMode } from "./right-panel-context";
 
@@ -21,7 +20,6 @@ interface RightPanelProps {
 
 function getModeAnnouncement(mode: RightPanelMode, width: number): string {
   if (mode === "closed" || width === 0) return "Panel closed";
-  if (mode === "git") return "Git mode";
   return "Files mode";
 }
 
@@ -66,7 +64,7 @@ export function RightPanel({
   }, [onClearSelection]);
 
   const isOpen = mode !== "closed" && width !== 0;
-  const showSplit = mode === "files" && activePath;
+  const showSplit = (mode === "files" || mode === "preview") && activePath;
 
   return (
     <>
@@ -82,25 +80,7 @@ export function RightPanel({
           )}
           style={mobile ? undefined : { width }}
         >
-          <div className="flex shrink-0 items-center justify-between border-b border-stroke-subtle px-2 py-1.5">
-            <div className="flex items-center gap-0.5">
-              <PanelTabButton
-                active={mode === "files"}
-                onClick={() => onModeChange(mode === "files" ? "closed" : "files")}
-                title="Files"
-                ariaLabel="Switch to files mode"
-              >
-                <FolderTree className="size-3.5" />
-              </PanelTabButton>
-              <PanelTabButton
-                active={mode === "git"}
-                onClick={() => onModeChange(mode === "git" ? "closed" : "git")}
-                title="Git"
-                ariaLabel="Switch to git mode"
-              >
-                <GitBranch className="size-3.5" />
-              </PanelTabButton>
-            </div>
+          <div className="flex shrink-0 items-center justify-end border-b border-stroke-subtle px-2 py-1.5">
             <button
               type="button"
               onClick={handleClose}
@@ -112,9 +92,7 @@ export function RightPanel({
           </div>
 
           <div className="min-h-0 flex-1 overflow-hidden transition-all duration-200">
-            {mode === "git" ? (
-              <GitPanel sessionId={sessionId} enabled={mode === "git"} />
-            ) : mode === "preview" && activePath ? (
+            {mode === "preview" && activePath ? (
               <FilePreview
                 sessionId={sessionId}
                 filePath={activePath}
@@ -135,9 +113,6 @@ export function RightPanel({
                   >
                     <PanelLeft className="size-4" />
                   </button>
-                  <div className="mt-2 flex flex-1 flex-col items-center pt-1">
-                    <FolderTree className="size-3.5 text-text-tertiary/40" aria-hidden />
-                  </div>
                 </div>
                 <div className="min-w-0 flex-1 overflow-hidden transition-all duration-200">
                   <FilePreview
@@ -161,36 +136,5 @@ export function RightPanel({
         </aside>
       ) : null}
     </>
-  );
-}
-
-function PanelTabButton({
-  active,
-  onClick,
-  title,
-  ariaLabel,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  title: string;
-  ariaLabel: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      aria-label={ariaLabel}
-      className={cn(
-        "rounded p-1.5 transition-colors",
-        active
-          ? "bg-surface-2 text-text-primary"
-          : "text-text-tertiary hover:bg-surface-2/50 hover:text-text-secondary",
-      )}
-    >
-      {children}
-    </button>
   );
 }

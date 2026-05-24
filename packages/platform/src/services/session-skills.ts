@@ -28,6 +28,22 @@ export const DEFAULT_ACTIVE_SKILL_REFS: ActiveSkillRef[] = [
 /**
  * Normalize stored active skills, filling defaults when empty.
  */
+/** Merge session skills with one-shot turn skills (deduped by source+slug). */
+export function mergeTurnSkillRefs(
+  sessionSkills: ActiveSkillRef[] | null | undefined,
+  turnSkillRefs?: ActiveSkillRef[] | null,
+  repoDefaultSlugs: string[] = [],
+): ActiveSkillRef[] {
+  const merged = [...normalizeActiveSkills(sessionSkills, repoDefaultSlugs)];
+  if (!turnSkillRefs?.length) return merged;
+  for (const ref of turnSkillRefs) {
+    if (!merged.some((r) => r.source === ref.source && r.slug === ref.slug)) {
+      merged.push(ref);
+    }
+  }
+  return merged;
+}
+
 export function normalizeActiveSkills(
   stored: ActiveSkillRef[] | null | undefined,
   repoDefaultSlugs: string[] = [],

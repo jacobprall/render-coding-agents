@@ -12,11 +12,17 @@ interface FilesViewProps {
   sessionId: string;
   fileChanges: LiveFileChange[];
   initialFilePath?: string | null;
+  initialSubView?: FilesSubView;
 }
 
-export function FilesView({ sessionId, fileChanges, initialFilePath }: FilesViewProps) {
+export function FilesView({
+  sessionId,
+  fileChanges,
+  initialFilePath,
+  initialSubView,
+}: FilesViewProps) {
   const [subView, setSubView] = useState<FilesSubView>(
-    initialFilePath ? "tree" : "changes",
+    initialSubView ?? (initialFilePath ? "tree" : "changes"),
   );
   const [selectedTreeFile, setSelectedTreeFile] = useState<string | null>(
     initialFilePath ?? null,

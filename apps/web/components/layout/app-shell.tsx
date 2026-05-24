@@ -72,14 +72,12 @@ function MobileShell({ user, children }: AppShellProps) {
     setMobileView(view);
     if (view === "files") {
       setRightPanelModeContext("files");
-    } else if (view === "git") {
-      setRightPanelModeContext("git");
     }
   }
 
   const showChat = mobileView === "chat";
   const showSessions = mobileView === "sessions";
-  const showFiles = mobileView === "files" || mobileView === "git";
+  const showFiles = mobileView === "files";
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-background">
@@ -88,7 +86,7 @@ function MobileShell({ user, children }: AppShellProps) {
       ) : showFiles && sessionId ? (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <RightPanel
-            mode={mobileView === "git" ? "git" : "files"}
+            mode="files"
             sessionId={sessionId}
             onModeChange={(mode) => {
               if (mode === "closed") {

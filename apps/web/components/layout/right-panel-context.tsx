@@ -12,7 +12,7 @@ import {
 } from "react";
 import { usePathname } from "next/navigation";
 
-export type RightPanelMode = "files" | "git" | "preview" | "closed";
+export type RightPanelMode = "files" | "preview" | "closed";
 
 interface RightPanelContextValue {
   mode: RightPanelMode;

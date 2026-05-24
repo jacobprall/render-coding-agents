@@ -47,7 +47,10 @@ export interface UseAgentChatReturn {
   activeRunId: string | null;
   terminalReason: string | null;
   stepLimitReached: boolean;
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (
+    content: string,
+    turnSkillRefs?: Array<{ source: string; slug: string }>,
+  ) => Promise<void>;
   submitAskUserReply: (answer: string) => Promise<void>;
   stopStreaming: () => Promise<void>;
   startStreaming: (runId?: string) => void;
@@ -193,13 +196,21 @@ export function useAgentChat({
   }, []);
 
   const sendMessage = useCallback(
-    async (content: string) => {
-      if (!content.trim() || isActive) return;
+    async (
+      content: string,
+      turnSkillRefs?: Array<{ source: string; slug: string }>,
+    ) => {
+      const text =
+        content.trim() ||
+        (turnSkillRefs?.length
+          ? `Use skill: ${turnSkillRefs.map((s) => s.slug).join(", ")}`
+          : "");
+      if (!text || isActive) return;
 
       const userMessage: Message = {
         id: crypto.randomUUID(),
         role: "user",
-        parts: [{ type: "text", text: content }],
+        parts: [{ type: "text", text }],
         createdAt: new Date().toISOString(),
       };
       dispatch({ type: "ADD_USER_MESSAGE", message: userMessage });
@@ -207,8 +218,9 @@ export function useAgentChat({
       dispatch({ type: "START_STREAMING" });
 
       try {
-        const body: Record<string, unknown> = { content };
+        const body: Record<string, unknown> = { content: text };
         if (modelId) body.modelId = modelId;
+        if (turnSkillRefs?.length) body.turnSkillRefs = turnSkillRefs;
 
         const { ok, data } = await apiFetch<{
           error?: string;

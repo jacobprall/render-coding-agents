@@ -1,12 +1,15 @@
 "use client";
 
-import { useState, useCallback, useEffect, startTransition } from "react";
+import { useState, useCallback, useEffect, useRef, startTransition } from "react";
 import dynamic from "next/dynamic";
 import type { AssistantPart } from "@/lib/ui";
 import { DEFAULT_MODEL_ID } from "@/lib/model-defaults";
 import { PrSummaryPanel } from "./pr-summary-panel";
+import { ReviewBar } from "./review-bar";
 import type { Message, LiveFileChange } from "./chat-panel";
 import type { SessionTab } from "@/components/layout/session-tabs";
+import { notifyGitStatusRefresh } from "@/hooks/use-git-status";
+import { apiFetch } from "@/lib/api-fetch";
 
 function modelStorageKey(sessionId: string) {
   return `model:${sessionId}`;
@@ -38,16 +41,7 @@ const FilesView = dynamic(
   },
 );
 
-const GitPanel = dynamic(
-  () => import("./git-panel").then((m) => ({ default: m.GitPanel })),
-  {
-    loading: () => (
-      <div className="flex h-full items-center justify-center text-sm text-text-tertiary">Loading git…</div>
-    ),
-  },
-);
-
-type ViewTab = "chat" | "files" | "git";
+type ViewTab = "chat" | "files";
 
 interface SessionInfo {
   id: string;
@@ -85,13 +79,17 @@ export function SessionWorkspace({
   initialMessages,
 }: SessionWorkspaceProps) {
   const [activeView, setActiveView] = useState<ViewTab>("chat");
+  const [filesSubView, setFilesSubView] = useState<"tree" | "changes">("tree");
   const [title, setTitle] = useState(session.title);
   const [modelId, setModelId] = useState(() => {
     const id = initialModelId?.trim();
     return id && id.length > 0 ? id : DEFAULT_MODEL_ID;
   });
   const [liveFileChanges, setLiveFileChanges] = useState<LiveFileChange[]>([]);
+  const [isCommitting, setIsCommitting] = useState(false);
+  const [commitToast, setCommitToast] = useState<string | null>(null);
   const [pendingFilePath, setPendingFilePath] = useState<string | null>(null);
+  const clearChatFileChangesRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     const stored = readStoredModelId(session.id);
@@ -134,16 +132,77 @@ export function SessionWorkspace({
   }, [session.id]);
 
   const handleViewFiles = useCallback(() => {
+    setFilesSubView("tree");
     startTransition(() => setActiveView("files"));
   }, []);
 
-  const handleFileSelect = useCallback(
-    (path: string) => {
-      setPendingFilePath(path);
-      startTransition(() => setActiveView("files"));
-    },
-    [],
-  );
+  const handleFileSelect = useCallback((path: string) => {
+    setPendingFilePath(path);
+    setFilesSubView("tree");
+    startTransition(() => setActiveView("files"));
+  }, []);
+
+  const handleReviewClick = useCallback(() => {
+    setPendingFilePath(null);
+    setFilesSubView("changes");
+    startTransition(() => setActiveView("files"));
+  }, []);
+
+  const handleCommit = useCallback(async () => {
+    if (isCommitting || liveFileChanges.length === 0) return;
+    setIsCommitting(true);
+    setCommitToast(null);
+    try {
+      const fileList = liveFileChanges.map((f) => f.path).join(", ");
+      const res = await apiFetch<{
+        error?: string;
+        commitSha?: string;
+        branch?: string;
+        pushed?: boolean;
+        pushError?: string;
+      }>(`/api/sessions/${session.id}/git/commit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: `Agent changes: ${fileList}`,
+          createBranch: true,
+        }),
+      });
+      if (!res.ok) {
+        const err =
+          typeof res.data.error === "string"
+            ? res.data.error
+            : "Failed to commit changes";
+        throw new Error(err);
+      }
+      setLiveFileChanges([]);
+      clearChatFileChangesRef.current?.();
+      notifyGitStatusRefresh();
+
+      const { commitSha, branch, pushed, pushError } = res.data;
+      let toast = `Committed ${commitSha ?? ""} on ${branch ?? "branch"}`;
+      if (pushed) {
+        toast = `Committed and pushed ${commitSha ?? ""} on ${branch ?? "branch"}`;
+      } else if (pushError) {
+        toast = `Committed locally (${commitSha}); push failed: ${pushError}`;
+      }
+      setCommitToast(toast);
+      setTimeout(() => setCommitToast(null), 5000);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to commit changes";
+      setCommitToast(msg);
+      setTimeout(() => setCommitToast(null), 5000);
+    } finally {
+      setIsCommitting(false);
+    }
+  }, [isCommitting, liveFileChanges, session.id]);
+
+  const reviewFileChanges = liveFileChanges.map((f) => ({
+    path: f.path,
+    linesAdded: f.additions,
+    linesRemoved: f.deletions,
+    unifiedDiffPreview: f.unifiedDiffPreview,
+  }));
 
   const fileCount = liveFileChanges.length;
 
@@ -166,12 +225,6 @@ export function SessionWorkspace({
             badge={fileCount > 0 ? fileCount : undefined}
           >
             Files
-          </TabButton>
-          <TabButton
-            active={activeView === "git"}
-            onClick={() => startTransition(() => setActiveView("git"))}
-          >
-            Git
           </TabButton>
         </div>
       </header>
@@ -197,6 +250,7 @@ export function SessionWorkspace({
             initialMessages={initialMessages as Message[]}
             initialTerminalReason={terminalReason}
             modelId={modelId}
+            activeSkills={session.activeSkills}
             onModelChange={setModelId}
             onFileChanges={handleFileChanges}
             onViewFiles={handleViewFiles}
@@ -204,6 +258,29 @@ export function SessionWorkspace({
             onTitleChange={handleTitleChange}
             autoStream={activeRunId != null}
             autoStreamRunId={activeRunId ?? undefined}
+            onRegisterClearFileChanges={(clear) => {
+              clearChatFileChangesRef.current = clear;
+            }}
+            aboveInput={
+              liveFileChanges.length > 0 || commitToast ? (
+                <>
+                  {liveFileChanges.length > 0 ? (
+                    <ReviewBar
+                      fileChanges={reviewFileChanges}
+                      sessionId={session.id}
+                      onCommit={() => void handleCommit()}
+                      onReviewClick={handleReviewClick}
+                      isCommitting={isCommitting}
+                      commitMessage={commitToast ?? undefined}
+                    />
+                  ) : commitToast ? (
+                    <div className="shrink-0 border-t border-stroke-subtle px-(--of-space-md) py-2 text-center text-[11px] text-accent-text">
+                      {commitToast}
+                    </div>
+                  ) : null}
+                </>
+              ) : undefined
+            }
           />
         </div>
         <div className={activeView === "files" ? "h-full" : "hidden"}>
@@ -211,12 +288,7 @@ export function SessionWorkspace({
             sessionId={session.id}
             fileChanges={liveFileChanges}
             initialFilePath={pendingFilePath}
-          />
-        </div>
-        <div className={activeView === "git" ? "h-full" : "hidden"}>
-          <GitPanel
-            sessionId={session.id}
-            enabled={activeView === "git"}
+            initialSubView={filesSubView}
           />
         </div>
       </div>

@@ -18,7 +18,7 @@ import {
   ValidationError,
   logger,
 } from "@coding-agents/shared";
-import { normalizeActiveSkills, type ActiveSkillRef } from "./session-skills";
+import { mergeTurnSkillRefs, normalizeActiveSkills, type ActiveSkillRef } from "./session-skills";
 import type { PlatformDb } from "../interfaces/database";
 import type { AuthContext } from "../interfaces/auth";
 import type { QueueAdapter } from "../interfaces/queue";
@@ -76,6 +76,8 @@ export interface SendMessageParams {
   modelId?: string;
   /** Caller-supplied request ID for tracing (falls back to a new UUID). */
   requestId?: string;
+  /** One-shot skills for this message only; merged into the job payload, not persisted. */
+  turnSkillRefs?: ActiveSkillRef[];
 }
 
 export interface ReplyParams {
@@ -439,7 +441,7 @@ export class SessionService {
     sessionId: string,
     params: SendMessageParams,
   ): Promise<{ messageId: string; runId: string; isFirstMessage: boolean }> {
-    const { content, requestId: callerRequestId } = params;
+    const { content, requestId: callerRequestId, turnSkillRefs } = params;
     const requestId = callerRequestId ?? crypto.randomUUID();
 
     const [sessionRow] = await this.db
@@ -568,7 +570,10 @@ export class SessionService {
       content: m.parts,
     }));
 
-    const activeSkillRefs = normalizeActiveSkills(sessionRow.activeSkills as ActiveSkillRef[] | null);
+    const activeSkillRefs = mergeTurnSkillRefs(
+      sessionRow.activeSkills as ActiveSkillRef[] | null,
+      turnSkillRefs,
+    );
 
     let workspaceJobPayload: Record<string, unknown> = {};
     if (sessionRow.projectId) {

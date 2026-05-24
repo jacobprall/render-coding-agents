@@ -1,11 +1,11 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { MessageSquare, FolderOpen, GitBranch, List } from "lucide-react";
+import { MessageSquare, FolderOpen, List } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { RightPanelMode } from "./right-panel-context";
 
-export type MobileView = "sessions" | "chat" | "files" | "git";
+export type MobileView = "sessions" | "chat" | "files";
 
 interface MobileBottomNavProps {
   activeView: MobileView;
@@ -23,8 +23,12 @@ export function MobileBottomNav({
   const items: { id: MobileView; icon: typeof MessageSquare; label: string; badge?: number }[] = [
     { id: "sessions", icon: List, label: "Sessions" },
     { id: "chat", icon: MessageSquare, label: "Chat" },
-    { id: "files", icon: FolderOpen, label: "Files" },
-    { id: "git", icon: GitBranch, label: "Git", badge: changedFilesCount },
+    {
+      id: "files",
+      icon: FolderOpen,
+      label: "Files",
+      badge: changedFilesCount > 0 ? changedFilesCount : undefined,
+    },
   ];
 
   return (

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireForgeAuth } from "@/lib/platform";
 import { requireSessionForUser } from "@/lib/session-auth";
+import { getUserPreferences } from "@/lib/db/loaders";
+import { commitSessionChanges } from "@/lib/sandbox-client";
 
 const CommitBodySchema = z.object({
   message: z.string().min(1),
@@ -30,18 +32,39 @@ export async function POST(
 
     const { message, branch, createBranch } = parsed.data;
 
-    // TODO: Create branch (if createBranch) and commit via session sandbox
-    void message;
-    void branch;
-    void createBranch;
+    const prefsRow = await getUserPreferences(auth.userId);
+    const autoCommitPush = prefsRow?.data?.autoCommitPush ?? false;
 
-    return NextResponse.json({
-      commitSha: "0000000",
-      branch: branch ?? "main",
-      filesChanged: 0,
-      linesAdded: 0,
-      linesRemoved: 0,
-    });
+    try {
+      const result = await commitSessionChanges(id, {
+        message,
+        branch,
+        createBranch,
+        push: autoCommitPush,
+      });
+
+      return NextResponse.json({
+        commitSha: result.commitSha,
+        branch: result.branch,
+        pushed: result.pushed,
+        pushError: result.pushError,
+        filesChanged: result.filesChanged,
+        linesAdded: result.linesAdded,
+        linesRemoved: result.linesRemoved,
+      });
+    } catch (commitErr) {
+      const msg = commitErr instanceof Error ? commitErr.message : "Failed to commit changes";
+      if (msg.includes("unreachable") || msg.includes("ECONNREFUSED")) {
+        return NextResponse.json(
+          { error: "Sandbox unreachable — cannot commit right now" },
+          { status: 502 },
+        );
+      }
+      if (msg.includes("No changes")) {
+        return NextResponse.json({ error: msg }, { status: 400 });
+      }
+      return NextResponse.json({ error: msg }, { status: 500 });
+    }
   } catch (err) {
     if (err instanceof Response) return err;
     console.error("[sessions/git/commit] failed:", err);
