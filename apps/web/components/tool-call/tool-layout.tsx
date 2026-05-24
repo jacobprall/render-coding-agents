@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type ToolStatus = "running" | "success" | "error" | "idle";
@@ -17,12 +17,14 @@ interface Props {
   className?: string;
 }
 
-function statusLabel(status: ToolStatus): string | null {
+function StatusIcon({ status }: { status: ToolStatus }) {
   switch (status) {
     case "running":
-      return "Running";
+      return <Loader2 className="size-3 animate-spin text-muted-foreground" />;
+    case "success":
+      return <CheckCircle2 className="size-3 text-accent-text" />;
     case "error":
-      return "Failed";
+      return <XCircle className="size-3 text-danger" />;
     default:
       return null;
   }
@@ -38,35 +40,24 @@ export function ToolLayout({
   className,
 }: Props) {
   const [open, setOpen] = useState(defaultOpen);
-  const label = statusLabel(status);
 
   return (
     <div
       className={cn(
         "self-start min-w-0 overflow-hidden rounded-md border border-stroke-subtle bg-muted/30 text-xs transition-[max-width,width] duration-(--of-duration-fast)",
         open ? "w-full max-w-full" : "w-fit max-w-[50%]",
-        status === "success" && "border-l-2 border-l-accent-text/60",
-        status === "error" && "border-l-2 border-l-danger/70",
-        status === "running" && "border-l-2 border-l-warning/70",
+        !open && status === "success" && "border-l-2 border-l-accent-text/60",
+        !open && status === "error" && "border-l-2 border-l-danger/70",
+        !open && status === "running" && "border-l-2 border-l-warning/70",
         className,
       )}
     >
       <div className="flex w-full min-w-0 items-center gap-2 px-3 py-2">
-        {icon ? <span className="shrink-0 text-text-tertiary">{icon}</span> : null}
+        {!open && icon ? <span className="shrink-0 text-text-tertiary">{icon}</span> : null}
         <span className="min-w-0 flex-1 truncate text-text-primary">
           <span className="font-medium">{title}</span>
           {subtitle ? <span className="text-text-tertiary"> {subtitle}</span> : null}
         </span>
-        {label ? (
-          <span
-            className={cn(
-              "shrink-0 text-[10px] font-medium",
-              status === "running" ? "text-warning" : "text-danger",
-            )}
-          >
-            {label}
-          </span>
-        ) : null}
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
@@ -87,10 +78,16 @@ export function ToolLayout({
         style={{ gridTemplateRows: open ? "1fr" : "0fr" }}
       >
         <div className="overflow-hidden">
-          {children ? (
-            <div className="border-t border-stroke-subtle bg-card px-3 py-2 font-mono text-foreground overflow-auto max-h-128">
-              {children}
-            </div>
+          {open && children ? (
+            <>
+              <div className="flex items-center gap-1.5 border-t border-stroke-subtle bg-muted/20 px-3 py-1.5">
+                {icon ? <span className="shrink-0 text-text-tertiary">{icon}</span> : null}
+                <StatusIcon status={status} />
+              </div>
+              <div className="border-t border-stroke-subtle bg-card px-3 py-2 font-mono text-foreground overflow-auto max-h-128">
+                {children}
+              </div>
+            </>
           ) : null}
         </div>
       </div>

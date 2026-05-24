@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { usePathname } from "next/navigation";
 import { usePanelResize } from "@/hooks/use-panel-resize";
 import { useLayoutState } from "@/hooks/use-layout-state";
@@ -130,8 +130,11 @@ function AppShellGrid({ user, children, layout, rightPanelResize }: AppShellGrid
     homePanelMode,
     setHomePanelOpen,
     setHomePanelMode,
-    toggleHomePanelMode,
   } = layout;
+
+  const toggleHomePanel = useCallback(() => {
+    setHomePanelOpen((open) => !open);
+  }, [setHomePanelOpen]);
 
   const showHomePanel = isSessionsRoute && homePanelOpen;
 
@@ -160,12 +163,12 @@ function AppShellGrid({ user, children, layout, rightPanelResize }: AppShellGrid
       }
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "o" && isSessionsRoute) {
         e.preventDefault();
-        toggleHomePanelMode("observability");
+        toggleHomePanel();
       }
     }
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
-  }, [toggleSidebar, toggleHomePanelMode, isSessionsRoute]);
+  }, [toggleSidebar, toggleHomePanel, isSessionsRoute]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -240,8 +243,7 @@ function AppShellGrid({ user, children, layout, rightPanelResize }: AppShellGrid
             sidebarOpen={sidebarOpen}
             showToolsPanel={isSessionsRoute}
             homePanelOpen={homePanelOpen}
-            homePanelMode={homePanelMode}
-            onToggleHomePanelMode={toggleHomePanelMode}
+            onToggleHomePanel={toggleHomePanel}
           />
           <main className="relative min-h-0 flex-1 overflow-y-auto">{children}</main>
         </div>

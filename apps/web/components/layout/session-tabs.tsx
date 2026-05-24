@@ -11,11 +11,9 @@ import {
   CheckCircle2,
   AlertCircle,
   PanelLeft,
-  Activity,
-  Zap,
+  PanelRightOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { HomePanelMode } from "@/hooks/use-layout-state";
 
 export interface SessionTab {
   id: string;
@@ -60,8 +58,7 @@ interface SessionTabsProps {
   sidebarOpen?: boolean;
   showToolsPanel?: boolean;
   homePanelOpen?: boolean;
-  homePanelMode?: HomePanelMode;
-  onToggleHomePanelMode?: (mode: HomePanelMode) => void;
+  onToggleHomePanel?: () => void;
 }
 
 export function SessionTabs({
@@ -69,8 +66,7 @@ export function SessionTabs({
   sidebarOpen = true,
   showToolsPanel = false,
   homePanelOpen = false,
-  homePanelMode = "observability",
-  onToggleHomePanelMode,
+  onToggleHomePanel,
 }: SessionTabsProps) {
   const [tabs, setTabs] = useState<SessionTab[]>([]);
   const pathname = usePathname();
@@ -182,33 +178,22 @@ export function SessionTabs({
         </div>
       </div>
 
-      {showToolsPanel && onToggleHomePanelMode ? (
-        <div className="mr-1 flex shrink-0 items-center gap-0.5 border-l border-border pl-1">
+      {showToolsPanel && onToggleHomePanel ? (
+        <div className="mr-1 flex shrink-0 items-center border-l border-border pl-1">
           <button
             type="button"
-            onClick={() => onToggleHomePanelMode("observability")}
-            title="Observability (⌘⇧O)"
+            onClick={onToggleHomePanel}
+            title={homePanelOpen ? "Close tools panel" : "Open tools panel (⌘⇧O)"}
+            aria-label={homePanelOpen ? "Close tools panel" : "Open tools panel"}
+            aria-expanded={homePanelOpen}
             className={cn(
               "flex h-8 w-8 items-center justify-center transition-colors",
-              homePanelOpen && homePanelMode === "observability"
+              homePanelOpen
                 ? "bg-primary/10 text-primary"
                 : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
             )}
           >
-            <Activity className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => onToggleHomePanelMode("automations")}
-            title="Automations"
-            className={cn(
-              "flex h-8 w-8 items-center justify-center transition-colors",
-              homePanelOpen && homePanelMode === "automations"
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-            )}
-          >
-            <Zap className="h-3.5 w-3.5" />
+            <PanelRightOpen className="h-3.5 w-3.5" />
           </button>
         </div>
       ) : null}
