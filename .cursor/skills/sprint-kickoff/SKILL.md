@@ -61,6 +61,6 @@ Update `.cursor/rules/sprint-context.md` with:
 
 ### 6. Launch Specification Pipeline
 
-Begin the specify step: read the selected requirements and transform them into a structured specification. This activates the `sdd-specify` skill, which produces `spec.md`.
+Begin the specify step: read the selected requirements and transform them into a structured specification. This activates the `speckit-specify` skill, which produces `spec.md`.
 
 The rest of the sprint DAG follows automatically from the workflow definition in `.marathon/workflows/sprint.yml`.
