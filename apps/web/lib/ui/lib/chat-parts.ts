@@ -1,4 +1,4 @@
-import type { StreamEvent } from "@coding-agents/shared";
+import type { StreamEvent } from "@coding-agents/shared/client";
 
 export type AssistantTextPart = {
   type: "text";

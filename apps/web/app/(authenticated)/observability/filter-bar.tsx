@@ -5,10 +5,10 @@ import { useCallback } from "react";
 
 const EVENT_TYPES = [
   { value: "llm_request", label: "LLM Request" },
-  { value: "tool_execution", label: "Tool Exec" },
-  { value: "sandbox_command", label: "Sandbox" },
-  { value: "human_interaction", label: "Human" },
+  { value: "tool_call", label: "Tool Call" },
+  { value: "sandbox_exec", label: "Sandbox" },
   { value: "error", label: "Error" },
+  { value: "system", label: "System" },
 ] as const;
 
 const EVENT_STATUSES = [

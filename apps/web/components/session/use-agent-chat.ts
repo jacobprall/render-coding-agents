@@ -11,7 +11,7 @@ import {
 import { useEventSource } from "@/hooks/use-event-source";
 import { notifyFileTreeChange } from "@/hooks/use-file-tree";
 import { apiFetch } from "@/lib/api-fetch";
-import type { StreamEvent } from "@coding-agents/shared";
+import type { StreamEvent } from "@coding-agents/shared/client";
 import {
   chatReducer,
   initialChatState,

@@ -30,18 +30,18 @@ function formatRelativeTime(dateStr: string): string {
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
   llm_request: "LLM Request",
-  tool_execution: "Tool Exec",
-  sandbox_command: "Sandbox",
-  human_interaction: "Human",
+  tool_call: "Tool Call",
+  sandbox_exec: "Sandbox",
   error: "Error",
+  system: "System",
 };
 
 const EVENT_TYPE_VARIANTS: Record<string, "info" | "neutral" | "success" | "pending" | "failure"> = {
   llm_request: "info",
-  tool_execution: "neutral",
-  sandbox_command: "neutral",
-  human_interaction: "pending",
+  tool_call: "neutral",
+  sandbox_exec: "neutral",
   error: "failure",
+  system: "neutral",
 };
 
 const STATUS_MAP: Record<string, string> = {

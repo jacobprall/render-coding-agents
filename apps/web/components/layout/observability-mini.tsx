@@ -59,10 +59,10 @@ function formatRelativeTime(dateStr: string): string {
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
   llm_request: "LLM",
-  tool_execution: "Tool",
-  sandbox_command: "Sandbox",
-  human_interaction: "Human",
+  tool_call: "Tool",
+  sandbox_exec: "Sandbox",
   error: "Error",
+  system: "System",
 };
 
 export function ObservabilityMini() {

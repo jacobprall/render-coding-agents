@@ -1,7 +1,7 @@
 import type { AssistantPart } from "@/lib/ui";
 import { appendStreamEvent } from "@/lib/ui";
-import type { StreamEvent } from "@coding-agents/shared";
-import { isTerminalEvent } from "@coding-agents/shared";
+import type { StreamEvent } from "@coding-agents/shared/client";
+import { isTerminalEvent } from "@coding-agents/shared/client";
 
 export const MAX_NO_RUN_RETRIES = 30;
 
