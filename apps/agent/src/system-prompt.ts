@@ -2,6 +2,7 @@ import type { SkillSummary } from "./skills";
 
 interface SystemPromptOpts {
   skillIndex?: SkillSummary[];
+  resolvedSkillContents?: Array<{ slug: string; content: string }>;
   projectContext?: string | null;
   projectConfig?: unknown;
   forgeLabel?: string;
@@ -173,6 +174,12 @@ export function buildAgentSystemPrompt(opts: SystemPromptOpts): string {
     parts.push(
       `\n# Available skills\n\nYou have access to specialized knowledge through skills. Use \`load_skill\` to read a skill's full content when you need its guidance.\n\n| ID | Name | Summary |\n|----|------|---------|\n${rows}`,
     );
+  }
+
+  if (!opts.isScratch && opts.resolvedSkillContents && opts.resolvedSkillContents.length > 0) {
+    for (const skill of opts.resolvedSkillContents) {
+      parts.push(`\n# Skill: ${skill.slug}\n\n${skill.content}`);
+    }
   }
 
   if (opts.projectContext) {

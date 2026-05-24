@@ -51,6 +51,8 @@ export function mergeToolResults(parts: AssistantPart[]): AssistantPart[] {
       const idx = toolCallIndices.get(part.toolCallId);
       if (idx !== undefined) {
         merged[idx] = { ...merged[idx], result: part.result };
+      } else {
+        merged.push(part);
       }
     } else {
       merged.push(part);

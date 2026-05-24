@@ -23,7 +23,10 @@ export async function getForgeProviderForSession(
   const [conn] = await db
     .select({ accessToken: syncConnections.accessToken })
     .from(syncConnections)
-    .where(and(eq(syncConnections.userId, session.userId), eq(syncConnections.provider, "github")))
+    .where(and(
+      eq(syncConnections.userId, session.userId),
+      eq(syncConnections.provider, (session.forgeType ?? "github") as "github" | "gitlab" | "bitbucket"),
+    ))
     .limit(1);
 
   const envFallback = process.env.GITHUB_TOKEN;

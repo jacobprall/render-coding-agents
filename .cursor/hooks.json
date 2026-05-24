@@ -1,0 +1,37 @@
+{
+  "$schema": "https://docs.cursor.com/schemas/hooks.json",
+  "hooks": {
+    "post-edit": [
+      {
+        "name": "typecheck",
+        "command": "npx tsc --noEmit --pretty",
+        "description": "Type-check after edits. Agent retries if types are broken.",
+        "enabled": true,
+        "on_failure": "retry"
+      },
+      {
+        "name": "lint",
+        "command": "npx eslint --max-warnings 0 .",
+        "description": "Lint check after edits. Agent fixes lint errors before proceeding.",
+        "enabled": true,
+        "on_failure": "retry"
+      }
+    ],
+    "pre-commit": [
+      {
+        "name": "test",
+        "command": "npm test -- --passWithNoTests",
+        "description": "Run test suite before committing. Blocks commit if tests fail.",
+        "enabled": true,
+        "on_failure": "block"
+      },
+      {
+        "name": "build",
+        "command": "npm run build",
+        "description": "Verify the project builds before committing.",
+        "enabled": false,
+        "on_failure": "block"
+      }
+    ]
+  }
+}

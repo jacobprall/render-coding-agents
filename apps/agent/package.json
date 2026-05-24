@@ -7,7 +7,8 @@
     "build": "echo 'agent build placeholder'",
     "start": "bun run src/worker.ts",
     "dev": "bun run --watch src/worker.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "bun test tests"
   },
   "dependencies": {
     "@coding-agents/db": "workspace:*",

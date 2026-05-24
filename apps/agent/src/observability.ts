@@ -221,23 +221,27 @@ export class ObservabilityRecorder {
     if (this.flushInFlight || (this.queue.length === 0 && this.spans.length === 0)) return;
     this.flushInFlight = true;
 
-    const rows = this.queue.splice(0, this.queue.length);
-    const spans = this.spans.splice(0, this.spans.length);
+    const rowCount = this.queue.length;
+    const spanCount = this.spans.length;
+    const rows = this.queue.slice(0, rowCount);
+    const spans = this.spans.slice(0, spanCount);
 
     try {
       if (rows.length > 0) {
         await this.platform.observability.recordBatch(rows);
+        this.queue.splice(0, rowCount);
       }
     } catch (error) {
-      console.warn("[observability] failed to persist events:", error);
+      console.warn("[observability] failed to persist events, will retry:", error);
     }
 
     try {
       if (this.otlpExporter && spans.length > 0) {
         await this.otlpExporter.exportBatch(spans);
+        this.spans.splice(0, spanCount);
       }
     } catch (error) {
-      console.warn("[observability] failed to export OTLP spans:", error);
+      console.warn("[observability] failed to export OTLP spans, will retry:", error);
     } finally {
       this.flushInFlight = false;
     }

@@ -7,6 +7,7 @@ import type { LLMProvider } from "./llm";
 import type { ToolConfig } from "./tools/define-tool";
 import type { SubagentModelResolver } from "./tools/task";
 import type { AgentTool } from "./loop";
+import type { ObservabilityRecorder } from "./observability";
 import type { ForgeAgentContext } from "./context/agent-context";
 import { zodToJsonSchema } from "./zod-to-json-schema";
 import { getModel } from "./models";
@@ -129,6 +130,12 @@ export function buildToolSet(
   hasRepo = true,
   resultStore?: Map<string, string>,
   llmKeys?: ResolvedLlmKeys,
+  parentSignals?: {
+    signal?: AbortSignal;
+    recorder?: ObservabilityRecorder;
+    secrets?: Record<string, string>;
+    resultStore?: Map<string, string>;
+  },
 ): Map<string, AgentTool> {
   const reqId = job.requestId;
   const makeSubToolConfigs = () => buildSubagentToolConfigs(hasRepo);
@@ -154,6 +161,7 @@ export function buildToolSet(
       modelResolver,
       forgeContext,
       skillsPromptSuffix,
+      parentSignals,
     ),
     todo_write: todoWriteTool(),
     ask_user_question: askUserQuestionTool(job.runId, () => redis.duplicate(), publishFn),

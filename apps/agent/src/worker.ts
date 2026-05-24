@@ -194,8 +194,8 @@ async function resolveJobSkills(
     });
     resolvedSkills = await resolveActiveSkills(forge, {
       activeSkills: activeRefs,
-      forgeUsername: "",
-      projectRepoPath: "",
+      forgeUsername: (job as { forgeUsername?: string }).forgeUsername ?? "",
+      projectRepoPath: job.repos?.[0]?.repoPath ?? "",
     });
   } catch (err) {
     console.warn("[worker] Skill resolution failed, using empty skills:", err);

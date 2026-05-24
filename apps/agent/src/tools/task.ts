@@ -7,6 +7,7 @@ import type { LLMProvider } from "../llm";
 import { agentLoop } from "../loop";
 import { zodToJsonSchema } from "../zod-to-json-schema";
 import type { AgentTool } from "../loop";
+import type { ObservabilityRecorder } from "../observability";
 import type { StreamEvent } from "../types";
 import { evt } from "../run-persistence";
 
@@ -38,6 +39,12 @@ export function taskTool(
   modelResolver: SubagentModelResolver,
   forgeContext: ForgeAgentContext,
   parentSystemPromptSuffix?: string,
+  parentSignals?: {
+    signal?: AbortSignal;
+    recorder?: ObservabilityRecorder;
+    secrets?: Record<string, string>;
+    resultStore?: Map<string, string>;
+  },
 ) {
   return defineTool({
     description: "Delegate a self-contained subtask to a focused subagent. Use for parallelizable or isolated work.",
@@ -76,6 +83,10 @@ export function taskTool(
           messages: [{ role: "user" as const, content: task }],
           tools: subTools,
           maxSteps: MAX_SUBAGENT_STEPS,
+          signal: parentSignals?.signal,
+          recorder: parentSignals?.recorder,
+          secrets: parentSignals?.secrets,
+          resultStore: parentSignals?.resultStore,
         });
 
         const summary = result.text || `Completed ${result.steps} steps with ${result.totalUsage.outputTokens} output tokens.`;
