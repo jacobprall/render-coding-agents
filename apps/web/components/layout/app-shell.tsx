@@ -135,7 +135,7 @@ function AppShellGrid({ user, children, layout, rightPanelResize }: AppShellGrid
     toggleHomePanelMode,
   } = layout;
 
-  const showHomePanel = isHomePage && homePanelOpen;
+  const showHomePanel = homePanelOpen;
 
   const {
     setWidth: setContextWidth,
@@ -160,14 +160,14 @@ function AppShellGrid({ user, children, layout, rightPanelResize }: AppShellGrid
         e.preventDefault();
         toggleSidebar();
       }
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "o" && isHomePage) {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "o") {
         e.preventDefault();
         toggleHomePanelMode("observability");
       }
     }
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
-  }, [toggleSidebar, toggleHomePanelMode, isHomePage]);
+  }, [toggleSidebar, toggleHomePanelMode]);
 
   useEffect(() => {
     if (!hydrated) return;

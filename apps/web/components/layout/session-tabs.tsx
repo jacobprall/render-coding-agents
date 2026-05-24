@@ -168,19 +168,18 @@ export function SessionTabs({
             </Link>
           );
         })}
+        {showNewButton && (
+          <Link
+            href="/sessions"
+            className="flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+            title="New session"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </Link>
+        )}
       </div>
 
-      {showNewButton && (
-        <Link
-          href="/sessions"
-          className="flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
-          title="New session"
-        >
-          <Plus className="h-3.5 w-3.5" />
-        </Link>
-      )}
-
-      {isHomePage && onToggleHomePanelMode ? (
+      {onToggleHomePanelMode ? (
         <div className="mr-1 flex shrink-0 items-center gap-0.5 border-l border-border pl-1">
           <button
             type="button"
