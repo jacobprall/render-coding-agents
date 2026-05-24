@@ -58,7 +58,7 @@ function StatusIcon({ status }: { status: string }) {
 interface SessionTabsProps {
   onToggleSidebar?: () => void;
   sidebarOpen?: boolean;
-  isHomePage?: boolean;
+  showToolsPanel?: boolean;
   homePanelOpen?: boolean;
   homePanelMode?: HomePanelMode;
   onToggleHomePanelMode?: (mode: HomePanelMode) => void;
@@ -67,7 +67,7 @@ interface SessionTabsProps {
 export function SessionTabs({
   onToggleSidebar,
   sidebarOpen = true,
-  isHomePage = false,
+  showToolsPanel = false,
   homePanelOpen = false,
   homePanelMode = "observability",
   onToggleHomePanelMode,
@@ -143,44 +143,46 @@ export function SessionTabs({
         </button>
       ) : null}
 
-      <div className="flex flex-1 items-end gap-0 overflow-x-auto px-1">
-        {tabs.map((tab) => {
-          const isActive = tab.id === activeSessionId;
-          return (
-            <Link
-              key={tab.id}
-              href={`/sessions/${tab.id}`}
-              className={cn(
-                "group relative flex h-8 max-w-[200px] items-center gap-2 border-x border-t px-3 text-[12px] transition-colors",
-                isActive
-                  ? "border-border bg-background text-foreground"
-                  : "border-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-              )}
-            >
-              <StatusIcon status={tab.status} />
-              <span className="flex-1 truncate">{tab.title || "New session"}</span>
-              <button
-                onClick={(e) => removeTab(tab.id, e)}
-                className="ml-1 hidden h-4 w-4 items-center justify-center text-muted-foreground hover:text-foreground group-hover:flex"
+      <div className="flex min-w-0 flex-1 items-end overflow-hidden">
+        <div className="flex items-end gap-0 overflow-x-auto px-1">
+          {tabs.map((tab) => {
+            const isActive = tab.id === activeSessionId;
+            return (
+              <Link
+                key={tab.id}
+                href={`/sessions/${tab.id}`}
+                className={cn(
+                  "group relative flex h-8 max-w-[200px] items-center gap-2 border-x border-t px-3 text-[12px] transition-colors",
+                  isActive
+                    ? "border-border bg-background text-foreground"
+                    : "border-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                )}
               >
-                <X className="h-3 w-3" />
-              </button>
+                <StatusIcon status={tab.status} />
+                <span className="flex-1 truncate">{tab.title || "New session"}</span>
+                <button
+                  onClick={(e) => removeTab(tab.id, e)}
+                  className="ml-1 hidden h-4 w-4 items-center justify-center text-muted-foreground hover:text-foreground group-hover:flex"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Link>
+            );
+          })}
+
+          {showNewButton ? (
+            <Link
+              href="/sessions"
+              className="flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+              title="New session"
+            >
+              <Plus className="h-3.5 w-3.5" />
             </Link>
-          );
-        })}
+          ) : null}
+        </div>
       </div>
 
-      {showNewButton && (
-        <Link
-          href="/sessions"
-          className="flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
-          title="New session"
-        >
-          <Plus className="h-3.5 w-3.5" />
-        </Link>
-      )}
-
-      {isHomePage && onToggleHomePanelMode ? (
+      {showToolsPanel && onToggleHomePanelMode ? (
         <div className="mr-1 flex shrink-0 items-center gap-0.5 border-l border-border pl-1">
           <button
             type="button"

@@ -162,7 +162,7 @@ export function ChatPanel({
           aria-label="Scroll to latest messages"
           className={cn(
             "absolute bottom-[calc(var(--chat-input-offset,5.5rem))] left-1/2 z-10 -translate-x-1/2",
-            "inline-flex items-center gap-1.5 rounded-full border border-stroke-subtle bg-surface-1 px-3 py-1.5",
+            "inline-flex items-center gap-1.5 border border-stroke-subtle bg-surface-1 px-3 py-1.5",
             "text-xs font-medium text-text-secondary shadow-md transition-colors hover:bg-surface-2 hover:text-text-primary",
           )}
         >
