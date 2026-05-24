@@ -12,8 +12,13 @@ alwaysApply: true
 ## Current Sprint
 
 **Sprint:** 2 (first Marathon-driven sprint)
-**Phase:** Kickoff — awaiting specification
-**Status:** Inputs populated, ready for `sprint-kickoff` skill activation
+**Phase:** Specification
+**Status:** Sprint kicked off, specification in progress
+
+**Selected Requirements:**
+- R1: Schedule/Cron Triggers — automation entity + cron scheduler
+- R2: Event Triggers (GitHub/GitLab) — extend InboundRouter for automation dispatch
+- R6: Automation Builder UI — create/list scaffold for managing automations
 
 ## What Exists
 
@@ -69,4 +74,4 @@ Epic 1 (Agent Powers) delivered core platform: agent loop, gateway API, web dash
 ## Sprint Goals
 
 <!-- Updated at sprint kickoff by the sprint-kickoff skill -->
-Sprint 2 will implement: Automation entity + schema, cron/schedule triggers, GitHub/GitLab event trigger binding, and automation builder UI scaffold.
+Sprint 2 delivers the automation foundation: a persistent automation entity with cron/schedule triggers that fire unattended agent sessions, GitHub/GitLab event bindings that extend the existing InboundRouter into full automation dispatch, and a web UI scaffold (list + create flow) for managing automations. This sprint establishes the core data model and dispatch patterns that Sprint 3+ will extend with additional trigger sources.

@@ -17,7 +17,7 @@
 
 ### R1: Schedule/Cron Triggers
 
-**Status:** [TODO]
+**Status:** [IN SPRINT]
 
 **Description:**
 Agents can be triggered on schedules — either preset intervals (every hour, daily, weekly) or custom cron expressions. Scheduled automations run unattended and produce results like any other agent session.
@@ -41,7 +41,7 @@ Agents can be triggered on schedules — either preset intervals (every hour, da
 
 ### R2: Event Triggers (GitHub/GitLab)
 
-**Status:** [TODO]
+**Status:** [IN SPRINT]
 
 **Description:**
 Extend the existing `InboundRouter` + `InboundDispatcher` to support full automation binding — users configure trigger → prompt → tools → repos, and matching events automatically spawn agent sessions.
@@ -127,7 +127,7 @@ Agents can store and retrieve learnings from past runs. A memory system provides
 
 ### R6: Automation Builder UI
 
-**Status:** [TODO]
+**Status:** [IN SPRINT]
 
 **Description:**
 A web interface for creating, editing, and managing automations. Users configure trigger → prompt → tools → repos through a guided builder flow.
