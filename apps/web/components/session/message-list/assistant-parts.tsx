@@ -122,7 +122,7 @@ export function AssistantParts({
 
           case "tool_call":
             return (
-              <div key={key} className="flex w-full min-w-0 items-start">
+              <div key={key} className="flex w-full min-w-0 justify-start self-start">
                 <ToolCallLazy
                   toolName={part.toolName ?? "tool"}
                   args={part.args as Record<string, unknown> | undefined}

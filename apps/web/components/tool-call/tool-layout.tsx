@@ -43,8 +43,8 @@ export function ToolLayout({
   return (
     <div
       className={cn(
-        "min-w-0 overflow-hidden rounded-md border border-stroke-subtle bg-muted/30 text-xs transition-[max-width] duration-(--of-duration-fast)",
-        open ? "w-full" : "max-w-[50%]",
+        "self-start min-w-0 overflow-hidden rounded-md border border-stroke-subtle bg-muted/30 text-xs transition-[max-width,width] duration-(--of-duration-fast)",
+        open ? "w-full max-w-full" : "w-fit max-w-[50%]",
         status === "success" && "border-l-2 border-l-accent-text/60",
         status === "error" && "border-l-2 border-l-danger/70",
         status === "running" && "border-l-2 border-l-warning/70",

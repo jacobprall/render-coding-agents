@@ -86,8 +86,8 @@
 
 ### Implementation for User Story 3
 
-- [ ] T014 [P] [US3] Apply `max-w-[50%]` when collapsed and `w-full` when expanded in `apps/web/components/tool-call/tool-layout.tsx` — **skipped per user**
-- [ ] T015 [US3] Ensure left-aligned tool blocks in `apps/web/components/session/message-list/assistant-parts.tsx` (`items-start` on tool call wrapper) — **skipped per user**
+- [x] T014 [P] [US3] Apply `max-w-[50%]` when collapsed and `w-full` when expanded in `apps/web/components/tool-call/tool-layout.tsx`
+- [x] T015 [US3] Ensure left-aligned tool blocks in `apps/web/components/session/message-list/assistant-parts.tsx` (`items-start` on tool call wrapper)
 
 **Checkpoint**: Tool call layout matches SC-004 without affecting other stories
 
