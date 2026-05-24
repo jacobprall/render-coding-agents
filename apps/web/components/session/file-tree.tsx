@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useMemo, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { RefreshCw, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getFileIconChar, getFileIconColor } from "@/lib/file-icons";
 import {
@@ -20,6 +21,41 @@ interface FileTreeProps {
   onFileSelect: (path: string) => void;
   selectedPath?: string;
   onDeselect?: () => void;
+  expandToPath?: string | null;
+}
+
+function gitStatusColor(status: string): string {
+  switch (status) {
+    case "A":
+    case "??":
+      return "text-accent-text";
+    case "M":
+      return "text-warning";
+    case "D":
+      return "text-danger";
+    default:
+      return "text-text-tertiary";
+  }
+}
+
+function matchesFilter(name: string, path: string, filter: string): boolean {
+  const q = filter.toLowerCase();
+  return name.toLowerCase().includes(q) || path.toLowerCase().includes(q);
+}
+
+function directoryHasMatch(
+  entry: FileTreeEntry,
+  getChildren: (path: string) => FileTreeEntry[],
+  filter: string,
+): boolean {
+  if (!filter) return true;
+  if (entry.type === "file") {
+    return matchesFilter(entry.name, entry.path, filter);
+  }
+  if (matchesFilter(entry.name, entry.path, filter)) return true;
+  return getChildren(entry.path).some((child) =>
+    directoryHasMatch(child, getChildren, filter),
+  );
 }
 
 function collectVisibleItems(
@@ -54,6 +90,7 @@ function TreeNode({
   expandedPaths,
   selectedPath,
   focusedPath,
+  filter,
   onToggle,
   onFileSelect,
   onFocusPath,
@@ -66,6 +103,7 @@ function TreeNode({
   expandedPaths: Set<string>;
   selectedPath?: string;
   focusedPath?: string | null;
+  filter: string;
   onToggle: (path: string) => void;
   onFileSelect: (path: string) => void;
   onFocusPath: (path: string) => void;
@@ -73,12 +111,19 @@ function TreeNode({
   hasLoaded: (path: string) => boolean;
 }) {
   const isDir = entry.type === "directory";
-  const isExpanded = expandedPaths.has(entry.path);
+  const isExpanded = expandedPaths.has(entry.path) || Boolean(filter);
   const isSelected = !isDir && selectedPath === entry.path;
   const isFocused = focusedPath === entry.path;
   const paddingLeft = depth * INDENT_PX;
   const children = isDir && isExpanded ? getChildren(entry.path) : [];
   const childPaddingLeft = (depth + 1) * INDENT_PX;
+  const visibleChildren = filter
+    ? children.filter((child) => directoryHasMatch(child, getChildren, filter))
+    : children;
+
+  if (filter && !directoryHasMatch(entry, getChildren, filter)) {
+    return null;
+  }
 
   const handleClick = useCallback(() => {
     onFocusPath(entry.path);
@@ -120,8 +165,19 @@ function TreeNode({
           </span>
         )}
         <span className="truncate font-mono">{entry.name}</span>
+        {entry.gitStatus ? (
+          <span
+            className={cn(
+              "ml-auto shrink-0 font-mono text-[9px]",
+              gitStatusColor(entry.gitStatus),
+            )}
+            title={`Git: ${entry.gitStatus}`}
+          >
+            {entry.gitStatus}
+          </span>
+        ) : null}
       </button>
-      {isDir && isExpanded && children.length === 0 ? (
+      {isDir && isExpanded && visibleChildren.length === 0 ? (
         <div
           className="py-0.5 pr-2 text-xs text-text-tertiary"
           style={{ paddingLeft: childPaddingLeft }}
@@ -130,7 +186,7 @@ function TreeNode({
         </div>
       ) : null}
       {isDir && isExpanded
-        ? children.map((child) => (
+        ? visibleChildren.map((child) => (
             <TreeNode
               key={child.path}
               entry={child}
@@ -139,6 +195,7 @@ function TreeNode({
               expandedPaths={expandedPaths}
               selectedPath={selectedPath}
               focusedPath={focusedPath}
+              filter={filter}
               onToggle={onToggle}
               onFileSelect={onFileSelect}
               onFocusPath={onFocusPath}
@@ -156,10 +213,24 @@ export function FileTree({
   onFileSelect,
   selectedPath,
   onDeselect,
+  expandToPath,
 }: FileTreeProps) {
-  const { expandedPaths, toggle, getChildren, hasLoaded, isLoading, error, refresh } =
+  const { expandedPaths, toggle, expandToPath: expandPath, getChildren, hasLoaded, isLoading, error, refresh } =
     useFileTree(sessionId);
   const [focusedPath, setFocusedPath] = useState<string | null>(null);
+  const [filter, setFilter] = useState("");
+
+  useEffect(() => {
+    if (expandToPath) {
+      expandPath(expandToPath);
+    }
+  }, [expandToPath, expandPath]);
+
+  useEffect(() => {
+    if (selectedPath) {
+      expandPath(selectedPath);
+    }
+  }, [selectedPath, expandPath]);
 
   const rootEntries = getChildren("/");
 
@@ -266,28 +337,53 @@ export function FileTree({
   }
 
   return (
-    <div
-      role="tree"
-      tabIndex={0}
-      onKeyDown={handleKeyDown}
-      className="py-1 outline-none focus-visible:ring-1 focus-visible:ring-accent/50"
-    >
-      {rootEntries.map((entry) => (
-        <TreeNode
-          key={entry.path}
-          entry={entry}
-          depth={0}
-          sessionId={sessionId}
-          expandedPaths={expandedPaths}
-          selectedPath={selectedPath}
-          focusedPath={focusedPath}
-          onToggle={toggle}
-          onFileSelect={onFileSelect}
-          onFocusPath={setFocusedPath}
-          getChildren={getChildren}
-          hasLoaded={hasLoaded}
-        />
-      ))}
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-center gap-1 border-b border-stroke-subtle/50 px-2 py-1.5">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-text-tertiary" />
+          <input
+            type="search"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Filter files…"
+            aria-label="Filter files"
+            className="w-full rounded border border-stroke-subtle bg-surface-1 py-1 pl-7 pr-2 text-[11px] text-text-primary placeholder:text-text-tertiary outline-none focus:border-accent/50"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => void refresh()}
+          title="Refresh file tree"
+          aria-label="Refresh file tree"
+          className="shrink-0 rounded p-1 text-text-tertiary transition-colors hover:bg-surface-2 hover:text-text-primary"
+        >
+          <RefreshCw className="size-3.5" />
+        </button>
+      </div>
+      <div
+        role="tree"
+        tabIndex={0}
+        onKeyDown={handleKeyDown}
+        className="min-h-0 flex-1 overflow-y-auto py-1 outline-none focus-visible:ring-1 focus-visible:ring-accent/50"
+      >
+        {rootEntries.map((entry) => (
+          <TreeNode
+            key={entry.path}
+            entry={entry}
+            depth={0}
+            sessionId={sessionId}
+            expandedPaths={expandedPaths}
+            selectedPath={selectedPath}
+            focusedPath={focusedPath}
+            filter={filter}
+            onToggle={toggle}
+            onFileSelect={onFileSelect}
+            onFocusPath={setFocusedPath}
+            getChildren={getChildren}
+            hasLoaded={hasLoaded}
+          />
+        ))}
+      </div>
     </div>
   );
 }

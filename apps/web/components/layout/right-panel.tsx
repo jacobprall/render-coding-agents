@@ -1,10 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { PanelLeft, X } from "lucide-react";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { FileTree } from "@/components/session/file-tree";
-import { FilePreview } from "@/components/session/file-preview";
+import { FileExplorer } from "@/components/session/file-explorer";
 export type { RightPanelMode } from "./right-panel-context";
 import type { RightPanelMode } from "./right-panel-context";
 
@@ -40,6 +39,12 @@ export function RightPanel({
   const activePath = selectedPath ?? localSelectedPath;
 
   useEffect(() => {
+    if (selectedPath) {
+      setLocalSelectedPath(selectedPath);
+    }
+  }, [selectedPath]);
+
+  useEffect(() => {
     setAnnouncement(getModeAnnouncement(mode, width));
   }, [mode, width]);
 
@@ -53,18 +58,13 @@ export function RightPanel({
     onClearSelection?.();
   }, [onModeChange, onClearSelection]);
 
-  const handleBackToTree = useCallback(() => {
-    setLocalSelectedPath(null);
-    onClearSelection?.();
-  }, [onClearSelection]);
-
   const handleDeselect = useCallback(() => {
     setLocalSelectedPath(null);
     onClearSelection?.();
   }, [onClearSelection]);
 
   const isOpen = mode !== "closed" && width !== 0;
-  const showSplit = (mode === "files" || mode === "preview") && activePath;
+  const useCompactExplorer = mobile || width < 480;
 
   return (
     <>
@@ -80,7 +80,8 @@ export function RightPanel({
           )}
           style={mobile ? undefined : { width }}
         >
-          <div className="flex shrink-0 items-center justify-end border-b border-stroke-subtle px-2 py-1.5">
+          <div className="flex shrink-0 items-center justify-between border-b border-stroke-subtle px-2 py-1.5">
+            <span className="text-[11px] font-medium text-text-tertiary">Explorer</span>
             <button
               type="button"
               onClick={handleClose}
@@ -91,47 +92,15 @@ export function RightPanel({
             </button>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-hidden transition-all duration-200">
-            {mode === "preview" && activePath ? (
-              <FilePreview
-                sessionId={sessionId}
-                filePath={activePath}
-                onBack={() => {
-                  setLocalSelectedPath(null);
-                  onClearSelection?.();
-                  onModeChange("files");
-                }}
-              />
-            ) : showSplit ? (
-              <div className="flex h-full min-h-0">
-                <div className="flex w-10 shrink-0 flex-col items-center border-r border-stroke-subtle bg-surface-1 py-2 transition-all duration-200">
-                  <button
-                    type="button"
-                    onClick={handleBackToTree}
-                    className="rounded p-1.5 text-text-tertiary transition-colors hover:bg-surface-2 hover:text-text-primary"
-                    title="Back to full tree"
-                  >
-                    <PanelLeft className="size-4" />
-                  </button>
-                </div>
-                <div className="min-w-0 flex-1 overflow-hidden transition-all duration-200">
-                  <FilePreview
-                    sessionId={sessionId}
-                    filePath={activePath}
-                    onBack={handleBackToTree}
-                  />
-                </div>
-              </div>
-            ) : (
-              <div className="h-full overflow-y-auto transition-all duration-200">
-                <FileTree
-                  sessionId={sessionId}
-                  selectedPath={activePath ?? undefined}
-                  onFileSelect={handleFileSelect}
-                  onDeselect={handleDeselect}
-                />
-              </div>
-            )}
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <FileExplorer
+              sessionId={sessionId}
+              selectedPath={activePath}
+              onFileSelect={handleFileSelect}
+              onDeselect={handleDeselect}
+              compact={useCompactExplorer}
+              treeWidth={width < 560 ? "w-44" : "w-52"}
+            />
           </div>
         </aside>
       ) : null}

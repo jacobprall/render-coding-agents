@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import type { LiveFileChange } from "./chat-panel";
 import { SingleFileDiffViewer } from "@/components/diff-viewer";
-import { FileTree } from "@/components/session/file-tree";
-import { FilePreview } from "@/components/session/file-preview";
+import { FileExplorer } from "@/components/session/file-explorer";
 
 type FilesSubView = "tree" | "changes";
 
@@ -22,22 +21,31 @@ export function FilesView({
   initialSubView,
 }: FilesViewProps) {
   const [subView, setSubView] = useState<FilesSubView>(
-    initialSubView ?? (initialFilePath ? "tree" : "changes"),
+    initialSubView ?? "tree",
   );
   const [selectedTreeFile, setSelectedTreeFile] = useState<string | null>(
     initialFilePath ?? null,
   );
   const [selectedDiffFile, setSelectedDiffFile] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (initialFilePath) {
+      setSelectedTreeFile(initialFilePath);
+      setSubView("tree");
+    }
+  }, [initialFilePath]);
+
+  useEffect(() => {
+    if (initialSubView) {
+      setSubView(initialSubView);
+    }
+  }, [initialSubView]);
+
   const handleTreeFileSelect = useCallback((path: string) => {
     setSelectedTreeFile(path);
   }, []);
 
   const handleTreeDeselect = useCallback(() => {
-    setSelectedTreeFile(null);
-  }, []);
-
-  const handleBackToTree = useCallback(() => {
     setSelectedTreeFile(null);
   }, []);
 
@@ -71,12 +79,12 @@ export function FilesView({
 
       <div className="min-h-0 flex-1 overflow-hidden">
         {subView === "tree" ? (
-          <TreeAndPreview
+          <FileExplorer
             sessionId={sessionId}
             selectedPath={selectedTreeFile}
             onFileSelect={handleTreeFileSelect}
             onDeselect={handleTreeDeselect}
-            onBack={handleBackToTree}
+            treeWidth="w-64"
           />
         ) : (
           <ChangesView
@@ -89,53 +97,6 @@ export function FilesView({
           />
         )}
       </div>
-    </div>
-  );
-}
-
-function TreeAndPreview({
-  sessionId,
-  selectedPath,
-  onFileSelect,
-  onDeselect,
-  onBack,
-}: {
-  sessionId: string;
-  selectedPath: string | null;
-  onFileSelect: (path: string) => void;
-  onDeselect: () => void;
-  onBack: () => void;
-}) {
-  if (selectedPath) {
-    return (
-      <div className="flex h-full min-h-0">
-        <div className="w-52 shrink-0 overflow-y-auto border-r border-stroke-subtle">
-          <FileTree
-            sessionId={sessionId}
-            selectedPath={selectedPath}
-            onFileSelect={onFileSelect}
-            onDeselect={onDeselect}
-          />
-        </div>
-        <div className="min-w-0 flex-1 overflow-hidden">
-          <FilePreview
-            sessionId={sessionId}
-            filePath={selectedPath}
-            onBack={onBack}
-          />
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="h-full overflow-y-auto">
-      <FileTree
-        sessionId={sessionId}
-        selectedPath={undefined}
-        onFileSelect={onFileSelect}
-        onDeselect={onDeselect}
-      />
     </div>
   );
 }

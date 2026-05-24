@@ -90,10 +90,12 @@ export function AssistantParts({
   parts,
   streaming,
   createdAt,
+  onFileSelect,
 }: {
   parts: AssistantPart[];
   streaming?: boolean;
   createdAt?: string | null;
+  onFileSelect?: (path: string) => void;
 }) {
   let lastTextIndex = -1;
   for (let j = parts.length - 1; j >= 0; j--) {
@@ -133,7 +135,19 @@ export function AssistantParts({
             );
 
           case "file_changed":
-            return (
+            return onFileSelect ? (
+              <button
+                key={key}
+                type="button"
+                onClick={() => onFileSelect(part.path)}
+                className="inline-flex items-center gap-1.5 text-[11px] border border-stroke-subtle px-2 py-1 bg-surface-1 transition-colors hover:bg-surface-2 hover:border-stroke-default"
+              >
+                <span className="text-accent-text/80 tabular-nums font-mono">+{part.additions}</span>
+                <span className="text-text-tertiary">/</span>
+                <span className="text-danger/80 tabular-nums font-mono">-{part.deletions}</span>
+                <span className="ml-1 font-mono text-text-tertiary break-all">{part.path}</span>
+              </button>
+            ) : (
               <div
                 key={key}
                 className="inline-flex items-center gap-1.5 text-[11px] border border-stroke-subtle px-2 py-1 bg-surface-1"

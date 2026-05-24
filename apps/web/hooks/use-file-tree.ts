@@ -91,6 +91,18 @@ export function useFileTree(
     });
   }, []);
 
+  const expandToPath = useCallback((filePath: string) => {
+    const normalized = filePath.startsWith("/") ? filePath : `/${filePath}`;
+    const parts = normalized.split("/").filter(Boolean);
+    const dirs = ["/"];
+    let current = "";
+    for (let i = 0; i < parts.length - 1; i++) {
+      current = current ? `${current}/${parts[i]}` : `/${parts[i]}`;
+      dirs.push(current);
+    }
+    setExpandedPaths((prev) => new Set([...prev, ...dirs]));
+  }, []);
+
   const select = useCallback((path: string) => {
     setSelectedPath(path);
   }, []);
@@ -135,6 +147,7 @@ export function useFileTree(
   return {
     expandedPaths,
     toggle,
+    expandToPath,
     select,
     selectedPath,
     getChildren,

@@ -120,7 +120,7 @@ export function MessageBubble({
 
   return (
     <div className="flex flex-col gap-1 [content-visibility:auto]">
-      <AssistantParts parts={message.parts} createdAt={message.createdAt} />
+      <AssistantParts parts={message.parts} createdAt={message.createdAt} onFileSelect={onFileSelect} />
     </div>
   );
 }

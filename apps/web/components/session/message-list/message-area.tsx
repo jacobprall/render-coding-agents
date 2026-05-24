@@ -125,13 +125,30 @@ export function MessageArea({
           {filesPanelOpen ? (
             <ul className="divide-y divide-stroke-subtle/50 border-t border-stroke-subtle max-h-48 overflow-y-auto text-xs font-mono px-(--of-space-md) py-1 contain-content">
               {liveFileChanges.map((f) => (
-                <li key={f.path} className="py-1.5 flex justify-between gap-2">
-                  <span className="truncate text-text-tertiary">{f.path}</span>
-                  <span className="shrink-0 tabular-nums">
-                    <span className="text-accent-text">+{f.additions}</span>
-                    <span className="text-text-tertiary mx-1">/</span>
-                    <span className="text-danger">-{f.deletions}</span>
-                  </span>
+                <li key={f.path} className="py-1.5">
+                  {onFileSelect ? (
+                    <button
+                      type="button"
+                      onClick={() => onFileSelect(f.path)}
+                      className="flex w-full justify-between gap-2 text-left transition-colors hover:text-text-primary"
+                    >
+                      <span className="truncate text-text-tertiary">{f.path}</span>
+                      <span className="shrink-0 tabular-nums">
+                        <span className="text-accent-text">+{f.additions}</span>
+                        <span className="text-text-tertiary mx-1">/</span>
+                        <span className="text-danger">-{f.deletions}</span>
+                      </span>
+                    </button>
+                  ) : (
+                    <div className="flex justify-between gap-2">
+                      <span className="truncate text-text-tertiary">{f.path}</span>
+                      <span className="shrink-0 tabular-nums">
+                        <span className="text-accent-text">+{f.additions}</span>
+                        <span className="text-text-tertiary mx-1">/</span>
+                        <span className="text-danger">-{f.deletions}</span>
+                      </span>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
@@ -179,7 +196,7 @@ export function MessageArea({
 
       {streamingParts.length > 0 ? (
         <div className="[content-visibility:auto]">
-          <AssistantParts parts={streamingParts} streaming={isStreaming} />
+          <AssistantParts parts={streamingParts} streaming={isStreaming} onFileSelect={onFileSelect} />
         </div>
       ) : null}
 

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import useSWR from "swr";
 import dynamic from "next/dynamic";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, FileCode2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CodeBlock } from "@/components/code-block";
 
@@ -24,9 +24,28 @@ type ViewMode = "preview" | "raw";
 
 const fetcher = async (url: string): Promise<FileContentResponse> => {
   const res = await fetch(url);
+  if (res.status === 422) {
+    const body = (await res.json()) as { binary?: boolean; error?: string };
+    if (body.binary) {
+      throw new BinaryFileError(url);
+    }
+  }
   if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
   return res.json() as Promise<FileContentResponse>;
 };
+
+class BinaryFileError extends Error {
+  constructor(public fileUrl: string) {
+    super("Binary file");
+    this.name = "BinaryFileError";
+  }
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 function isMarkdownPath(path: string): boolean {
   const lower = path.toLowerCase();
@@ -57,6 +76,8 @@ export function FilePreview({ sessionId, filePath, onBack }: FilePreviewProps) {
   const { data, error, isLoading } = useSWR<FileContentResponse>(swrKey, fetcher, {
     revalidateOnFocus: false,
   });
+
+  const isBinary = error instanceof BinaryFileError;
 
   const segments = useMemo(() => breadcrumbSegments(filePath), [filePath]);
   const canPreview = isMarkdownPath(filePath);
@@ -112,15 +133,27 @@ export function FilePreview({ sessionId, filePath, onBack }: FilePreviewProps) {
                   : "text-text-tertiary hover:text-text-secondary",
               )}
             >
-              Markdown
+              Raw
             </button>
           </div>
+        ) : data ? (
+          <span className="shrink-0 text-[10px] text-text-tertiary">
+            {formatBytes(data.size)}
+          </span>
         ) : null}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
         {isLoading ? (
           <p className="text-xs text-text-tertiary">Loading file…</p>
+        ) : isBinary ? (
+          <div className="flex h-full flex-col items-center justify-center py-12 text-center">
+            <FileCode2 className="mb-3 size-8 text-text-tertiary" />
+            <p className="text-sm text-text-secondary">Binary file</p>
+            <p className="mt-1 max-w-xs text-xs text-text-tertiary">
+              This file cannot be previewed as text. Download or open it locally to view.
+            </p>
+          </div>
         ) : error ? (
           <p className="text-xs text-danger">Failed to load file content</p>
         ) : data ? (
