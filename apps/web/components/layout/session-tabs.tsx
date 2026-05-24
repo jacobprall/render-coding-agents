@@ -148,7 +148,7 @@ export function SessionTabs({
                 key={tab.id}
                 href={`/sessions/${tab.id}`}
                 className={cn(
-                  "group relative flex h-8 max-w-[200px] items-center gap-2 border-x border-t px-3 text-[12px] transition-colors",
+                  "relative flex h-8 max-w-[200px] items-center gap-2 border-x border-t px-3 text-[12px] transition-colors",
                   isActive
                     ? "border-border bg-background text-foreground"
                     : "border-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground",
@@ -157,8 +157,10 @@ export function SessionTabs({
                 <StatusIcon status={tab.status} />
                 <span className="flex-1 truncate">{tab.title || "New session"}</span>
                 <button
+                  type="button"
                   onClick={(e) => removeTab(tab.id, e)}
-                  className="ml-1 hidden h-4 w-4 items-center justify-center text-muted-foreground hover:text-foreground group-hover:flex"
+                  aria-label={`Close ${tab.title || "session"} tab`}
+                  className="ml-1 flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
                 >
                   <X className="h-3 w-3" />
                 </button>

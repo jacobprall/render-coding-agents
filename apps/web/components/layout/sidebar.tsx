@@ -518,7 +518,6 @@ export function Sidebar({ user, open }: SidebarProps) {
           )}
           <div className="min-w-0 flex-1">
             <p className="truncate text-xs font-medium text-foreground">{user.username}</p>
-            <p className="text-[10px] text-muted-foreground">Free plan</p>
           </div>
         </Link>
       </div>

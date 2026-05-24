@@ -76,7 +76,7 @@
   --right-panel-min: 300px;
   --right-panel-max: 600px;
   --chat-min-width: 450px;
-  --status-bar-height: 28px;
+  --status-bar-height: 0px;
   --panel-transition: 200ms ease;
   --mobile-nav-height: 0px;
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);

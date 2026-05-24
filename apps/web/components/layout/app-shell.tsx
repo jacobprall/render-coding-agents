@@ -9,7 +9,6 @@ import { Sidebar } from "./sidebar";
 import { SessionTabs } from "./session-tabs";
 import { RightPanel } from "./right-panel";
 import { PanelResizer } from "./panel-resizer";
-import { StatusBar } from "./status-bar";
 import { useSessionTabsSync } from "./use-session-tabs-sync";
 import { RightPanelProvider, useRightPanel } from "./right-panel-context";
 import { MobileBottomNav, type MobileView } from "./mobile-bottom-nav";
@@ -262,8 +261,6 @@ function AppShellGrid({ user, children, layout, rightPanelResize }: AppShellGrid
           </>
         ) : null}
       </div>
-
-      <StatusBar />
     </div>
   );
 }
