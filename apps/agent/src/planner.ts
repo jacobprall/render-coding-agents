@@ -12,20 +12,21 @@ import {
   readFileTool,
   globTool,
   grepTool,
-  gitTool,
 } from "./tools";
 
 export interface PlanResult {
   plan: string;
   reasoning: string;
   suggestedSteps: string[];
+  /** Formatted text ready to inject as a system note into the implementation phase */
+  formattedForContext: string;
 }
 
 const PLANNER_MAX_STEPS = 20;
 
 const PLANNER_SYSTEM_PROMPT = `You are a planning agent. Your job is to explore the codebase and produce a structured implementation plan.
 
-You have READ-ONLY tools available: you can read files, search with glob/grep, and inspect git history. You CANNOT write files, execute commands, or push changes.
+You have READ-ONLY tools available: you can read files and search with glob/grep. You CANNOT write files, execute commands, or push changes.
 
 Based on the user's request and your exploration of the codebase, produce a plan with:
 1. A clear summary of what needs to be done
@@ -47,16 +48,15 @@ Format your final response as:
 
 Be thorough in your exploration but efficient. Focus on understanding the relevant parts of the codebase before producing your plan.`;
 
-function buildReadOnlyToolConfigs(): Record<string, ToolConfig> {
+export function buildReadOnlyToolConfigs(): Record<string, ToolConfig> {
   return {
     read_file: readFileTool(),
     glob: globTool(),
     grep: grepTool(),
-    git: gitTool(),
   };
 }
 
-function parsePlanOutput(text: string): PlanResult {
+export function parsePlanOutput(text: string): Pick<PlanResult, "plan" | "reasoning" | "suggestedSteps"> {
   const planMatch = text.match(/## Plan\s*\n([\s\S]*?)(?=## Reasoning|$)/);
   const reasoningMatch = text.match(/## Reasoning\s*\n([\s\S]*?)(?=## Steps|$)/);
   const stepsMatch = text.match(/## Steps\s*\n([\s\S]*?)$/);
@@ -71,6 +71,26 @@ function parsePlanOutput(text: string): PlanResult {
     .filter(Boolean);
 
   return { plan, reasoning, suggestedSteps };
+}
+
+export function formatPlanForContext(result: PlanResult): string {
+  const lines = [
+    "# Approved Implementation Plan",
+    "",
+    "The following plan was generated during the planning phase and approved by the user.",
+    "",
+    "## Plan",
+    result.plan,
+    "",
+    "## Reasoning",
+    result.reasoning,
+    "",
+    "## Steps",
+    ...result.suggestedSteps.map((s, i) => `${i + 1}. ${s}`),
+    "",
+    "Follow this plan. If you discover issues during implementation, note them but continue with the approved approach unless blocked.",
+  ];
+  return lines.join("\n");
 }
 
 export async function runPlanner(params: {
@@ -127,7 +147,12 @@ export async function runPlanner(params: {
     },
   });
 
-  const planResult = parsePlanOutput(result.text);
+  const parsed = parsePlanOutput(result.text);
+  const formattedForContext = formatPlanForContext({
+    ...parsed,
+    formattedForContext: "",
+  });
+  const planResult: PlanResult = { ...parsed, formattedForContext };
   const durationMs = Date.now() - startTime;
 
   await publishEvent(events, job.runId, evt("planner:completed", {

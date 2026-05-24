@@ -1,7 +1,17 @@
-import { describe, it, expect } from "bun:test";
-import { agentLoop } from "../src/loop";
+import { describe, it, expect, beforeAll } from "bun:test";
 import type { LLMProvider, LLMMessage, LLMResponse, ContentBlock, ToolDefinition } from "../src/llm";
-import type { AgentTool } from "../src/loop";
+import type { AgentStep, AgentTool } from "../src/loop";
+
+let agentLoop: typeof import("../src/loop").agentLoop;
+let chatWithRetry: typeof import("../src/loop").chatWithRetry;
+let isTransientLlmError: typeof import("../src/loop").isTransientLlmError;
+
+beforeAll(async () => {
+  const mod = await import("../src/loop");
+  agentLoop = mod.agentLoop;
+  chatWithRetry = mod.chatWithRetry;
+  isTransientLlmError = mod.isTransientLlmError;
+});
 
 function createMockProvider(responses: LLMResponse[]): LLMProvider {
   let callIdx = 0;
@@ -220,5 +230,98 @@ describe("agentLoop", () => {
       expect(result.text).toBe("Step 1. Step 2.");
       expect(result.steps).toBe(2);
     });
+  });
+
+  describe("unknown tool handling", () => {
+    it("returns error result for unknown tools", async () => {
+      const provider = createMockProvider([
+        toolUseResponse("missing_tool", { arg: "val" }),
+        textResponse("done"),
+      ]);
+      const tools = new Map<string, AgentTool>();
+      const steps: AgentStep[] = [];
+
+      await agentLoop({
+        provider,
+        model: "test",
+        system: "test",
+        messages: [{ role: "user", content: "hi" }],
+        tools,
+        maxSteps: 10,
+        onStep: async (step) => {
+          steps.push(step);
+        },
+      });
+
+      expect(steps).toHaveLength(2);
+      expect(steps[0].toolCalls[0]).toMatchObject({
+        toolName: "missing_tool",
+        status: "error",
+      });
+      expect(steps[0].toolResults[0]).toEqual({
+        toolCallId: "tc_1",
+        output: { error: "Unknown tool: missing_tool" },
+      });
+    });
+  });
+});
+
+describe("chatWithRetry", () => {
+  const baseParams = {
+    model: "test",
+    system: "test",
+    messages: [{ role: "user" as const, content: "hi" }],
+    tools: [] as ToolDefinition[],
+  };
+
+  it("does not retry when signal is already aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    let callCount = 0;
+    const provider = {
+      chat: async () => {
+        callCount++;
+        throw new DOMException("Turn timeout", "TimeoutError");
+      },
+    } as LLMProvider;
+
+    await expect(
+      chatWithRetry(provider, { ...baseParams, signal: controller.signal }),
+    ).rejects.toThrow("Turn timeout");
+
+    expect(callCount).toBe(1);
+  });
+
+  it("sleeps exactly twice before final failure on transient errors", async () => {
+    const sleeps: number[] = [];
+    const originalSetTimeout = globalThis.setTimeout;
+    globalThis.setTimeout = ((fn: TimerHandler, ms?: number, ...args: unknown[]) => {
+      if (typeof ms === "number") sleeps.push(ms);
+      return originalSetTimeout(fn as () => void, 0);
+    }) as typeof setTimeout;
+
+    let callCount = 0;
+    const provider = {
+      chat: async () => {
+        callCount++;
+        throw new Error("503 service unavailable");
+      },
+    } as LLMProvider;
+
+    try {
+      await expect(chatWithRetry(provider, baseParams)).rejects.toThrow("503");
+      expect(callCount).toBe(3);
+      expect(sleeps).toEqual([1000, 4000]);
+    } finally {
+      globalThis.setTimeout = originalSetTimeout;
+    }
+  });
+});
+
+describe("isTransientLlmError", () => {
+  it("matches timeout errors", () => {
+    expect(isTransientLlmError(new Error("network timeout"))).toBe(true);
+    expect(isTransientLlmError(new DOMException("Turn timeout", "TimeoutError"))).toBe(true);
   });
 });

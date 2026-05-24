@@ -2,21 +2,15 @@ import { describe, it, expect, mock, beforeEach, afterEach, beforeAll } from "bu
 
 let exportBatchImpl: (spans: unknown[]) => Promise<void> = async () => {};
 
+const realPlatform = await import("@coding-agents/platform");
 mock.module("@coding-agents/platform", () => ({
-  DEFAULT_POLICY: {
-    credentials: [{ pattern: /sk-[a-zA-Z0-9]+/, replacement: "[REDACTED]" }],
-  },
+  ...realPlatform,
   OtlpExporter: class MockOtlpExporter {
     async exportBatch(spans: unknown[]) {
       await exportBatchImpl(spans);
     }
   },
   redactCredentials: (value: string) => value.replace(/sk-[a-zA-Z0-9-]+/g, "[REDACTED]"),
-}));
-
-mock.module("@coding-agents/db", () => ({
-  OBSERVABILITY_EVENT_TYPES: ["llm_request", "tool_call", "sandbox_exec", "error", "system"],
-  OBSERVABILITY_EVENT_STATUSES: ["running", "success", "error", "timeout", "interrupted"],
 }));
 
 let ObservabilityRecorder: typeof import("../src/observability").ObservabilityRecorder;

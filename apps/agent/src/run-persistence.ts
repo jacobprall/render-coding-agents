@@ -129,20 +129,41 @@ export async function upsertAssistantMessage(
   return id;
 }
 
-export async function updateRunStatus(
-  db: PlatformDb,
-  job: AgentJob,
-  status: "completed" | "failed" | "aborted" | "error",
-  usage?: { promptTokens?: number; completionTokens?: number },
-  terminalReason?: TerminalReason,
-): Promise<void> {
+export async function finalizeRun(params: {
+  db: PlatformDb;
+  events?: EventBus;
+  runId: string;
+  chatId: string;
+  sessionId: string;
+  status: "completed" | "failed" | "aborted" | "error";
+  terminalReason?: string;
+  usage?: { promptTokens?: number; completionTokens?: number };
+  eventPayload?: Record<string, unknown>;
+  eventType?: string;
+  statusTtl?: number;
+}): Promise<void> {
+  const {
+    db,
+    events,
+    runId,
+    chatId,
+    sessionId,
+    status,
+    terminalReason,
+    usage,
+    eventPayload,
+    eventType,
+    statusTtl = 3600,
+  } = params;
+
   const finishedAt = new Date();
   const [row] = await db
     .select({ startedAt: agentRuns.startedAt })
     .from(agentRuns)
-    .where(eq(agentRuns.id, job.runId))
+    .where(eq(agentRuns.id, runId))
     .limit(1);
-  const totalDurationMs = row?.startedAt ? finishedAt.getTime() - row.startedAt.getTime() : null;
+  const totalDurationMs =
+    row?.startedAt != null ? finishedAt.getTime() - row.startedAt.getTime() : null;
 
   const updateData: Record<string, unknown> = { status, finishedAt, totalDurationMs };
   if (usage?.promptTokens != null) updateData.promptTokens = usage.promptTokens;
@@ -152,15 +173,45 @@ export async function updateRunStatus(
   await db
     .update(agentRuns)
     .set(updateData)
-    .where(eq(agentRuns.id, job.runId));
+    .where(eq(agentRuns.id, runId));
 
-  await db.update(chats).set({ activeRunId: null, updatedAt: new Date() }).where(eq(chats.id, job.chatId));
+  await db
+    .update(chats)
+    .set({ activeRunId: null, updatedAt: finishedAt })
+    .where(eq(chats.id, chatId));
 
-  const sessionStatus = (status === "failed" || status === "error") ? "failed" : "completed";
+  const sessionStatus = status === "failed" || status === "error" ? "failed" : "completed";
   await db
     .update(sessions)
     .set({ status: sessionStatus, lastActivityAt: finishedAt, updatedAt: finishedAt })
-    .where(eq(sessions.id, job.sessionId));
+    .where(eq(sessions.id, sessionId));
+
+  if (events && eventPayload != null) {
+    const payload = JSON.stringify({
+      type: eventType ?? "error",
+      ...eventPayload,
+    });
+    await events.publish(runId, payload);
+    await events.setKey(`run:${runId}:status`, status, statusTtl);
+  }
+}
+
+export async function updateRunStatus(
+  db: PlatformDb,
+  job: AgentJob,
+  status: "completed" | "failed" | "aborted" | "error",
+  usage?: { promptTokens?: number; completionTokens?: number },
+  terminalReason?: TerminalReason,
+): Promise<void> {
+  await finalizeRun({
+    db,
+    runId: job.runId,
+    chatId: job.chatId,
+    sessionId: job.sessionId,
+    status,
+    terminalReason,
+    usage,
+  });
 }
 
 export async function updateHeartbeat(

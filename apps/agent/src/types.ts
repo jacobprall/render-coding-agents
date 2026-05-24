@@ -31,6 +31,7 @@ export interface AgentJob {
   workspaceId?: string;
   resolvedEnv?: Record<string, string>;
   resolvedSecrets?: Record<string, string>;
+  forgeUsername?: string;
   repos?: Array<{
     repoPath: string;
     forgeType: "github" | "gitlab" | null;

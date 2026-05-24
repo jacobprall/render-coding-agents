@@ -54,16 +54,13 @@ async function pushRepoBranch(params: {
   if (!owner || !repo) return { ok: false, stderr: "invalid repo path" };
 
   const authUrl = forge.git.authenticatedCloneUrl(owner, repo);
-  const plainUrl = forge.git.plainCloneUrl(owner, repo);
   const gitPrefix = repoRelDir ? `git -C ${shellEscape(repoRelDir)}` : "git";
 
-  await adapter.exec(sessionId, `${gitPrefix} remote set-url origin ${shellEscape(authUrl)}`).catch(() => {});
-  try {
-    const pushResult = await adapter.exec(sessionId, `${gitPrefix} push -u origin ${shellEscape(branch)}`);
-    return { ok: pushResult.exitCode === 0, stderr: pushResult.stderr };
-  } finally {
-    await adapter.exec(sessionId, `${gitPrefix} remote set-url origin ${shellEscape(plainUrl)}`).catch(() => {});
-  }
+  const pushResult = await adapter.exec(
+    sessionId,
+    `${gitPrefix} push -u ${shellEscape(authUrl)} ${shellEscape(branch)}`,
+  );
+  return { ok: pushResult.exitCode === 0, stderr: pushResult.stderr };
 }
 
 export async function createPrsForChangedRepos(params: {

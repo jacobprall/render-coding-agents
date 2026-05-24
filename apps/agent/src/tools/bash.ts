@@ -8,8 +8,27 @@ const bashInputSchema = z.object({
   timeoutMs: z.number().optional().describe("Timeout in milliseconds (default 120000)"),
 });
 
-function bashInvokesRemoteGit(command: string): boolean {
-  return /\bgit(\s+[\S]+)*\s+(push|fetch|pull)\b/.test(command);
+export function bashInvokesRemoteGit(command: string): boolean {
+  const segments = command.split(/[|;&]+/);
+  for (const segment of segments) {
+    const trimmed = segment.trim();
+    const gitMatch = trimmed.match(/\bgit\b/);
+    if (!gitMatch) continue;
+
+    const afterGit = trimmed.slice(gitMatch.index! + 3).trim();
+    const tokens = afterGit.split(/\s+/).filter(Boolean);
+    for (let i = 0; i < tokens.length; i++) {
+      const token = tokens[i]!;
+      if (token === "push" || token === "fetch" || token === "pull") return true;
+      if (token.startsWith("--")) continue;
+      if (token.startsWith("-")) {
+        if (token === "-c" || token === "--config") i++;
+        continue;
+      }
+      break;
+    }
+  }
+  return false;
 }
 
 export function bashTool() {

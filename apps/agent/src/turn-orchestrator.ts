@@ -1,5 +1,5 @@
 import type Redis from "ioredis";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { agentRuns, sessions, prEvents, projects, projectRepos } from "@coding-agents/db";
 import { AppError } from "@coding-agents/shared";
 import { resolveLlmApiKeys, type ResolvedLlmKeys, type PlatformContainer, type PlatformDb, type EventBus } from "@coding-agents/platform";
@@ -28,14 +28,14 @@ const PLANNING_ENABLED = process.env.PLANNING_ENABLED === "true";
 const APPROVAL_POLL_INTERVAL_MS = 2000;
 const APPROVAL_TIMEOUT_MS = 10 * 60 * 1000;
 
-class AbortError extends Error {
+export class AbortError extends Error {
   constructor(public readonly parts: AssistantPart[]) {
     super("ABORTED");
     this.name = "AbortError";
   }
 }
 
-function isTimeoutAbort(error: unknown): boolean {
+export function isTimeoutAbort(error: unknown): boolean {
   if (error instanceof Error && error.name === "AbortError" && !(error instanceof AbortError)) {
     return true;
   }
@@ -80,7 +80,7 @@ export function createMergedAbortController(
   return { controller, cleanup };
 }
 
-function buildModelMessages(job: AgentJob): LLMMessage[] {
+export function buildModelMessages(job: AgentJob): LLMMessage[] {
   const raw = job.modelMessages?.length
     ? (job.modelMessages as LLMMessage[])
     : jobMessagesToLLMMessages(job.messages);
@@ -118,7 +118,7 @@ function buildSystemPromptForJob(job: AgentJob, isScratch = false): string {
   return appended ? `${base}\n\n${appended}` : base;
 }
 
-function buildWorkspaceContext(
+export function buildWorkspaceContext(
   sessionRow: { repoPath: string | null; branch: string | null; baseBranch: string | null; userId?: string } | undefined,
   ctx: ForgeAgentContext,
   options?: { workdir?: string; repos?: AgentJob["repos"] },
@@ -170,6 +170,19 @@ function buildWorkspaceContext(
   }
 
   return lines.join("\n");
+}
+
+export function computeFileStatsFromParts(parts: AssistantPart[]): {
+  linesAdded: number;
+  linesRemoved: number;
+} {
+  const linesAdded = parts
+    .filter((p) => p.type === "file_changed")
+    .reduce((sum, p) => sum + (Number(p.additions) || 0), 0);
+  const linesRemoved = parts
+    .filter((p) => p.type === "file_changed")
+    .reduce((sum, p) => sum + (Number(p.deletions) || 0), 0);
+  return { linesAdded, linesRemoved };
 }
 
 interface SessionRowContext {
@@ -336,53 +349,65 @@ async function runTurn(params: {
     }), reqId).catch(() => {});
   }, 15_000);
 
-  const { forgeContext, sessionRow } = await buildForgeContext({ job, db, events, adapter, assistantParts });
+  let cleanupAbort: (() => void) | undefined;
 
-  const isScratch = !sessionRow?.repoPath && !job.repos?.length;
-  const basePrompt = buildSystemPromptForJob(job, isScratch);
-  const workspaceBlock = buildWorkspaceContext(sessionRow, forgeContext, {
-    workdir: workspaceSetup.workdir,
-    repos: job.repos,
-  });
-  let systemPrompt = workspaceBlock ? `${basePrompt}\n\n${workspaceBlock}` : basePrompt;
+  try {
+    const { forgeContext, sessionRow } = await buildForgeContext({ job, db, events, adapter, assistantParts });
 
-  const projectBlock = await buildProjectBlock(db, sessionRow?.projectId ?? null);
-  if (projectBlock) {
-    systemPrompt = `${systemPrompt}\n\n${projectBlock}`;
-  }
+    const isScratch = !sessionRow?.repoPath && !job.repos?.length;
+    const basePrompt = buildSystemPromptForJob(job, isScratch);
+    const workspaceBlock = buildWorkspaceContext(sessionRow, forgeContext, {
+      workdir: workspaceSetup.workdir,
+      repos: job.repos,
+    });
+    let systemPrompt = workspaceBlock ? `${basePrompt}\n\n${workspaceBlock}` : basePrompt;
 
-  const skillsSuffix = !isScratch && job.resolvedSkills.length > 0
-    ? `## Important notes\n- All git operations target the forge. Authentication is automatic.\n- When creating a PR, push your branch first with the git tool, then use create_pull_request.\n- The repository is already cloned in your workspace. Use glob/grep to explore it.`
-    : "";
+    const projectBlock = await buildProjectBlock(db, sessionRow?.projectId ?? null);
+    if (projectBlock) {
+      systemPrompt = `${systemPrompt}\n\n${projectBlock}`;
+    }
 
-  const resultStore = new Map<string, string>();
-  const inputMessages = buildModelMessages(job);
+    const skillsSuffix = !isScratch && job.resolvedSkills.length > 0
+      ? `## Important notes\n- All git operations target the forge. Authentication is automatic.\n- When creating a PR, push your branch first with the git tool, then use create_pull_request.\n- The repository is already cloned in your workspace. Use glob/grep to explore it.`
+      : "";
 
-  const redactionSecrets: Record<string, string> = { ...job.resolvedSecrets };
-  if (job.resolvedEnv) {
-    for (const [key, value] of Object.entries(job.resolvedEnv)) {
-      if (key.startsWith("__SECRET__") && value) {
-        redactionSecrets[key] = value;
+    const resultStore = new Map<string, string>();
+    const inputMessages = buildModelMessages(job);
+
+    const redactionSecrets: Record<string, string> = { ...job.resolvedSecrets };
+    if (job.resolvedEnv) {
+      for (const [key, value] of Object.entries(job.resolvedEnv)) {
+        if (key.startsWith("__SECRET__") && value) {
+          redactionSecrets[key] = value;
+        }
       }
     }
-  }
 
-  console.log(
-    `[agent] runId=${job.runId} skills=${job.resolvedSkills.map((s) => s.slug).join(",")} messages=${inputMessages.length}`,
-  );
+    console.log(
+      `[agent] runId=${job.runId} skills=${job.resolvedSkills.map((s) => s.slug).join(",")} messages=${inputMessages.length}`,
+    );
 
-  const { controller: abortController, cleanup: cleanupAbort } = createMergedAbortController(events, job.runId, TURN_TIMEOUT_MS);
+    const { controller: abortController, cleanup } = createMergedAbortController(events, job.runId, TURN_TIMEOUT_MS);
+    cleanupAbort = cleanup;
 
-  const tools = buildToolSet(events, redis, db, job, provider, modelId, forgeContext, skillsSuffix, !isScratch, resultStore, llmKeys, {
-    signal: abortController.signal,
-    recorder,
-    secrets: redactionSecrets,
-    resultStore,
-  });
+    const tools = buildToolSet({
+      events,
+      redis,
+      db,
+      job,
+      provider,
+      modelId,
+      forgeContext,
+      skillsPromptSuffix: skillsSuffix,
+      hasRepo: !isScratch,
+      resultStore,
+      llmKeys,
+      signal: abortController.signal,
+      recorder,
+      secrets: redactionSecrets,
+    });
 
-  let result;
-  try {
-    result = await agentLoop({
+    const result = await agentLoop({
       provider,
       model: modelId,
       system: systemPrompt,
@@ -439,66 +464,65 @@ async function runTurn(params: {
         }
       },
     });
+
+    if (result.hitStepLimit) {
+      const limitMsg = `Reached the maximum step limit (${MAX_STEPS}). Send another message to continue where I left off.`;
+      assistantParts.push({ type: "text", text: limitMsg });
+      await publishEvent(events, job.runId, evt("agent:message", { content: limitMsg }), reqId);
+    }
+
+    return {
+      text: result.text,
+      assistantParts: mergeToolResults(assistantParts),
+      responseMessages: result.messages,
+      usage: {
+        promptTokens: result.totalUsage.inputTokens,
+        completionTokens: result.totalUsage.outputTokens,
+      },
+      hitStepLimit: result.hitStepLimit,
+      terminationReason: result.terminationReason,
+      assistantMessageId,
+      forgeContext,
+      sessionRow,
+    };
   } finally {
-    cleanupAbort();
+    cleanupAbort?.();
     clearInterval(heartbeatInterval);
     await recorder.close();
   }
-
-  if (result.hitStepLimit) {
-    const limitMsg = `Reached the maximum step limit (${MAX_STEPS}). Send another message to continue where I left off.`;
-    assistantParts.push({ type: "text", text: limitMsg });
-    await publishEvent(events, job.runId, evt("agent:message", { content: limitMsg }), reqId);
-  }
-
-  return {
-    text: result.text,
-    assistantParts: mergeToolResults(assistantParts),
-    responseMessages: result.messages,
-    usage: {
-      promptTokens: result.totalUsage.inputTokens,
-      completionTokens: result.totalUsage.outputTokens,
-    },
-    hitStepLimit: result.hitStepLimit,
-    terminationReason: result.terminationReason,
-    assistantMessageId,
-    forgeContext,
-    sessionRow,
-  };
 }
 
 export async function runAgentTurn(job: AgentJob, redis: Redis, platform: PlatformContainer): Promise<void> {
   const { db, events } = platform;
 
-  // Idempotency guard: atomically claim the run (queued → running).
-  // If another worker already claimed it, skip.
-  const [existingRun] = await db
-    .select({ status: agentRuns.status })
-    .from(agentRuns)
-    .where(eq(agentRuns.id, job.runId))
-    .limit(1);
+  const claimed = await db
+    .update(agentRuns)
+    .set({ status: "running", startedAt: new Date(), lastHeartbeatAt: new Date() })
+    .where(and(eq(agentRuns.id, job.runId), eq(agentRuns.status, "queued")))
+    .returning({ id: agentRuns.id });
 
-  if (existingRun) {
-    const terminalStatuses = new Set(["completed", "aborted", "failed", "error"]);
-    if (terminalStatuses.has(existingRun.status)) {
-      console.info(`[agent] Skipping already-terminal run ${job.runId} (status=${existingRun.status})`);
-      return;
-    }
-
-    if (existingRun.status === "running") {
-      console.info(`[agent] Skipping duplicate run ${job.runId} (already running)`);
-      return;
-    }
+  if (claimed.length === 0) {
+    const [existingRun] = await db
+      .select({ status: agentRuns.status })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, job.runId))
+      .limit(1);
+    console.info(`[agent] Skipping run ${job.runId} (status=${existingRun?.status ?? "unknown"})`);
+    return;
   }
 
-  const adapter = await getAdapter(job.sessionId);
+  await events.setKey(`run:${job.runId}:status`, "running", RUN_STATUS_TTL);
+
+  const setupHeartbeat = setInterval(async () => {
+    await updateHeartbeat(db, job.runId);
+  }, 15_000);
+
+  let adapter: SandboxAdapter | undefined;
   let summaryParts: AssistantPart[] = [];
   let prMeta = { prUrls: [] as string[], reposTouched: [] as string[], linesAdded: 0, linesRemoved: 0 };
 
   try {
-    await db.update(agentRuns).set({ status: "running", startedAt: new Date(), lastHeartbeatAt: new Date() }).where(eq(agentRuns.id, job.runId));
-    await events.setKey(`run:${job.runId}:status`, "running", RUN_STATUS_TTL);
-
+    adapter = await getAdapter(job.sessionId);
     const setupStart = Date.now();
     const workspaceSetup = await setupWorkspace({ job, db, adapter, events });
     console.info(`[agent][${job.runId}] workspace setup complete`, { durationMs: Date.now() - setupStart, ...workspaceSetup });
@@ -628,6 +652,7 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
     // Handle user-initiated abort
     if (error instanceof AbortError) {
       summaryParts = error.parts;
+      const fileStats = computeFileStatsFromParts(error.parts);
       console.info("[agent] run_terminal", { runId: job.runId, sessionId: job.sessionId, terminalReason: "stopped", status: "aborted" });
       await updateRunStatus(db, job, "aborted", undefined, "stopped");
       await persistSessionSummary({
@@ -636,6 +661,7 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
         outcome: "aborted",
         assistantParts: error.parts,
         ...prMeta,
+        ...fileStats,
       });
       await publishEvent(events, job.runId, evt("session:aborted", { terminalReason: "stopped" }), job.requestId);
       await events.setKey(`run:${job.runId}:status`, "aborted", RUN_STATUS_TTL);
@@ -645,6 +671,7 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
 
     // Handle turn timeout (native AbortError from fetch/signal)
     if (isTimeoutAbort(error)) {
+      const fileStats = computeFileStatsFromParts(summaryParts);
       console.info("[agent] run_terminal", { runId: job.runId, sessionId: job.sessionId, terminalReason: "timeout", status: "aborted" });
       await updateRunStatus(db, job, "aborted", undefined, "timeout");
       await persistSessionSummary({
@@ -653,6 +680,7 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
         outcome: "aborted",
         assistantParts: summaryParts,
         ...prMeta,
+        ...fileStats,
       });
       await publishEvent(events, job.runId, evt("session:aborted", { terminalReason: "timeout" }), job.requestId);
       await events.setKey(`run:${job.runId}:status`, "aborted", RUN_STATUS_TTL);
@@ -661,6 +689,7 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
     }
 
     const terminalReason = error instanceof AppError && error.retryable ? "provider_transient" : "internal";
+    const fileStats = computeFileStatsFromParts(summaryParts);
     console.info("[agent] run_terminal", { runId: job.runId, sessionId: job.sessionId, terminalReason, status: "failed", error: error instanceof Error ? error.message : String(error) });
     await updateRunStatus(db, job, "failed", undefined, terminalReason);
     await persistSessionSummary({
@@ -669,6 +698,7 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
       outcome: "failed",
       assistantParts: summaryParts,
       ...prMeta,
+      ...fileStats,
     });
     await publishEvent(
       events,
@@ -686,6 +716,9 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
     await expireRunStream(redis, job.runId);
     throw error;
   } finally {
-    await cleanupWorktrees(job, adapter);
+    clearInterval(setupHeartbeat);
+    if (adapter) {
+      await cleanupWorktrees(job, adapter);
+    }
   }
 }

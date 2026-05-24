@@ -8,7 +8,7 @@
     "start": "bun run src/worker.ts",
     "dev": "bun run --watch src/worker.ts",
     "typecheck": "tsc --noEmit",
-    "test": "bun test tests"
+    "test": "bun test --preload ./tests/preload.ts tests"
   },
   "dependencies": {
     "@coding-agents/db": "workspace:*",

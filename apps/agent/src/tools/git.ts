@@ -21,16 +21,9 @@ export function gitTool() {
 
       if (needsAuth && isForgeAgentContext(context)) {
         const { forge, repoOwner, repoName } = context;
-
         const authUrl = forge.git.authenticatedCloneUrl(repoOwner, repoName);
-        const plainUrl = forge.git.plainCloneUrl(repoOwner, repoName);
-
-        await adapter.git(sessionId, ["remote", "set-url", "origin", authUrl]);
-        try {
-          return await adapter.git(sessionId, args);
-        } finally {
-          await adapter.git(sessionId, ["remote", "set-url", "origin", plainUrl]).catch(() => {});
-        }
+        const modifiedArgs = args.map((arg) => (arg === "origin" ? authUrl : arg));
+        return await adapter.git(sessionId, modifiedArgs);
       }
 
       return await adapter.git(sessionId, args);

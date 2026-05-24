@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { sessions } from "@coding-agents/db";
-import type { PlatformDb, EventBus } from "@coding-agents/platform";
+import { DEFAULT_POLICY, redactCredentials, type PlatformDb, type EventBus } from "@coding-agents/platform";
 import type { SandboxAdapter } from "@coding-agents/sandbox";
 import { getForgeProviderForSession } from "./providers";
 import { publishEvent, evt } from "./run-persistence";
@@ -17,18 +17,16 @@ async function ensureScratchWorkspace(adapter: SandboxAdapter, userId: string): 
   console.log(`[scratch] ensured workspace for user ${userId}`);
 }
 
-class CloneError extends Error {
-  constructor(message: string) {
-    super(redactCredentials(message));
-    this.name = "CloneError";
-  }
+function redactCloneUrl(text: string): string {
+  const withoutUrls = text.replace(/https?:\/\/[^:]+:[^@]+@/g, "https://***:***@");
+  return redactCredentials(withoutUrls, DEFAULT_POLICY.credentials);
 }
 
-function redactCredentials(text: string): string {
-  return text.replace(
-    /https?:\/\/[^:]+:[^@]+@/g,
-    "https://***:***@",
-  );
+class CloneError extends Error {
+  constructor(message: string) {
+    super(redactCloneUrl(message));
+    this.name = "CloneError";
+  }
 }
 
 async function tryClone(

@@ -1,6 +1,6 @@
 import Redis from "ioredis";
 import { and, eq, lt } from "drizzle-orm";
-import { agentRuns, chats } from "@coding-agents/db";
+import { agentRuns } from "@coding-agents/db";
 import {
   ensureConsumerGroup,
   readOneJob,
@@ -11,10 +11,11 @@ import {
   type PlatformContainer,
   type ValidatedAgentJob,
 } from "@coding-agents/platform";
-import { runAgentTurn } from "./agent";
+import { runAgentTurn } from "./turn-orchestrator";
 import { fetchAvailableModels } from "./models";
 import { resolveActiveSkills } from "./skills";
 import { getForgeProviderForSession } from "./providers";
+import { finalizeRun } from "./run-persistence";
 import type { AgentJob } from "./types";
 
 const REDIS_URL = process.env.REDIS_URL;
@@ -33,7 +34,9 @@ const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT_RUNS ?? "10", 10);
 const WORKER_ID = `worker-${process.pid}-${Date.now()}`;
 const HEARTBEAT_TTL = 30;
 const RECLAIM_INTERVAL_MS = 60_000;
-const STALE_PENDING_MS = 10 * 60_000; // 10 minutes — agent turns can easily exceed 90s
+const TURN_TIMEOUT_MS = parseInt(process.env.TURN_TIMEOUT_MS ?? String(10 * 60 * 1000), 10);
+const STALE_PENDING_SAFETY_MARGIN_MS = 5 * 60_000;
+const STALE_PENDING_MS = TURN_TIMEOUT_MS + STALE_PENDING_SAFETY_MARGIN_MS;
 const BLOCK_READ_MS = 5_000;
 const DRAIN_TIMEOUT_MS = 60_000;
 
@@ -68,35 +71,23 @@ async function heartbeat(redis: Redis): Promise<void> {
 
 async function finalizeDeadLetter(platform: PlatformContainer, job: ValidatedAgentJob): Promise<void> {
   const { db, events } = platform;
-  const finishedAt = new Date();
-  const [row] = await db
-    .select({ startedAt: agentRuns.startedAt })
-    .from(agentRuns)
-    .where(eq(agentRuns.id, job.runId))
-    .limit(1);
-  const totalDurationMs =
-    row?.startedAt != null ? finishedAt.getTime() - row.startedAt.getTime() : null;
-
-  await db
-    .update(agentRuns)
-    .set({ status: "error", finishedAt, totalDurationMs, terminalReason: "worker_lost" })
-    .where(eq(agentRuns.id, job.runId));
-
-  await db
-    .update(chats)
-    .set({ activeRunId: null })
-    .where(eq(chats.id, job.chatId));
-
-  const payload = JSON.stringify({
-    type: "error",
-    code: "JOB_DEAD_LETTER",
-    message: "Job exceeded maximum retry attempts",
-    requestId: job.requestId,
-    retryable: false,
+  await finalizeRun({
+    db,
+    events,
+    runId: job.runId,
+    chatId: job.chatId,
+    sessionId: job.sessionId,
+    status: "error",
     terminalReason: "worker_lost",
+    eventType: "error",
+    eventPayload: {
+      code: "JOB_DEAD_LETTER",
+      message: "Job exceeded maximum retry attempts",
+      requestId: job.requestId,
+      retryable: false,
+      terminalReason: "worker_lost",
+    },
   });
-  await events.publish(job.runId, payload);
-  await events.setKey(`run:${job.runId}:status`, "error", 3600);
 }
 
 const STALE_RUN_CHECK_INTERVAL_MS = 60_000;
@@ -128,26 +119,22 @@ async function staleRunReaper(platform: PlatformContainer): Promise<void> {
       for (const run of staleRuns) {
         console.warn(`[worker] Finalizing stale run ${run.id} (no heartbeat for >${STALE_RUN_THRESHOLD_MS / 1000}s)`);
 
-        const finishedAt = new Date();
-        await db
-          .update(agentRuns)
-          .set({ status: "error", finishedAt, terminalReason: "worker_lost" })
-          .where(eq(agentRuns.id, run.id));
-
-        await db
-          .update(chats)
-          .set({ activeRunId: null })
-          .where(eq(chats.id, run.chatId));
-
-        const payload = JSON.stringify({
-          type: "error",
-          code: "STALE_RUN",
-          message: "Agent run lost (no heartbeat)",
-          retryable: false,
+        await finalizeRun({
+          db,
+          events,
+          runId: run.id,
+          chatId: run.chatId,
+          sessionId: run.sessionId,
+          status: "error",
           terminalReason: "worker_lost",
+          eventType: "error",
+          eventPayload: {
+            code: "STALE_RUN",
+            message: "Agent run lost (no heartbeat)",
+            retryable: false,
+            terminalReason: "worker_lost",
+          },
         });
-        await events.publish(run.id, payload);
-        await events.setKey(`run:${run.id}:status`, "error", 3600);
       }
     } catch (err) {
       console.error("[worker] Stale run reaper error:", err);
@@ -194,7 +181,7 @@ async function resolveJobSkills(
     });
     resolvedSkills = await resolveActiveSkills(forge, {
       activeSkills: activeRefs,
-      forgeUsername: (job as { forgeUsername?: string }).forgeUsername ?? "",
+      forgeUsername: job.forgeUsername ?? "",
       projectRepoPath: job.repos?.[0]?.repoPath ?? "",
     });
   } catch (err) {

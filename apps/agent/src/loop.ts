@@ -38,9 +38,9 @@ const COMPACTION_STALE_STEPS = 2;
 const MAX_EMPTY_RETRIES = 2;
 
 const LLM_MAX_RETRIES = 3;
-const LLM_RETRY_BACKOFF = [1000, 4000, 16000];
+const LLM_RETRY_BACKOFF = [1000, 4000];
 
-function isTransientLlmError(err: unknown): boolean {
+export function isTransientLlmError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const msg = err.message.toLowerCase();
   return (
@@ -57,7 +57,7 @@ function isTransientLlmError(err: unknown): boolean {
   );
 }
 
-async function chatWithRetry(
+export async function chatWithRetry(
   provider: LLMProvider,
   chatParams: Parameters<LLMProvider["chat"]>[0],
 ): Promise<LLMResponse> {
@@ -70,7 +70,7 @@ async function chatWithRetry(
       const errMsg = err instanceof Error ? err.message : String(err);
       const isRetryable = isTransientLlmError(err);
 
-      if (!isRetryable || attempt === LLM_MAX_RETRIES - 1) {
+      if (!isRetryable || attempt === LLM_MAX_RETRIES - 1 || chatParams.signal?.aborted) {
         throw err;
       }
 
@@ -126,6 +126,87 @@ function compactStaleToolResults(
       };
     }
   }
+}
+
+function recordToolOutcome(params: {
+  stepToolCalls: AgentStep["toolCalls"];
+  stepToolResults: AgentStep["toolResults"];
+  resultBlocks: ContentBlock[];
+  toolCallId: string;
+  toolName: string;
+  startedAt: Date;
+  status: "success" | "error";
+  output: unknown;
+  resultContent: unknown;
+  isError: boolean;
+  secrets?: Record<string, string>;
+  recorder?: ObservabilityRecorder;
+  toolHandle: ReturnType<NonNullable<ObservabilityRecorder>["startEvent"]> | null | undefined;
+  skipObservability?: boolean;
+}): void {
+  const {
+    stepToolCalls,
+    stepToolResults,
+    resultBlocks,
+    toolCallId,
+    toolName,
+    startedAt,
+    status,
+    output,
+    resultContent,
+    isError,
+    secrets,
+    recorder,
+    toolHandle,
+    skipObservability,
+  } = params;
+
+  const endedAt = new Date();
+  const durationMs = Math.max(0, endedAt.getTime() - startedAt.getTime());
+  stepToolCalls[stepToolCalls.length - 1] = {
+    ...stepToolCalls[stepToolCalls.length - 1],
+    startedAt,
+    endedAt,
+    durationMs,
+    status,
+  };
+
+  if (!skipObservability) {
+    if (status === "success") {
+      recorder?.endEvent(toolHandle ?? null, "success", {
+        toolCallId,
+        durationMs,
+        output,
+      });
+      recorder?.maybeRecordSandboxEvent(toolHandle?.id, toolName, "success", {
+        toolCallId,
+        durationMs,
+      });
+    } else {
+      const errorMsg =
+        typeof output === "object" && output !== null && "error" in output
+          ? String((output as { error: string }).error)
+          : String(output);
+      recorder?.endEvent(toolHandle ?? null, "error", {
+        toolCallId,
+        durationMs,
+        error: errorMsg,
+      });
+      recorder?.maybeRecordSandboxEvent(toolHandle?.id, toolName, "error", {
+        toolCallId,
+        durationMs,
+        error: errorMsg,
+      });
+    }
+  }
+
+  stepToolResults.push({ toolCallId, output });
+  resultBlocks.push({
+    type: "tool_result",
+    tool_use_id: toolCallId,
+    content: formatToolOutputForLlm(resultContent, secrets),
+    ...(isError ? { is_error: true } : {}),
+  });
 }
 
 export async function agentLoop(params: {
@@ -297,109 +378,77 @@ export async function agentLoop(params: {
       const tool = tools.get(toolName);
       if (!tool) {
         const errorResult = { error: `Unknown tool: ${toolName}` };
-        const endedAt = new Date();
-        const durationMs = Math.max(0, endedAt.getTime() - startedAt.getTime());
-        stepToolCalls[stepToolCalls.length - 1] = {
-          ...stepToolCalls[stepToolCalls.length - 1],
+        recordToolOutcome({
+          stepToolCalls,
+          stepToolResults,
+          resultBlocks,
+          toolCallId,
+          toolName,
           startedAt,
-          endedAt,
-          durationMs,
           status: "error",
-        };
-        recorder?.endEvent(toolHandle ?? null, "error", {
-          toolCallId,
-          durationMs,
-          error: errorResult.error,
-        });
-        recorder?.maybeRecordSandboxEvent(toolHandle?.id, toolName, "error", {
-          toolCallId,
-          durationMs,
-          error: errorResult.error,
-        });
-        stepToolResults.push({ toolCallId, output: errorResult });
-        resultBlocks.push({
-          type: "tool_result",
-          tool_use_id: toolCallId,
-          content: formatToolOutputForLlm(errorResult, secrets),
-          is_error: true,
+          output: errorResult,
+          resultContent: errorResult,
+          isError: true,
+          secrets,
+          recorder,
+          toolHandle,
         });
         continue;
       }
 
       try {
         const output = await tool.execute(input, toolCallId, { signal });
-        const endedAt = new Date();
-        const durationMs = Math.max(0, endedAt.getTime() - startedAt.getTime());
-        stepToolCalls[stepToolCalls.length - 1] = {
-          ...stepToolCalls[stepToolCalls.length - 1],
+        recordToolOutcome({
+          stepToolCalls,
+          stepToolResults,
+          resultBlocks,
+          toolCallId,
+          toolName,
           startedAt,
-          endedAt,
-          durationMs,
           status: "success",
-        };
-        recorder?.endEvent(toolHandle ?? null, "success", {
-          toolCallId,
-          durationMs,
           output,
-        });
-        recorder?.maybeRecordSandboxEvent(toolHandle?.id, toolName, "success", {
-          toolCallId,
-          durationMs,
-        });
-        const serialized = formatToolOutputForLlm(output, secrets);
-        stepToolResults.push({ toolCallId, output });
-        resultBlocks.push({
-          type: "tool_result",
-          tool_use_id: toolCallId,
-          content: serialized,
+          resultContent: output,
+          isError: false,
+          secrets,
+          recorder,
+          toolHandle,
         });
       } catch (err) {
         if (signal?.aborted) {
-          const endedAt = new Date();
-          const durationMs = Math.max(0, endedAt.getTime() - startedAt.getTime());
-          stepToolCalls[stepToolCalls.length - 1] = {
-            ...stepToolCalls[stepToolCalls.length - 1],
+          recordToolOutcome({
+            stepToolCalls,
+            stepToolResults,
+            resultBlocks,
+            toolCallId,
+            toolName,
             startedAt,
-            endedAt,
-            durationMs,
             status: "error",
-          };
-          stepToolResults.push({ toolCallId, output: { error: "interrupted", interrupted: true } });
-          resultBlocks.push({
-            type: "tool_result",
-            tool_use_id: toolCallId,
-            content: formatToolOutputForLlm({ error: "Tool execution interrupted" }, secrets),
-            is_error: true,
+            output: { error: "interrupted", interrupted: true },
+            resultContent: { error: "Tool execution interrupted" },
+            isError: true,
+            secrets,
+            recorder,
+            toolHandle,
+            skipObservability: true,
           });
           break;
         }
         const errorMsg = err instanceof Error ? err.message : String(err);
         const errorResult = { error: errorMsg };
-        const endedAt = new Date();
-        const durationMs = Math.max(0, endedAt.getTime() - startedAt.getTime());
-        stepToolCalls[stepToolCalls.length - 1] = {
-          ...stepToolCalls[stepToolCalls.length - 1],
+        recordToolOutcome({
+          stepToolCalls,
+          stepToolResults,
+          resultBlocks,
+          toolCallId,
+          toolName,
           startedAt,
-          endedAt,
-          durationMs,
           status: "error",
-        };
-        recorder?.endEvent(toolHandle ?? null, "error", {
-          toolCallId,
-          durationMs,
-          error: errorMsg,
-        });
-        recorder?.maybeRecordSandboxEvent(toolHandle?.id, toolName, "error", {
-          toolCallId,
-          durationMs,
-          error: errorMsg,
-        });
-        stepToolResults.push({ toolCallId, output: errorResult });
-        resultBlocks.push({
-          type: "tool_result",
-          tool_use_id: toolCallId,
-          content: formatToolOutputForLlm(errorResult, secrets),
-          is_error: true,
+          output: errorResult,
+          resultContent: errorResult,
+          isError: true,
+          secrets,
+          recorder,
+          toolHandle,
         });
       }
     }

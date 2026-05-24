@@ -43,6 +43,7 @@ export const AgentJobSchema = z.object({
   workspaceId: z.string().optional(),
   resolvedEnv: z.record(z.string(), z.string()).optional(),
   resolvedSecrets: z.record(z.string(), z.string()).optional(),
+  forgeUsername: z.string().optional(),
   resolvedSkills: z.array(ActiveSkillRefSchema).optional(),
   repos: z.array(z.object({
     repoPath: z.string(),

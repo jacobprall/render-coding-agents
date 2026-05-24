@@ -19,9 +19,9 @@ export function getToolResultTool(
     execute: async ({ tool_call_id }) => {
       const stored = resultStore.get(tool_call_id);
       if (!stored) {
-        return { error: `No stored result for tool_call_id "${tool_call_id}". It may not have been compacted or the ID is incorrect.` };
+        return { success: false, error: `No stored result for tool_call_id "${tool_call_id}".` };
       }
-      return formatToolOutputForLlm(stored, secrets);
+      return { success: true, content: formatToolOutputForLlm(stored, secrets) };
     },
   });
 }

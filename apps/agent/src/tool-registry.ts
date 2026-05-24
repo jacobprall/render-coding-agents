@@ -118,25 +118,41 @@ function buildSubagentModelResolver(
   };
 }
 
-export function buildToolSet(
-  events: EventBus,
-  redis: Redis,
-  db: PlatformDb,
-  job: AgentJob,
-  provider: LLMProvider,
-  modelId: string,
-  forgeContext: ForgeAgentContext,
-  skillsPromptSuffix: string,
-  hasRepo = true,
-  resultStore?: Map<string, string>,
-  llmKeys?: ResolvedLlmKeys,
-  parentSignals?: {
-    signal?: AbortSignal;
-    recorder?: ObservabilityRecorder;
-    secrets?: Record<string, string>;
-    resultStore?: Map<string, string>;
-  },
-): Map<string, AgentTool> {
+export interface BuildToolSetOptions {
+  events: EventBus;
+  redis: Redis;
+  db: PlatformDb;
+  job: AgentJob;
+  provider: LLMProvider;
+  modelId: string;
+  forgeContext: ForgeAgentContext;
+  skillsPromptSuffix: string;
+  hasRepo?: boolean;
+  resultStore?: Map<string, string>;
+  llmKeys?: ResolvedLlmKeys;
+  signal?: AbortSignal;
+  recorder?: ObservabilityRecorder;
+  secrets?: Record<string, string>;
+}
+
+export function buildToolSet(options: BuildToolSetOptions): Map<string, AgentTool> {
+  const {
+    events,
+    redis,
+    db,
+    job,
+    provider,
+    modelId,
+    forgeContext,
+    skillsPromptSuffix,
+    hasRepo = true,
+    resultStore = new Map<string, string>(),
+    llmKeys,
+    signal,
+    recorder,
+    secrets,
+  } = options;
+
   const reqId = job.requestId;
   const makeSubToolConfigs = () => buildSubagentToolConfigs(hasRepo);
   const publishFn = async (event: StreamEvent) => {
@@ -161,12 +177,12 @@ export function buildToolSet(
       modelResolver,
       forgeContext,
       skillsPromptSuffix,
-      parentSignals,
+      { signal, recorder, secrets, resultStore },
     ),
     todo_write: todoWriteTool(),
     ask_user_question: askUserQuestionTool(job.runId, () => redis.duplicate(), publishFn),
     load_skill: loadSkillTool(),
-    get_tool_result: getToolResultTool(resultStore ?? new Map(), job.resolvedSecrets),
+    get_tool_result: getToolResultTool(resultStore, job.resolvedSecrets),
   };
 
   if (!hasRepo) {
