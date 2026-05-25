@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import {
   agentRuns,
   chatMessages,
@@ -453,6 +453,8 @@ export class SessionService {
         title: sessions.title,
         repoPath: sessions.repoPath,
         branch: sessions.branch,
+        baseBranch: sessions.baseBranch,
+        forgeType: sessions.forgeType,
         activeSkills: sessions.activeSkills,
         forgeUsername: sessions.forgeUsername,
         projectConfig: sessions.projectConfig,
@@ -485,6 +487,7 @@ export class SessionService {
     }
 
     // Get or create the most recent chat
+    let isFirstMessage = false;
     let [chatRow] = await this.db
       .select()
       .from(chats)
@@ -493,6 +496,7 @@ export class SessionService {
       .limit(1);
 
     if (!chatRow) {
+      isFirstMessage = true;
       const chatId = crypto.randomUUID();
       [chatRow] = await this.db
         .insert(chats)
@@ -621,16 +625,18 @@ export class SessionService {
       modelId,
       requestId,
       maxRetries: 3,
+      sessionContext: {
+        repoPath: sessionRow.repoPath,
+        branch: sessionRow.branch,
+        baseBranch: sessionRow.baseBranch,
+        title: sessionRow.title,
+        forgeType: sessionRow.forgeType,
+        projectId: sessionRow.projectId,
+      },
       ...workspaceJobPayload,
     });
 
-    // Detect first message (caller can use this to trigger auto-title)
-    const [{ value: msgCount }] = await this.db
-      .select({ value: count() })
-      .from(chatMessages)
-      .where(eq(chatMessages.chatId, chatRow.id));
-
-    return { messageId, runId, isFirstMessage: msgCount <= 1 };
+    return { messageId, runId, isFirstMessage };
   }
 
   // -------------------------------------------------------------------------

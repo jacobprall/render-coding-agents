@@ -91,8 +91,8 @@ export function MessageBubble({
       <div className="flex flex-col items-end gap-1 [content-visibility:auto]">
         <div
           className={cn(
-            "max-w-[80%] rounded-lg bg-[hsl(220,8%,16%)] px-4 py-2.5",
-            "text-[15px] leading-relaxed text-text-primary",
+            "max-w-[80%] rounded-lg bg-accent px-4 py-2.5",
+            "text-[15px] leading-relaxed text-accent-foreground",
           )}
         >
           {message.parts

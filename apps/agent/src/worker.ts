@@ -170,15 +170,23 @@ async function resolveJobSkills(
   job: ValidatedAgentJob,
   platform: PlatformContainer,
 ): Promise<AgentJob> {
-  const { db } = platform;
   const activeRefs = job.activeSkillRefs ?? [];
+
+  if (activeRefs.length === 0) {
+    return { ...job, resolvedSkills: [] };
+  }
+
+  const allBuiltin = activeRefs.every((r) => r.source === "builtin");
 
   let resolvedSkills: Awaited<ReturnType<typeof resolveActiveSkills>> = [];
   try {
-    const forge = await getForgeProviderForSession(db, {
-      forgeType: "github",
-      userId: job.userId,
-    });
+    // Builtin skills are an in-memory lookup — no forge/DB needed.
+    const forge = allBuiltin
+      ? (null as unknown as Parameters<typeof resolveActiveSkills>[0])
+      : await getForgeProviderForSession(platform.db, {
+          forgeType: "github",
+          userId: job.userId,
+        });
     resolvedSkills = await resolveActiveSkills(forge, {
       activeSkills: activeRefs,
       forgeUsername: job.forgeUsername ?? "",

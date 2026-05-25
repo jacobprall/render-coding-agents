@@ -7,6 +7,8 @@ import { publishEvent, evt } from "./run-persistence";
 import { shellEscape } from "./lib/shell-escape";
 import type { AgentJob } from "./types";
 
+const workspaceReadyCache = new Set<string>();
+
 export function repoNameFromPath(repoPath: string): string {
   return repoPath.split("/").pop() ?? repoPath;
 }
@@ -226,80 +228,102 @@ export async function setupWorkspace(params: {
   const sessionId = job.sessionId;
 
   if (!job.repos?.length) {
-    const needsSetup = !(await sessionWorkspaceHasFiles(adapter, sessionId));
-    if (needsSetup) {
-      await publishEvent(events, job.runId, evt("step:started", { stepName: "mirror_check", stepId: "setup" }), job.requestId);
-      const cloneStart = Date.now();
-      await ensureRepoCloned(db, job, adapter);
-      await publishEvent(
-        events,
-        job.runId,
-        evt("step:completed", { stepName: "mirror_check", stepId: "setup", durationMs: Date.now() - cloneStart }),
-        job.requestId,
-      );
+    const cacheKey = `scratch:${sessionId}`;
+    if (!workspaceReadyCache.has(cacheKey)) {
+      const needsSetup = !(await sessionWorkspaceHasFiles(adapter, sessionId));
+      if (needsSetup) {
+        await publishEvent(events, job.runId, evt("step:started", { stepName: "mirror_check", stepId: "setup" }), job.requestId);
+        const cloneStart = Date.now();
+        await ensureRepoCloned(db, job, adapter);
+        await publishEvent(
+          events,
+          job.runId,
+          evt("step:completed", { stepName: "mirror_check", stepId: "setup", durationMs: Date.now() - cloneStart }),
+          job.requestId,
+        );
+      }
+      workspaceReadyCache.add(cacheKey);
     }
     return { workdir: `/workspace/${sessionId}`, repoCount: 1 };
   }
 
   const repos = job.repos;
   const workspaceId = job.workspaceId ?? sessionId;
-  const branchName = (await db.select({ branch: sessions.branch }).from(sessions).where(eq(sessions.id, sessionId)).limit(1))[0]
-    ?.branch ?? `agent/${sessionId}`;
+  const branchName = job.sessionContext?.branch ?? `agent/${sessionId}`;
 
-  const allReady = await Promise.all(
-    repos.map((repo) => repoDirReady(adapter, sessionId, repoNameFromPath(repo.repoPath))),
+  // Check if all repos are cached as ready (skip sandbox calls entirely)
+  const allCached = repos.every((r) =>
+    workspaceReadyCache.has(`repo:${sessionId}:${repoNameFromPath(r.repoPath)}`),
   );
-  if (allReady.every(Boolean)) {
+
+  if (allCached) {
     refreshMirrorsInBackground(adapter, job, repos);
   } else {
-    for (const repo of repos) {
-      const repoName = repoNameFromPath(repo.repoPath);
-      if (await repoDirReady(adapter, sessionId, repoName)) continue;
+    const allReady = await Promise.all(
+      repos.map((repo) => repoDirReady(adapter, sessionId, repoNameFromPath(repo.repoPath))),
+    );
+    // Cache successful checks
+    repos.forEach((repo, i) => {
+      if (allReady[i]) {
+        workspaceReadyCache.add(`repo:${sessionId}:${repoNameFromPath(repo.repoPath)}`);
+      }
+    });
 
-      const [owner, name] = repo.repoPath.split("/");
-      if (!owner || !name) continue;
-
-      const forge = await getForgeProviderForSession(db, {
-        forgeType: repo.forgeType ?? "github",
-        userId: job.userId,
-      });
-      const cloneUrl = forge.git.authenticatedCloneUrl(owner, name);
-
-      try {
-        await publishEvent(events, job.runId, evt("step:started", { stepName: "mirror_check", stepId: "setup" }), job.requestId);
-        const mirrorStart = Date.now();
-        // ensureMirror performs `fetch --all --prune` when the mirror already exists,
-        // guaranteeing the worktree will be based on fresh upstream refs.
-        const mirror = await adapter.ensureMirror(sessionId, workspaceId, repo.repoPath, cloneUrl);
-        await publishEvent(events, job.runId, evt("step:completed", { stepName: "mirror_check", stepId: "setup", durationMs: Date.now() - mirrorStart }), job.requestId);
-
-        if (mirror.status === "error") {
-          throw new Error("mirror unavailable");
+    if (allReady.every(Boolean)) {
+      refreshMirrorsInBackground(adapter, job, repos);
+    } else {
+      for (const repo of repos) {
+        const repoName = repoNameFromPath(repo.repoPath);
+        if (await repoDirReady(adapter, sessionId, repoName)) {
+          workspaceReadyCache.add(`repo:${sessionId}:${repoName}`);
+          continue;
         }
 
-        await publishEvent(events, job.runId, evt("step:started", { stepName: "worktree_create", stepId: "setup" }), job.requestId);
-        const wtStart = Date.now();
-        await adapter.createWorktree(sessionId, workspaceId, repo.repoPath, branchName, repo.defaultBranch);
-        await publishEvent(events, job.runId, evt("step:completed", { stepName: "worktree_create", stepId: "setup", durationMs: Date.now() - wtStart }), job.requestId);
-        console.log(`[worktree] created for ${repo.repoPath} in session ${sessionId}`);
-      } catch (worktreeErr) {
-        const reason = worktreeErr instanceof Error ? worktreeErr.message : "worktree failed";
-        console.warn(`[worktree] fallback to clone for ${repo.repoPath}:`, reason);
+        const [owner, name] = repo.repoPath.split("/");
+        if (!owner || !name) continue;
+
+        const forge = await getForgeProviderForSession(db, {
+          forgeType: repo.forgeType ?? "github",
+          userId: job.userId,
+        });
+        const cloneUrl = forge.git.authenticatedCloneUrl(owner, name);
+
         try {
-          await publishEvent(events, job.runId, evt("step:started", { stepName: "fallback_clone", stepId: "setup" }), job.requestId);
-          const fallbackStart = Date.now();
-          await cloneRepoIntoSubdir({
-            adapter,
-            db,
-            job,
-            repoPath: repo.repoPath,
-            defaultBranch: repo.defaultBranch,
-            branchName,
-          });
-          const fallbackDuration = Date.now() - fallbackStart;
-          await emitDegradedCloneEvent(events, job, repo.repoPath, reason, fallbackDuration);
-        } catch (cloneErr) {
-          console.error(`[agent] Failed to set up repo ${repo.repoPath}:`, cloneErr);
+          await publishEvent(events, job.runId, evt("step:started", { stepName: "mirror_check", stepId: "setup" }), job.requestId);
+          const mirrorStart = Date.now();
+          const mirror = await adapter.ensureMirror(sessionId, workspaceId, repo.repoPath, cloneUrl);
+          await publishEvent(events, job.runId, evt("step:completed", { stepName: "mirror_check", stepId: "setup", durationMs: Date.now() - mirrorStart }), job.requestId);
+
+          if (mirror.status === "error") {
+            throw new Error("mirror unavailable");
+          }
+
+          await publishEvent(events, job.runId, evt("step:started", { stepName: "worktree_create", stepId: "setup" }), job.requestId);
+          const wtStart = Date.now();
+          await adapter.createWorktree(sessionId, workspaceId, repo.repoPath, branchName, repo.defaultBranch);
+          await publishEvent(events, job.runId, evt("step:completed", { stepName: "worktree_create", stepId: "setup", durationMs: Date.now() - wtStart }), job.requestId);
+          console.log(`[worktree] created for ${repo.repoPath} in session ${sessionId}`);
+          workspaceReadyCache.add(`repo:${sessionId}:${repoName}`);
+        } catch (worktreeErr) {
+          const reason = worktreeErr instanceof Error ? worktreeErr.message : "worktree failed";
+          console.warn(`[worktree] fallback to clone for ${repo.repoPath}:`, reason);
+          try {
+            await publishEvent(events, job.runId, evt("step:started", { stepName: "fallback_clone", stepId: "setup" }), job.requestId);
+            const fallbackStart = Date.now();
+            await cloneRepoIntoSubdir({
+              adapter,
+              db,
+              job,
+              repoPath: repo.repoPath,
+              defaultBranch: repo.defaultBranch,
+              branchName,
+            });
+            const fallbackDuration = Date.now() - fallbackStart;
+            await emitDegradedCloneEvent(events, job, repo.repoPath, reason, fallbackDuration);
+            workspaceReadyCache.add(`repo:${sessionId}:${repoName}`);
+          } catch (cloneErr) {
+            console.error(`[agent] Failed to set up repo ${repo.repoPath}:`, cloneErr);
+          }
         }
       }
     }

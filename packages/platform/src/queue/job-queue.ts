@@ -51,6 +51,14 @@ export const AgentJobSchema = z.object({
     defaultBranch: z.string(),
     isPrimary: z.boolean(),
   })).optional(),
+  sessionContext: z.object({
+    repoPath: z.string().nullable(),
+    branch: z.string().nullable(),
+    baseBranch: z.string().nullable(),
+    title: z.string(),
+    forgeType: z.string().nullable(),
+    projectId: z.string().nullable(),
+  }).optional(),
 });
 
 export type ValidatedAgentJob = z.infer<typeof AgentJobSchema>;

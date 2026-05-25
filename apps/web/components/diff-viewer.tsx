@@ -397,7 +397,7 @@ function DiffFileAccordionItem({ file, index }: { file: DiffFile; index: number 
         </span>
       </button>
       {open ? (
-        <div className="overflow-x-auto overscroll-x-contain max-h-128 border-t border-stroke-subtle" style={{ WebkitOverflowScrolling: "touch" as unknown as string }}>
+        <div className="overflow-x-auto overscroll-x-contain max-h-128 border-t border-stroke-subtle" style={{ WebkitOverflowScrolling: "touch" }}>
           <table className="w-full border-collapse">
             <tbody>
               {file.hunks.length === 0 ? (
@@ -462,7 +462,7 @@ export function SingleFileDiffViewer({ diff, maxLines }: SingleFileDiffViewerPro
 
   return (
     <div className="border border-stroke-subtle bg-surface-1 overflow-hidden text-[12px] font-mono md:text-[13px]">
-      <div className="overflow-x-auto overscroll-x-contain max-h-128" style={{ WebkitOverflowScrolling: "touch" as unknown as string }}>
+      <div className="overflow-x-auto overscroll-x-contain max-h-128" style={{ WebkitOverflowScrolling: "touch" }}>
         <table className="w-full border-collapse">
           <tbody>{hunks.flatMap((hunk, hi) => renderHunkRows(hunk, hi, "sf"))}</tbody>
         </table>

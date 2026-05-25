@@ -38,4 +38,13 @@ export interface AgentJob {
     defaultBranch: string;
     isPrimary: boolean;
   }>;
+  /** Pre-fetched session row fields, avoids re-querying the DB in the worker. */
+  sessionContext?: {
+    repoPath: string | null;
+    branch: string | null;
+    baseBranch: string | null;
+    title: string;
+    forgeType: string | null;
+    projectId: string | null;
+  };
 }

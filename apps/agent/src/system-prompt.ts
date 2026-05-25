@@ -178,15 +178,12 @@ export function buildAgentSystemPrompt(opts: SystemPromptOpts): string {
       .map((s) => `| ${s.source}/${s.slug} | ${s.name} | ${s.description} |`)
       .join("\n");
     parts.push(
-      `\n# Available skills\n\nYou have access to specialized knowledge through skills. Use \`load_skill\` to read a skill's full content when you need its guidance.\n\n| ID | Name | Summary |\n|----|------|---------|\n${rows}`,
+      `\n# Available skills\n\nYou have specialized knowledge available through skills. When a task involves a listed technology or pattern, use \`load_skill\` to read the full guidance before proceeding. Do not guess — load the skill.\n\n| ID | Name | Summary |\n|----|------|---------|\n${rows}`,
     );
   }
 
-  if (!opts.isScratch && opts.resolvedSkillContents && opts.resolvedSkillContents.length > 0) {
-    for (const skill of opts.resolvedSkillContents) {
-      parts.push(`\n# Skill: ${skill.slug}\n\n${skill.content}`);
-    }
-  }
+  // Skill bodies are NOT injected into the system prompt. The agent uses
+  // `load_skill` to pull full content on demand, keeping the prompt small.
 
   if (opts.projectContext) {
     parts.push(`\n# Project context\n${opts.projectContext}`);

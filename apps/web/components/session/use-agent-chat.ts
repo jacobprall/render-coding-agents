@@ -24,7 +24,7 @@ import {
 } from "./chat-reducer";
 
 const MAX_SEEN_IDS = 5000;
-const NO_RUN_RETRY_DELAY_MS = 2000;
+const NO_RUN_RETRY_DELAY_MS = 200;
 
 export type { Message, LiveFileChange, AskUserPrompt, ChatStatus, SetupPhase };
 
@@ -263,6 +263,7 @@ export function useAgentChat({
 
         const { ok, data } = await apiFetch<{
           error?: string;
+          runId?: string;
           isFirstMessage?: boolean;
         }>(
           `/api/sessions/${sessionId}/message`,
@@ -278,6 +279,10 @@ export function useAgentChat({
                 : "Failed to send message",
           });
           return;
+        }
+
+        if (data.runId) {
+          dispatch({ type: "SET_ACTIVE_RUN_ID", runId: data.runId });
         }
 
         if (data.isFirstMessage) {

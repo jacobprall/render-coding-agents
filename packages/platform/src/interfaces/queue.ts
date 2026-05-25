@@ -22,10 +22,18 @@ export interface QueueAdapter {
  * Redis Streams implementation of QueueAdapter.
  */
 export class RedisQueueAdapter implements QueueAdapter {
+  private groupReady: Promise<void> | null = null;
+
   constructor(private redis: Redis) {}
 
   async ensureGroup(): Promise<void> {
-    await ensureConsumerGroup(this.redis);
+    if (!this.groupReady) {
+      this.groupReady = ensureConsumerGroup(this.redis).catch((err) => {
+        this.groupReady = null;
+        throw err;
+      });
+    }
+    return this.groupReady;
   }
 
   async enqueue(job: ValidatedAgentJob): Promise<void> {

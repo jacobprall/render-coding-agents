@@ -205,19 +205,23 @@ async function buildForgeContext(params: {
   const { job, db, events, adapter, assistantParts } = params;
   const reqId = job.requestId;
 
-  const [sessionRow] = await db
-    .select({
-      repoPath: sessions.repoPath,
-      branch: sessions.branch,
-      baseBranch: sessions.baseBranch,
-      title: sessions.title,
-      forgeType: sessions.forgeType,
-      userId: sessions.userId,
-      projectId: sessions.projectId,
-    })
-    .from(sessions)
-    .where(eq(sessions.id, job.sessionId))
-    .limit(1);
+  // Prefer pre-fetched session context from job payload (set by sendMessage).
+  // Fall back to a DB query for backward compat with already-queued jobs.
+  const sessionRow: SessionRowContext | undefined = job.sessionContext
+    ? { ...job.sessionContext, userId: job.userId }
+    : (await db
+        .select({
+          repoPath: sessions.repoPath,
+          branch: sessions.branch,
+          baseBranch: sessions.baseBranch,
+          title: sessions.title,
+          forgeType: sessions.forgeType,
+          userId: sessions.userId,
+          projectId: sessions.projectId,
+        })
+        .from(sessions)
+        .where(eq(sessions.id, job.sessionId))
+        .limit(1))[0];
 
   const isScratch = !sessionRow?.repoPath && !job.repos?.length;
 
@@ -522,7 +526,13 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
   let prMeta = { prUrls: [] as string[], reposTouched: [] as string[], linesAdded: 0, linesRemoved: 0 };
 
   try {
-    adapter = await getAdapter(job.sessionId);
+    // Parallelize adapter init and LLM key resolution — they're independent.
+    const [resolvedAdapter, llmKeys] = await Promise.all([
+      getAdapter(job.sessionId),
+      resolveLlmApiKeys(db, job.userId),
+    ]);
+    adapter = resolvedAdapter;
+
     const setupStart = Date.now();
     const workspaceSetup = await setupWorkspace({ job, db, adapter, events });
     console.info(`[agent][${job.runId}] workspace setup complete`, { durationMs: Date.now() - setupStart, ...workspaceSetup });
@@ -572,8 +582,6 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
         return;
       }
     }
-
-    const llmKeys = await resolveLlmApiKeys(db, job.userId);
 
     const {
       assistantParts,
