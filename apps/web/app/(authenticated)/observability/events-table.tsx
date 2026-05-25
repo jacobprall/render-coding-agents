@@ -11,7 +11,7 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 import { ChevronRight, Activity, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
-import { EmptyState } from "@/components/primitives/empty-state";
+import { EmptyState } from "@/components/ui/empty-state";
 import { columns } from "./columns";
 import type { EventRow } from "./use-events";
 

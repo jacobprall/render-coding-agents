@@ -1,6 +1,7 @@
 import { defineTool } from "./define-tool";
 import { z } from "zod";
 import { getSandboxContext } from "../context/agent-context";
+import { toErrorResult } from "./tool-helpers";
 import { truncateLargeString, MAX_READ_FILE_CHARS } from "./truncation";
 
 const readFileInputSchema = z.object({
@@ -16,10 +17,11 @@ export function readFileTool() {
       try {
         const file = await adapter.readFile(sessionId, path);
         if (!file.exists) {
-          return { content: "", exists: false as const };
+          return { success: true as const, content: "", exists: false as const };
         }
         const truncated = truncateLargeString(file.content, MAX_READ_FILE_CHARS);
         return {
+          success: true as const,
           content: truncated.value,
           exists: true as const,
           ...(truncated.truncated
@@ -31,8 +33,8 @@ export function readFileTool() {
               }
             : {}),
         };
-      } catch {
-        return { content: "", exists: false as const };
+      } catch (err) {
+        return toErrorResult(err);
       }
     },
   });

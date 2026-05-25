@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import useSWR from "swr";
-import { Select } from "@/components/primitives/select";
+import { Select } from "@/components/ui/select-native";
 import { apiFetch } from "@/lib/api-fetch";
 
 interface ApiKeyRow {

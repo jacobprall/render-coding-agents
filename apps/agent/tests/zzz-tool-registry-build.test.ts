@@ -58,7 +58,6 @@ function createBuildToolSetOptions(overrides: {
     provider: {} as LLMProvider,
     modelId: "anthropic/claude-sonnet-4-20250514",
     forgeContext: {} as ForgeAgentContext,
-    skillsPromptSuffix: "",
     hasRepo: overrides.hasRepo ?? true,
     resultStore: overrides.resultStore,
   };

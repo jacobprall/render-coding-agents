@@ -14,19 +14,19 @@ import type { AgentJob, AssistantPart } from "./types";
 import { isDeliverComplete, transitionToComplete } from "./lib/deliver";
 import { getForgeProviderForSession, getAdapter } from "./providers";
 import { buildToolSet } from "./tool-registry";
-import { publishEvent, evt, expireRunStream, mergeToolResults, updateRunStatus, upsertAssistantMessage, updateHeartbeat } from "./run-persistence";
+import { publishEvent, evt, mergeToolResults, upsertAssistantMessage } from "./run-persistence";
 import { agentLoop } from "./loop";
 import { ObservabilityRecorder } from "./observability";
-import { runPlanner } from "./planner";
+import type { PlanResult } from "./planner";
 import { setupWorkspace, repoNameFromPath } from "./workspace";
-import { createPrsForChangedRepos, persistSessionSummary } from "./pr-manager";
+import { createPrsForChangedRepos } from "./pr-manager";
+import { runPlanningPhaseIfNeeded } from "./lib/planning-phase";
+import { startRunHeartbeat } from "./lib/run-heartbeat";
+import { finalizeRunTerminal, RUN_STATUS_TTL } from "./lib/run-terminal";
 
 const MAX_STEPS = parseInt(process.env.MAX_AGENT_STEPS ?? "100", 10);
-const RUN_STATUS_TTL = 3600;
 const TURN_TIMEOUT_MS = parseInt(process.env.TURN_TIMEOUT_MS ?? String(10 * 60 * 1000), 10);
 const PLANNING_ENABLED = process.env.PLANNING_ENABLED === "true";
-const APPROVAL_POLL_INTERVAL_MS = 2000;
-const APPROVAL_TIMEOUT_MS = 10 * 60 * 1000;
 
 export class AbortError extends Error {
   constructor(public readonly parts: AssistantPart[]) {
@@ -103,13 +103,8 @@ function buildSystemPromptForJob(job: AgentJob, isScratch = false): string {
 
   const skillIndex = listBuiltinSummaries();
 
-  const resolvedSkillContents = job.resolvedSkills
-    ?.filter((s) => s.content)
-    .map((s) => ({ slug: s.slug, content: s.content! }));
-
   const base = buildAgentSystemPrompt({
     skillIndex,
-    resolvedSkillContents,
     projectContext: job.projectContext,
     projectConfig: job.projectConfig,
     forgeLabel: FORGE_LABELS.github,
@@ -318,6 +313,8 @@ async function runTurn(params: {
   adapter: SandboxAdapter;
   llmKeys: ResolvedLlmKeys;
   workspaceSetup: { workdir: string; repoCount: number };
+  approvedPlan?: PlanResult;
+  setActivity: (activity: string) => void;
 }): Promise<{
   text: string;
   assistantParts: AssistantPart[];
@@ -329,7 +326,7 @@ async function runTurn(params: {
   forgeContext: ForgeAgentContext;
   sessionRow: SessionRowContext | undefined;
 }> {
-  const { job, redis, events, db, adapter, llmKeys, platform, workspaceSetup } = params;
+  const { job, redis, events, db, adapter, llmKeys, platform, workspaceSetup, approvedPlan, setActivity } = params;
   const { provider, modelId } = getModel(job.modelId, llmKeys);
   const thinkingParams = buildThinkingParams(job);
 
@@ -342,16 +339,6 @@ async function runTurn(params: {
     runId: job.runId,
     userId: job.userId,
   });
-
-  let currentActivity = "idle";
-  const heartbeatInterval = setInterval(async () => {
-    await updateHeartbeat(db, job.runId);
-    publishEvent(events, job.runId, evt("agent:heartbeat", {
-      timestamp: new Date().toISOString(),
-      activity: currentActivity,
-      step: 0,
-    }), reqId).catch(() => {});
-  }, 15_000);
 
   let cleanupAbort: (() => void) | undefined;
 
@@ -372,9 +359,9 @@ async function runTurn(params: {
       systemPrompt = `${systemPrompt}\n\n${projectBlock}`;
     }
 
-    const skillsSuffix = !isScratch && job.resolvedSkills.length > 0
-      ? `## Important notes\n- All git operations target the forge. Authentication is automatic.\n- When creating a PR, push your branch first with the git tool, then use create_pull_request.\n- The repository is already cloned in your workspace. Use glob/grep to explore it.`
-      : "";
+    if (approvedPlan?.formattedForContext) {
+      systemPrompt = `${systemPrompt}\n\n${approvedPlan.formattedForContext}`;
+    }
 
     const resultStore = new Map<string, string>();
     const inputMessages = buildModelMessages(job);
@@ -403,7 +390,6 @@ async function runTurn(params: {
       provider,
       modelId,
       forgeContext,
-      skillsPromptSuffix: skillsSuffix,
       hasRepo: !isScratch,
       resultStore,
       llmKeys,
@@ -438,13 +424,13 @@ async function runTurn(params: {
         return { messages: queued };
       },
       onToken: (token) => {
-        currentActivity = "llm_call";
+        setActivity("llm_call");
         publishEvent(events, job.runId, evt("agent:message", { content: token }), reqId).catch((err) => {
           console.warn("[agent] Failed to publish token event:", err);
         });
       },
       onStep: async ({ text, toolCalls, toolResults }) => {
-        currentActivity = "tool_execution";
+        setActivity("tool_execution");
 
         if (text) {
           assistantParts.push({ type: "text", text });
@@ -492,7 +478,6 @@ async function runTurn(params: {
     };
   } finally {
     cleanupAbort?.();
-    clearInterval(heartbeatInterval);
     await recorder.close();
   }
 }
@@ -518,11 +503,17 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
 
   await events.setKey(`run:${job.runId}:status`, "running", RUN_STATUS_TTL);
 
-  const setupHeartbeat = setInterval(async () => {
-    await updateHeartbeat(db, job.runId);
-  }, 15_000);
+  let currentActivity = "idle";
+  const stopRunHeartbeat = startRunHeartbeat({
+    db,
+    runId: job.runId,
+    events,
+    reqId: job.requestId,
+    getActivity: () => currentActivity,
+  });
 
   let adapter: SandboxAdapter | undefined;
+  let approvedPlan: PlanResult | undefined;
   let summaryParts: AssistantPart[] = [];
   let prMeta = { prUrls: [] as string[], reposTouched: [] as string[], linesAdded: 0, linesRemoved: 0 };
 
@@ -539,49 +530,20 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
     console.info(`[agent][${job.runId}] workspace setup complete`, { durationMs: Date.now() - setupStart, ...workspaceSetup });
 
     const isContinuation = (job.modelMessages?.length ?? 0) > 0;
-    if (PLANNING_ENABLED && !isContinuation) {
-      console.info(`[agent][${job.runId}] entering planning phase`);
-      await runPlanner({ job, redis, events, db, adapter });
-
-      await events.setKey(`run:${job.runId}:awaiting_approval`, "1", APPROVAL_TIMEOUT_MS / 1000);
-
-      let approved = false;
-      const approvalStart = Date.now();
-      while (Date.now() - approvalStart < APPROVAL_TIMEOUT_MS) {
-        const steeringEvents = await events.consumeSteering(job.runId);
-        const approval = steeringEvents.find(
-          (e) => e.type === "user:plan_approved" || e.type === "user:plan_rejected",
-        );
-        if (approval) {
-          console.info(`[agent][${job.runId}] plan ${approval.type === "user:plan_approved" ? "approved" : "rejected"}`, { waitMs: Date.now() - approvalStart });
-          if (approval.type === "user:plan_approved") {
-            approved = true;
-            await publishEvent(events, job.runId, evt("plan:approved", { reason: approval.reason }), job.requestId);
-          } else {
-            await publishEvent(events, job.runId, evt("plan:rejected", { reason: approval.reason }), job.requestId);
-            await updateRunStatus(db, job, "completed", undefined, "end_turn");
-            await publishEvent(events, job.runId, evt("session:completed", {
-              terminalReason: "plan_rejected",
-            }), job.requestId);
-            await events.setKey(`run:${job.runId}:status`, "completed", RUN_STATUS_TTL);
-            await expireRunStream(redis, job.runId);
-            return;
-          }
-          break;
-        }
-        await new Promise((r) => setTimeout(r, APPROVAL_POLL_INTERVAL_MS));
-      }
-
-      if (!approved) {
-        await publishEvent(events, job.runId, evt("plan:rejected", { reason: "approval_timeout" }), job.requestId);
-        await updateRunStatus(db, job, "completed", undefined, "end_turn");
-        await publishEvent(events, job.runId, evt("session:completed", {
-          terminalReason: "plan_rejected",
-        }), job.requestId);
-        await events.setKey(`run:${job.runId}:status`, "completed", RUN_STATUS_TTL);
-        await expireRunStream(redis, job.runId);
-        return;
-      }
+    const planning = await runPlanningPhaseIfNeeded({
+      job,
+      redis,
+      events,
+      db,
+      adapter,
+      enabled: PLANNING_ENABLED,
+      isContinuation,
+    });
+    if (planning.status === "rejected") {
+      return;
+    }
+    if (planning.status === "approved") {
+      approvedPlan = planning.plan;
     }
 
     const {
@@ -601,6 +563,10 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
       adapter,
       llmKeys,
       workspaceSetup,
+      approvedPlan,
+      setActivity: (activity) => {
+        currentActivity = activity;
+      },
     });
 
     summaryParts = assistantParts;
@@ -628,25 +594,18 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
     }
 
     const terminalReason = hitStepLimit ? "step_limit" : "end_turn";
-    console.info("[agent] run_terminal", { runId: job.runId, sessionId: job.sessionId, terminalReason, status: "completed" });
-    await updateRunStatus(db, job, "completed", usage, terminalReason);
-
-    await persistSessionSummary({
+    await finalizeRunTerminal({
       db,
+      events,
+      redis,
       job,
       outcome: "completed",
+      terminalReason,
       assistantParts,
-      ...prMeta,
+      usage,
+      assistantMessageId: finalMessageId,
+      prMeta,
     });
-
-    await publishEvent(
-      events,
-      job.runId,
-      evt("session:completed", { assistantMessageId: finalMessageId, assistantParts: assistantParts as unknown[], terminalReason }),
-      job.requestId,
-    );
-    await events.setKey(`run:${job.runId}:status`, "completed", RUN_STATUS_TTL);
-    await expireRunStream(redis, job.runId);
 
     const [session] = await db
       .select({ prNumber: sessions.prNumber, prStatus: sessions.prStatus })
@@ -661,70 +620,50 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
     // Handle user-initiated abort
     if (error instanceof AbortError) {
       summaryParts = error.parts;
-      const fileStats = computeFileStatsFromParts(error.parts);
-      console.info("[agent] run_terminal", { runId: job.runId, sessionId: job.sessionId, terminalReason: "stopped", status: "aborted" });
-      await updateRunStatus(db, job, "aborted", undefined, "stopped");
-      await persistSessionSummary({
+      await finalizeRunTerminal({
         db,
+        events,
+        redis,
         job,
         outcome: "aborted",
+        terminalReason: "stopped",
         assistantParts: error.parts,
-        ...prMeta,
-        ...fileStats,
+        prMeta,
+        fileStats: computeFileStatsFromParts(error.parts),
       });
-      await publishEvent(events, job.runId, evt("session:aborted", { terminalReason: "stopped" }), job.requestId);
-      await events.setKey(`run:${job.runId}:status`, "aborted", RUN_STATUS_TTL);
-      await expireRunStream(redis, job.runId);
       return;
     }
 
-    // Handle turn timeout (native AbortError from fetch/signal)
     if (isTimeoutAbort(error)) {
-      const fileStats = computeFileStatsFromParts(summaryParts);
-      console.info("[agent] run_terminal", { runId: job.runId, sessionId: job.sessionId, terminalReason: "timeout", status: "aborted" });
-      await updateRunStatus(db, job, "aborted", undefined, "timeout");
-      await persistSessionSummary({
+      await finalizeRunTerminal({
         db,
+        events,
+        redis,
         job,
         outcome: "aborted",
+        terminalReason: "timeout",
         assistantParts: summaryParts,
-        ...prMeta,
-        ...fileStats,
+        prMeta,
+        fileStats: computeFileStatsFromParts(summaryParts),
       });
-      await publishEvent(events, job.runId, evt("session:aborted", { terminalReason: "timeout" }), job.requestId);
-      await events.setKey(`run:${job.runId}:status`, "aborted", RUN_STATUS_TTL);
-      await expireRunStream(redis, job.runId);
       return;
     }
 
     const terminalReason = error instanceof AppError && error.retryable ? "provider_transient" : "internal";
-    const fileStats = computeFileStatsFromParts(summaryParts);
-    console.info("[agent] run_terminal", { runId: job.runId, sessionId: job.sessionId, terminalReason, status: "failed", error: error instanceof Error ? error.message : String(error) });
-    await updateRunStatus(db, job, "failed", undefined, terminalReason);
-    await persistSessionSummary({
+    await finalizeRunTerminal({
       db,
+      events,
+      redis,
       job,
       outcome: "failed",
+      terminalReason,
       assistantParts: summaryParts,
-      ...prMeta,
-      ...fileStats,
+      prMeta,
+      fileStats: computeFileStatsFromParts(summaryParts),
+      error,
     });
-    await publishEvent(
-      events,
-      job.runId,
-      evt("session:failed", {
-        message: error instanceof Error ? error.message : String(error),
-        code: error instanceof AppError ? error.code : "INTERNAL_ERROR",
-        requestId: job.requestId,
-        retryable: error instanceof AppError ? error.retryable : false,
-        terminalReason,
-      }),
-      job.requestId,
-    );
-    await events.setKey(`run:${job.runId}:status`, "failed", RUN_STATUS_TTL);
-    await expireRunStream(redis, job.runId);
     throw error;
   } finally {
-    clearInterval(setupHeartbeat);
+    stopRunHeartbeat();
   }
 }

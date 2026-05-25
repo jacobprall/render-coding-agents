@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
 import { Activity, ArrowRight, ChevronDown, ChevronRight } from "lucide-react";
-import { EmptyState } from "@/components/primitives/empty-state";
+import { EmptyState } from "@/components/ui/empty-state";
 import type { EventRow } from "@/app/(authenticated)/observability/use-events";
 
 interface UsageBreakdown {

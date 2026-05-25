@@ -15,7 +15,7 @@ bun run --watch src/worker.ts
 ## How It Works
 
 1. **Worker loop** (`src/worker.ts`) — reads jobs from a Redis Streams consumer group with bounded concurrency.
-2. **Turn orchestration** (`src/agent.ts`) — orchestrates a single agent turn: provisions sandbox, sets up workspace, runs the LLM loop, creates PRs for changed repos, and finalizes status.
+2. **Turn orchestration** (`src/turn-orchestrator.ts`) — claims a run, provisions sandbox, sets up workspace, optional planning + approval, runs the LLM loop, creates PRs for changed repos, and finalizes status.
 3. **Agent loop** (`src/loop.ts`) — the core execution loop: sends messages to the LLM, dispatches tool calls, compacts context, and tracks usage.
 4. **Tool execution** (`src/tools/`) — each tool (file read/write, shell, grep, git, web search, PR creation, etc.) is defined as a schema + handler and executed via the sandbox HTTP API.
 5. **Subagents** — the agent can spawn child agents for parallel work via the `task` tool.
@@ -27,7 +27,10 @@ Results and progress are streamed back through `@coding-agents/platform` event p
 | Path | Description |
 |------|-------------|
 | `src/worker.ts` | Main entry — Redis consumer loop, concurrency gating, skill resolution |
-| `src/agent.ts` | Turn orchestration — workspace setup, LLM loop invocation, PR creation |
+| `src/turn-orchestrator.ts` | Turn orchestration — workspace setup, LLM loop invocation, PR creation |
+| `src/lib/planning-phase.ts` | Optional plan generation, user approval gate, plan injection into implementation |
+| `src/lib/run-terminal.ts` | Shared run finalization (status, summary, session events) |
+| `src/lib/run-heartbeat.ts` | Single DB + SSE heartbeat per run |
 | `src/loop.ts` | Core agent loop — LLM calls, tool dispatch, context compaction |
 | `src/tools/` | Tool definitions and handlers |
 | `src/observability.ts` | Event recording and OTLP span export |
@@ -55,5 +58,14 @@ Results and progress are streamed back through `@coding-agents/platform` event p
 |--------|---------|
 | `dev` | `bun run --watch src/worker.ts` |
 | `start` | `bun run src/worker.ts` |
+| `build` | `bun run typecheck` |
 | `typecheck` | `tsc --noEmit` |
-| `test` | `bun test tests` |
+| `test` | `bun test --preload ./tests/preload.ts tests` |
+
+## Environment
+
+| Variable | Description |
+|----------|-------------|
+| `PLANNING_ENABLED` | When `true`, new runs enter a read-only planning phase and wait for `user:plan_approved` before implementation. Approved plan text is injected into the implementation system prompt. |
+| `MAX_AGENT_STEPS` | Max tool/LLM steps per turn (default 100) |
+| `TURN_TIMEOUT_MS` | Wall-clock turn timeout (default 10 minutes) |

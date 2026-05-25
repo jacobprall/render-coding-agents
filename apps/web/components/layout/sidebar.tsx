@@ -1,18 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import {
-  Search,
-  Plus,
-  Archive,
-  Filter,
-  RotateCcw,
-  Pencil,
-  Trash2,
-} from "lucide-react";
-import useSWR, { useSWRConfig } from "swr";
+import { useRouter } from "next/navigation";
+import { Plus, Archive, RotateCcw, Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,49 +14,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-
-interface SidebarSession {
-  id: string;
-  title: string | null;
-  status: string;
-  repoPath: string | null;
-  lastActivityAt: string | null;
-  createdAt: string;
-}
-
-interface SessionGroup {
-  repoPath: string | null;
-  label?: string;
-  sessions: SidebarSession[];
-}
-
-interface GroupedSessionsResponse {
-  groups: SessionGroup[];
-}
-
-type SessionFilter = "active" | "archived";
-
-async function fetchGroupedSessions(url: string): Promise<SessionGroup[]> {
-  const res = await fetch(url);
-  if (!res.ok) return [];
-  const data = (await res.json()) as GroupedSessionsResponse;
-  return data.groups ?? [];
-}
-
-function repoSlug(repoPath: string | null): string {
-  if (!repoPath) return "Scratch";
-  const parts = repoPath.split("/");
-  return parts[parts.length - 1] || repoPath;
-}
-
-const statusDot: Record<string, string> = {
-  running: "bg-teal-500 animate-pulse",
-  completed: "bg-primary",
-  failed: "bg-destructive",
-  idle: "bg-muted-foreground",
-  paused: "bg-yellow-500",
-  archived: "bg-muted-foreground",
-};
+import {
+  SessionsList,
+  useSessionsListState,
+  type SessionItem,
+} from "@/components/sessions-list";
 
 interface SidebarProps {
   user: {
@@ -76,47 +29,43 @@ interface SidebarProps {
 }
 
 export function Sidebar({ user, open }: SidebarProps) {
-  const pathname = usePathname();
+  return (
+    <SessionsList.Root enabled={open}>
+      <SidebarInner user={user} open={open} />
+    </SessionsList.Root>
+  );
+}
+
+function SidebarInner({
+  user,
+  open,
+}: SidebarProps) {
   const router = useRouter();
   const sidebarRef = useRef<HTMLElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const sessionItemRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  const { mutate } = useSWRConfig();
 
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<SessionFilter>("active");
+  const {
+    flatSessions,
+    activeSessionId,
+    filter,
+    pendingId,
+    archiveSession,
+    restoreSession,
+    deleteSession,
+    renameSession: renameSessionAction,
+    selectSession,
+  } = useSessionsListState();
+
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const [deleteTarget, setDeleteTarget] = useState<SidebarSession | null>(null);
-  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SessionItem | null>(null);
   const [contextMenu, setContextMenu] = useState<{
-    session: SidebarSession;
+    session: SessionItem;
     x: number;
     y: number;
   } | null>(null);
-
-  const swrKey = open
-    ? `/api/sessions?limit=50&grouped=true&filter=${filter}`
-    : null;
-
-  const { data: groups } = useSWR<SessionGroup[]>(swrKey, fetchGroupedSessions, {
-    revalidateOnFocus: false,
-    dedupingInterval: 10_000,
-  });
-
-  const activeSessionId = pathname.startsWith("/sessions/")
-    ? pathname.split("/")[2]
-    : null;
-
-  const invalidateSessions = useCallback(() => {
-    void mutate(
-      (key) =>
-        typeof key === "string" &&
-        key.startsWith("/api/sessions") &&
-        key.includes("grouped=true"),
-    );
-  }, [mutate]);
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -128,25 +77,6 @@ export function Sidebar({ user, open }: SidebarProps) {
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
   }, [router]);
-
-  const filteredGroups = groups
-    ?.map((group) => ({
-      ...group,
-      sessions: group.sessions.filter((s) => {
-        if (!query) return true;
-        const q = query.toLowerCase();
-        return (
-          (s.title?.toLowerCase().includes(q) ?? false) ||
-          (s.repoPath?.toLowerCase().includes(q) ?? false)
-        );
-      }),
-    }))
-    .filter((group) => group.sessions.length > 0);
-
-  const flatSessions = useMemo(
-    () => filteredGroups?.flatMap((group) => group.sessions) ?? [],
-    [filteredGroups],
-  );
 
   useEffect(() => {
     sessionItemRefs.current = sessionItemRefs.current.slice(0, flatSessions.length);
@@ -170,38 +100,23 @@ export function Sidebar({ user, open }: SidebarProps) {
   }, []);
 
   const handleEscape = useCallback(() => {
-    if (query) {
-      setQuery("");
-      inputRef.current?.focus();
-      setFocusedIndex(-1);
-      return;
-    }
     blurSidebar();
-  }, [blurSidebar, query]);
-
-  const handleSelect = useCallback(
-    (id: string) => {
-      router.push(`/sessions/${id}`);
-    },
-    [router],
-  );
+  }, [blurSidebar]);
 
   const handleSessionKeyDown = useCallback(
     (e: React.KeyboardEvent, index: number, sessionId: string) => {
       switch (e.key) {
         case "ArrowDown":
           e.preventDefault();
-          setFocusedIndex((current) =>
-            current < flatSessions.length - 1 ? current + 1 : current,
-          );
+          setFocusedIndex((c) => (c < flatSessions.length - 1 ? c + 1 : c));
           break;
         case "ArrowUp":
           e.preventDefault();
-          setFocusedIndex((current) => (current > 0 ? current - 1 : 0));
+          setFocusedIndex((c) => (c > 0 ? c - 1 : 0));
           break;
         case "Enter":
           e.preventDefault();
-          handleSelect(sessionId);
+          selectSession(sessionId);
           break;
         case "Escape":
           e.preventDefault();
@@ -209,71 +124,10 @@ export function Sidebar({ user, open }: SidebarProps) {
           break;
       }
     },
-    [flatSessions.length, handleEscape, handleSelect],
+    [flatSessions.length, handleEscape, selectSession],
   );
 
-  const handleArchive = useCallback(
-    async (id: string) => {
-      setPendingId(id);
-      try {
-        const { archiveSessionAction } = await import(
-          "@/app/(authenticated)/sessions/actions"
-        );
-        const result = await archiveSessionAction(id);
-        if (!result.error) {
-          invalidateSessions();
-          if (id === activeSessionId) {
-            router.push("/sessions");
-          }
-        }
-      } finally {
-        setPendingId(null);
-      }
-    },
-    [activeSessionId, invalidateSessions, router],
-  );
-
-  const handleRestore = useCallback(
-    async (id: string) => {
-      setPendingId(id);
-      try {
-        const { restoreSessionAction } = await import(
-          "@/app/(authenticated)/sessions/actions"
-        );
-        const result = await restoreSessionAction(id);
-        if (!result.error) {
-          invalidateSessions();
-        }
-      } finally {
-        setPendingId(null);
-      }
-    },
-    [invalidateSessions],
-  );
-
-  const handleDelete = useCallback(
-    async (id: string) => {
-      setPendingId(id);
-      try {
-        const { deleteSessionAction } = await import(
-          "@/app/(authenticated)/sessions/actions"
-        );
-        const result = await deleteSessionAction(id);
-        if (!result.error) {
-          setDeleteTarget(null);
-          invalidateSessions();
-          if (id === activeSessionId) {
-            router.push("/sessions");
-          }
-        }
-      } finally {
-        setPendingId(null);
-      }
-    },
-    [activeSessionId, invalidateSessions, router],
-  );
-
-  const startRename = useCallback((session: SidebarSession) => {
+  const startRename = useCallback((session: SessionItem) => {
     setRenamingId(session.id);
     setRenameValue(session.title || "Untitled");
     setContextMenu(null);
@@ -286,28 +140,17 @@ export function Sidebar({ user, open }: SidebarProps) {
         setRenamingId(null);
         return;
       }
-      setPendingId(id);
-      try {
-        const { renameSessionAction } = await import(
-          "@/app/(authenticated)/sessions/actions"
-        );
-        const result = await renameSessionAction(id, trimmed);
-        if (!result.error) {
-          setRenamingId(null);
-          invalidateSessions();
-        }
-      } finally {
-        setPendingId(null);
-      }
+      await renameSessionAction(id, trimmed);
+      setRenamingId(null);
     },
-    [invalidateSessions, renameValue],
+    [renameSessionAction, renameValue],
   );
 
-  const renderSessionItem = (session: SidebarSession, index: number) => {
+  const isArchivedView = filter === "archived";
+
+  const renderSessionItem = (session: SessionItem, index: number) => {
     const isActive = session.id === activeSessionId;
-    const isPending = pendingId === session.id;
     const isRenaming = renamingId === session.id;
-    const isArchivedView = filter === "archived";
     const isKeyboardFocused = focusedIndex === index;
 
     if (isRenaming) {
@@ -329,71 +172,50 @@ export function Sidebar({ user, open }: SidebarProps) {
     }
 
     return (
-      <button
+      <SessionsList.Item
         key={session.id}
         ref={(el) => {
           sessionItemRefs.current[index] = el;
         }}
-        type="button"
-        tabIndex={isKeyboardFocused ? 0 : -1}
-        onClick={() => handleSelect(session.id)}
+        session={session}
+        active={isActive}
+        focused={isKeyboardFocused}
         onFocus={() => setFocusedIndex(index)}
         onKeyDown={(e) => handleSessionKeyDown(e, index, session.id)}
         onContextMenu={(e) => {
           e.preventDefault();
           setContextMenu({ session, x: e.clientX, y: e.clientY });
         }}
-        disabled={isPending}
-        className={cn(
-          "group flex w-full items-center gap-2 px-3 py-2 text-left transition-colors",
-          isPending && "pointer-events-none opacity-40",
-          isActive
-            ? "bg-primary/10 text-foreground"
-            : isKeyboardFocused
-              ? "bg-muted/50 text-foreground"
-              : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-        )}
-      >
-        <span
-          className={cn(
-            "h-1.5 w-1.5 shrink-0 rounded-full",
-            session.status === "running"
-              ? "bg-teal-500 animate-pulse"
-              : statusDot[session.status] ?? "bg-muted-foreground",
-          )}
-          aria-hidden
-        />
-        <span className="min-w-0 flex-1 truncate text-xs font-medium">
-          {session.title || "Untitled"}
-        </span>
-        {!isArchivedView ? (
-          <span
-            role="button"
-            tabIndex={-1}
-            title="Archive session"
-            onClick={(e) => {
-              e.stopPropagation();
-              void handleArchive(session.id);
-            }}
-            className="hidden shrink-0 p-0.5 opacity-50 transition-opacity hover:opacity-100 group-hover:inline-flex"
-          >
-            <Archive className="h-3 w-3" />
-          </span>
-        ) : (
-          <span
-            role="button"
-            tabIndex={-1}
-            title="Restore session"
-            onClick={(e) => {
-              e.stopPropagation();
-              void handleRestore(session.id);
-            }}
-            className="hidden shrink-0 p-0.5 opacity-50 transition-opacity hover:opacity-100 group-hover:inline-flex"
-          >
-            <RotateCcw className="h-3 w-3" />
-          </span>
-        )}
-      </button>
+        actions={
+          !isArchivedView ? (
+            <span
+              role="button"
+              tabIndex={-1}
+              title="Archive session"
+              onClick={(e) => {
+                e.stopPropagation();
+                void archiveSession(session.id);
+              }}
+              className="hidden shrink-0 p-0.5 opacity-50 transition-opacity hover:opacity-100 group-hover:inline-flex"
+            >
+              <Archive className="h-3 w-3" />
+            </span>
+          ) : (
+            <span
+              role="button"
+              tabIndex={-1}
+              title="Restore session"
+              onClick={(e) => {
+                e.stopPropagation();
+                void restoreSession(session.id);
+              }}
+              className="hidden shrink-0 p-0.5 opacity-50 transition-opacity hover:opacity-100 group-hover:inline-flex"
+            >
+              <RotateCcw className="h-3 w-3" />
+            </span>
+          )
+        }
+      />
     );
   };
 
@@ -420,84 +242,23 @@ export function Sidebar({ user, open }: SidebarProps) {
             ⌘N
           </kbd>
         </Link>
-        <button
-          type="button"
-          title={filter === "active" ? "Show archived sessions" : "Show active sessions"}
-          onClick={() =>
-            setFilter((current) => (current === "active" ? "archived" : "active"))
-          }
-          className={cn(
-            "flex h-7 w-7 items-center justify-center transition-colors",
-            filter === "archived"
-              ? "bg-primary/10 text-primary"
-              : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-          )}
-        >
-          <Filter className="h-3.5 w-3.5" />
-        </button>
+        <SessionsList.Filter className="h-7 w-7" />
       </div>
 
       <div className="border-b border-border px-3 py-2">
-        <div className="flex items-center gap-2 rounded bg-muted/50 px-2 py-1">
-          <Search className="h-3 w-3 shrink-0 text-muted-foreground" />
-          <input
-            ref={inputRef}
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                e.preventDefault();
-                handleEscape();
-              } else if (e.key === "ArrowDown" && flatSessions.length > 0) {
-                e.preventDefault();
-                setFocusedIndex(0);
-              }
-            }}
-            placeholder="Search sessions…"
-            aria-label="Search sessions"
-            className="w-full bg-transparent text-xs text-foreground placeholder:text-muted-foreground focus:outline-none"
-          />
-        </div>
+        <SessionsList.Search
+          ref={inputRef}
+          className="rounded bg-muted/50 px-2 py-1"
+          onEscape={handleEscape}
+          onArrowDown={() => {
+            if (flatSessions.length > 0) setFocusedIndex(0);
+          }}
+        />
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {!filteredGroups ? (
-          <div className="space-y-2 p-3">
-            {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="h-10 animate-pulse rounded bg-muted/40" />
-            ))}
-          </div>
-        ) : filteredGroups.length === 0 ? (
-          <div className="px-3 py-8 text-center text-xs text-muted-foreground">
-            {query
-              ? "No matching sessions"
-              : filter === "archived"
-                ? "No archived sessions"
-                : "No sessions yet"}
-          </div>
-        ) : (
-          <div className="py-1" role="list">
-            {(() => {
-              let sessionIndex = 0;
-              return filteredGroups.map((group) => {
-                const groupStartIndex = sessionIndex;
-                sessionIndex += group.sessions.length;
-
-                return (
-                  <div key={group.repoPath ?? "scratch"} className="mb-2">
-                    <p className="px-3 py-1 font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
-                      {group.label ?? repoSlug(group.repoPath)}
-                    </p>
-                    {group.sessions.map((session, i) =>
-                      renderSessionItem(session, groupStartIndex + i),
-                    )}
-                  </div>
-                );
-              });
-            })()}
-          </div>
-        )}
+        <SessionsList.Groups renderItem={renderSessionItem} />
+        <SessionsList.Empty />
       </div>
 
       <div className="border-t border-border px-3 py-2">
@@ -522,7 +283,7 @@ export function Sidebar({ user, open }: SidebarProps) {
         </Link>
       </div>
 
-      <Dialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+      <Dialog open={deleteTarget !== null} onOpenChange={(o) => !o && setDeleteTarget(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete session?</DialogTitle>
@@ -539,7 +300,7 @@ export function Sidebar({ user, open }: SidebarProps) {
               variant="destructive"
               size="sm"
               disabled={pendingId === deleteTarget?.id}
-              onClick={() => deleteTarget && void handleDelete(deleteTarget.id)}
+              onClick={() => deleteTarget && void deleteSession(deleteTarget.id)}
             >
               Delete
             </Button>
@@ -556,7 +317,7 @@ export function Sidebar({ user, open }: SidebarProps) {
             onClick={() => setContextMenu(null)}
           />
           <div
-            className="fixed z-50 min-w-[8rem] border border-border bg-popover p-1 shadow-md"
+            className="fixed z-50 min-w-32 border border-border bg-popover p-1 shadow-md"
             style={{ top: contextMenu.y, left: contextMenu.x }}
           >
             <button
@@ -567,12 +328,12 @@ export function Sidebar({ user, open }: SidebarProps) {
               <Pencil className="mr-2 h-3 w-3" />
               Rename
             </button>
-            {filter === "archived" ? (
+            {isArchivedView ? (
               <button
                 type="button"
                 className="flex w-full items-center px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent hover:text-accent-foreground"
                 onClick={() => {
-                  void handleRestore(contextMenu.session.id);
+                  void restoreSession(contextMenu.session.id);
                   setContextMenu(null);
                 }}
               >
@@ -584,7 +345,7 @@ export function Sidebar({ user, open }: SidebarProps) {
                 type="button"
                 className="flex w-full items-center px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent hover:text-accent-foreground"
                 onClick={() => {
-                  void handleArchive(contextMenu.session.id);
+                  void archiveSession(contextMenu.session.id);
                   setContextMenu(null);
                 }}
               >

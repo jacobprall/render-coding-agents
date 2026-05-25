@@ -2,6 +2,7 @@ import { defineTool } from "../define-tool";
 import { z } from "zod";
 import { withForgeContext } from "../tool-helpers";
 import { truncateLargeString } from "../truncation";
+import { prNumberSchema } from "./schemas";
 
 const DEFAULT_MAX_CHARS = 120_000;
 const MIN_MAX_CHARS_LOG = 1_000;
@@ -33,7 +34,7 @@ export function pullRequestDiffTool() {
     description:
       "Fetch unified diff text for an open PR (large results are truncated). Use before posting a review.",
     inputSchema: z.object({
-      number: z.number().int().positive(),
+      number: prNumberSchema,
       max_chars: z.number().optional(),
     }),
     execute: withForgeContext(async ({ number, max_chars }, ctx) => {

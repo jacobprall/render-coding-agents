@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ChevronDown, GitCommitHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UnifiedDiffViewer } from "@/components/diff-viewer";
-import { Disclosure } from "@/components/primitives/disclosure";
+import { Disclosure } from "@/components/ui/disclosure";
 
 export interface ReviewFileChange {
   path: string;

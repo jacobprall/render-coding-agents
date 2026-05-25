@@ -52,27 +52,25 @@ export function ToolLayout({
         className,
       )}
     >
-      <div className="flex w-full min-w-0 items-center gap-2 px-3 py-2">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-label={open ? "Collapse tool details" : "Expand tool details"}
+        className="flex w-full min-w-0 cursor-pointer items-center gap-2 px-3 py-2 transition-colors hover:bg-muted/40"
+      >
         {!open && icon ? <span className="shrink-0 text-text-tertiary">{icon}</span> : null}
-        <span className="min-w-0 flex-1 truncate text-text-primary">
+        <span className="min-w-0 flex-1 truncate text-left text-text-primary">
           <span className="font-medium">{title}</span>
           {subtitle ? <span className="text-text-tertiary"> {subtitle}</span> : null}
         </span>
-        <button
-          type="button"
-          onClick={() => setOpen((o) => !o)}
-          aria-expanded={open}
-          aria-label={open ? "Collapse tool details" : "Expand tool details"}
-          className="ml-auto flex shrink-0 items-center justify-center rounded p-0.5 text-text-tertiary transition-colors hover:bg-muted/50 hover:text-text-primary"
-        >
-          <ChevronDown
-            className={cn(
-              "size-3.5 transition-transform duration-200",
-              open && "rotate-180",
-            )}
-          />
-        </button>
-      </div>
+        <ChevronDown
+          className={cn(
+            "ml-auto size-3.5 shrink-0 text-text-tertiary transition-transform duration-200",
+            open && "rotate-180",
+          )}
+        />
+      </button>
       <div
         className="grid transition-[grid-template-rows] duration-(--of-duration-fast)"
         style={{ gridTemplateRows: open ? "1fr" : "0fr" }}

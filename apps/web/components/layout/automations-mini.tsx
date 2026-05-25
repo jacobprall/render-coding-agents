@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ArrowRight, Zap } from "lucide-react";
-import { EmptyState } from "@/components/primitives/empty-state";
+import { EmptyState } from "@/components/ui/empty-state";
 
 export function AutomationsMini() {
   return (

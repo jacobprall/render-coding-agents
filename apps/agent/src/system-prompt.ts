@@ -2,7 +2,6 @@ import type { SkillSummary } from "./skills";
 
 interface SystemPromptOpts {
   skillIndex?: SkillSummary[];
-  resolvedSkillContents?: Array<{ slug: string; content: string }>;
   projectContext?: string | null;
   projectConfig?: unknown;
   forgeLabel?: string;

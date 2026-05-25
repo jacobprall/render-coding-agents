@@ -10,7 +10,7 @@ import { RepoBranchPicker } from "@/components/session/repo-branch-picker";
 import { ModelSelector } from "@/components/model-selector";
 import { DEFAULT_MODEL_ID } from "@/lib/model-defaults";
 import { apiFetch } from "@/lib/api-fetch";
-import { Select } from "@/components/primitives/select";
+import { Select } from "@/components/ui/select-native";
 import type { SessionCardSession } from "./session-card";
 import { SessionCard } from "./session-card";
 import type { SessionTab } from "@/components/layout/session-tabs";

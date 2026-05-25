@@ -126,7 +126,6 @@ export interface BuildToolSetOptions {
   provider: LLMProvider;
   modelId: string;
   forgeContext: ForgeAgentContext;
-  skillsPromptSuffix: string;
   hasRepo?: boolean;
   resultStore?: Map<string, string>;
   llmKeys?: ResolvedLlmKeys;
@@ -144,7 +143,6 @@ export function buildToolSet(options: BuildToolSetOptions): Map<string, AgentToo
     provider,
     modelId,
     forgeContext,
-    skillsPromptSuffix,
     hasRepo = true,
     resultStore = new Map<string, string>(),
     llmKeys,
@@ -176,7 +174,6 @@ export function buildToolSet(options: BuildToolSetOptions): Map<string, AgentToo
       makeSubToolConfigs,
       modelResolver,
       forgeContext,
-      skillsPromptSuffix,
       { signal, recorder, secrets, resultStore },
     ),
     todo_write: todoWriteTool(),

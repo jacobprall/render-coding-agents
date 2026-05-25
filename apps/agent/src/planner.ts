@@ -3,6 +3,7 @@ import type { EventBus, PlatformDb } from "@coding-agents/platform";
 import type { SandboxAdapter } from "@coding-agents/sandbox";
 import type { AgentJob } from "./types";
 import type { ToolConfig } from "./tools/define-tool";
+import { createSandboxPlannerContext } from "./context/agent-context";
 import { publishEvent, evt } from "./run-persistence";
 import { toolConfigsToAgentTools } from "./tool-registry";
 import { agentLoop } from "./loop";
@@ -110,19 +111,8 @@ export async function runPlanner(params: {
 
   const toolConfigs = buildReadOnlyToolConfigs();
 
-  const forgeContext = {
-    __brand: "ForgeAgentContext" as const,
-    sessionId: job.sessionId,
-    projectId: null,
-    adapter,
-    forge: null as unknown,
-    repoOwner: "",
-    repoName: "",
-    branch: "main",
-    baseBranch: "main",
-  };
-
-  const tools = toolConfigsToAgentTools(toolConfigs, forgeContext);
+  const plannerContext = createSandboxPlannerContext(adapter, job.sessionId);
+  const tools = toolConfigsToAgentTools(toolConfigs, plannerContext);
 
   const userMessage = job.messages[job.messages.length - 1];
   const userContent = typeof userMessage?.content === "string"

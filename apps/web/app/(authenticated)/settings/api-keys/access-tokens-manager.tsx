@@ -3,7 +3,7 @@
 import { useState, useTransition, useCallback } from "react";
 import useSWR from "swr";
 import { Copy, Check, Key } from "lucide-react";
-import { Select } from "@/components/primitives/select";
+import { Select } from "@/components/ui/select-native";
 import { apiFetch } from "@/lib/api-fetch";
 
 interface AccessToken {

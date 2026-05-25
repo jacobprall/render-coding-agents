@@ -2,6 +2,7 @@ import { defineTool } from "./define-tool";
 import { z } from "zod";
 import { assertSafeHttpUrl } from "../url-safety";
 import { toErrorResult } from "./tool-helpers";
+import { truncateLargeString } from "./truncation";
 
 const MAX_BODY_LENGTH = 10_000;
 const MAX_REDIRECTS = 5;
@@ -65,12 +66,13 @@ export function webFetchTool() {
 
         assertWebFetchContentTypeOk(res.headers.get("content-type"));
         const text = await res.text();
-        const truncated = text.length > MAX_BODY_LENGTH;
+        const truncated = truncateLargeString(text, MAX_BODY_LENGTH);
         return {
           success: true as const,
           status: res.status,
-          body: truncated ? text.slice(0, MAX_BODY_LENGTH) + "… [truncated]" : text,
-          truncated,
+          body: truncated.value,
+          truncated: truncated.truncated,
+          ...(truncated.truncated ? { originalLength: truncated.originalLength } : {}),
         };
       } catch (err) {
         return toErrorResult(err);

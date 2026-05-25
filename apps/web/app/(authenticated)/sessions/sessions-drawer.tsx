@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { PanelRightOpen, PanelRightClose, Filter } from "lucide-react";
-import { Select } from "@/components/primitives/select";
+import { Select } from "@/components/ui/select-native";
 import type { SessionCardSession } from "./session-card";
 import { SessionCard } from "./session-card";
 

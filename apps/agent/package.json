@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "echo 'agent build placeholder'",
+    "build": "bun run typecheck",
     "start": "bun run src/worker.ts",
     "dev": "bun run --watch src/worker.ts",
     "typecheck": "tsc --noEmit",

@@ -1,4 +1,5 @@
-import type { LLMProvider, LLMResponse, LLMMessage, ContentBlock, ToolDefinition } from "./types";
+import type { LLMProvider, LLMResponse, LLMMessage, ContentBlock } from "./types";
+import { forEachSseDataLine } from "./sse";
 
 const API_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
@@ -151,9 +152,6 @@ async function parseSSEStream(
   res: Response,
   onToken?: (token: string) => void,
 ): Promise<LLMResponse> {
-  const reader = res.body!.getReader();
-  const decoder = new TextDecoder();
-
   const contentBlocks: AnthropicContentBlock[] = [];
   let stopReason = "end_turn";
   let inputTokens = 0;
@@ -161,35 +159,13 @@ async function parseSSEStream(
   let cacheCreationInputTokens = 0;
   let cacheReadInputTokens = 0;
   let modelId = "";
-  let buffer = "";
   let inputPartial: Record<number, string> = {};
 
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+  await forEachSseDataLine(res, (event) => {
+    const eventType = event.type as string;
 
-      buffer += decoder.decode(value, { stream: true });
-
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-
-      for (const line of lines) {
-        if (!line.startsWith("data: ")) continue;
-        const data = line.slice(6).trim();
-        if (data === "[DONE]") continue;
-
-        let event: Record<string, unknown>;
-        try {
-          event = JSON.parse(data);
-        } catch {
-          continue;
-        }
-
-        const eventType = event.type as string;
-
-        switch (eventType) {
-          case "message_start": {
+    switch (eventType) {
+      case "message_start": {
             const message = event.message as Record<string, unknown>;
             modelId = (message.model as string) ?? "";
             const usage = message.usage as Record<string, number> | undefined;
@@ -199,9 +175,9 @@ async function parseSSEStream(
               cacheCreationInputTokens += usage.cache_creation_input_tokens ?? 0;
               cacheReadInputTokens += usage.cache_read_input_tokens ?? 0;
             }
-            break;
-          }
-          case "content_block_start": {
+        break;
+      }
+      case "content_block_start": {
             const idx = event.index as number;
             const block = event.content_block as AnthropicContentBlock;
             while (contentBlocks.length <= idx) {
@@ -218,9 +194,9 @@ async function parseSSEStream(
             if (block.type === "tool_use") {
               inputPartial[idx] = "";
             }
-            break;
-          }
-          case "content_block_delta": {
+        break;
+      }
+      case "content_block_delta": {
             const idx = event.index as number;
             const delta = event.delta as Record<string, unknown>;
             const deltaType = delta.type as string;
@@ -240,9 +216,9 @@ async function parseSSEStream(
                 inputPartial[idx] += delta.partial_json as string;
               }
             }
-            break;
-          }
-          case "content_block_stop": {
+        break;
+      }
+      case "content_block_stop": {
             const idx = event.index as number;
             const block = contentBlocks[idx];
             if (block?.type === "tool_use" && idx in inputPartial) {
@@ -253,9 +229,9 @@ async function parseSSEStream(
               }
               delete inputPartial[idx];
             }
-            break;
-          }
-          case "message_delta": {
+        break;
+      }
+      case "message_delta": {
             const delta = event.delta as Record<string, unknown>;
             if (delta.stop_reason) {
               stopReason = delta.stop_reason as string;
@@ -266,14 +242,10 @@ async function parseSSEStream(
               cacheCreationInputTokens += usage.cache_creation_input_tokens ?? 0;
               cacheReadInputTokens += usage.cache_read_input_tokens ?? 0;
             }
-            break;
-          }
-        }
+        break;
       }
     }
-  } finally {
-    reader.releaseLock();
-  }
+  });
 
   if (stopReason === "max_tokens") {
     console.warn("[anthropic] Response truncated: max_tokens reached");

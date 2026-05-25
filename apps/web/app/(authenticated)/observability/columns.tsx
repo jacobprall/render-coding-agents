@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { createColumnHelper } from "@tanstack/react-table";
-import { StatusBadge } from "@/components/primitives/status-badge";
-import { Badge } from "@/components/primitives/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { ColorBadge as Badge } from "@/components/ui/color-badge";
 import type { EventRow } from "./use-events";
 
 const columnHelper = createColumnHelper<EventRow>();

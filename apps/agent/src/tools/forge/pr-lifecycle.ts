@@ -1,6 +1,7 @@
 import { defineTool } from "../define-tool";
 import { z } from "zod";
 import { withForgeContext } from "../tool-helpers";
+import { prNumberSchema } from "./schemas";
 
 const methodSchema = z.enum(["merge", "rebase", "squash"]).optional();
 
@@ -9,7 +10,7 @@ export function mergePrTool() {
     description:
       "Merge an open pull request on the forge. Branch protection applies on the server.",
     inputSchema: z.object({
-      number: z.number().int().positive().describe("Pull request number"),
+      number: prNumberSchema,
       method: methodSchema.describe("Merge strategy (defaults to merge)"),
     }),
     execute: withForgeContext(async ({ number, method }, ctx) => {
@@ -23,7 +24,7 @@ export function closePrTool() {
   return defineTool({
     description: "Close a pull request without merging.",
     inputSchema: z.object({
-      number: z.number().int().positive(),
+      number: prNumberSchema,
     }),
     execute: withForgeContext(async ({ number }, ctx) => {
       await ctx.forge.pulls.update(ctx.repoOwner, ctx.repoName, number, { state: "closed" });

@@ -10,6 +10,8 @@ import type {
   ObservabilityEventStatus,
   ObservabilityEventType,
 } from "@coding-agents/db";
+import { looksSecretKey } from "./lib/secrets";
+import { truncateByBytes } from "./lib/truncate-text";
 
 type JsonLike = Record<string, unknown>;
 
@@ -346,14 +348,3 @@ function sanitizeValue(value: unknown, maxBytes: number, keyPath = ""): unknown 
   return String(value);
 }
 
-function looksSecretKey(key: string): boolean {
-  return /(?:^|_)(key|secret|token|password)$/i.test(key);
-}
-
-function truncateByBytes(input: string, maxBytes: number): string {
-  const encoded = new TextEncoder().encode(input);
-  if (encoded.byteLength <= maxBytes) return input;
-  const truncated = encoded.slice(0, Math.max(0, maxBytes - 16));
-  const decoded = new TextDecoder().decode(truncated);
-  return `${decoded}...[TRUNCATED]`;
-}

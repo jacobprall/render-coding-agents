@@ -53,3 +53,23 @@ function getSessionId(ctx: unknown): string {
 export function getSandboxContext(ctx: unknown): { adapter: SandboxAdapter; sessionId: string } {
   return { adapter: getAdapter(ctx), sessionId: getSessionId(ctx) };
 }
+
+/**
+ * Minimal forge context for read-only planner passes (sandbox tools only).
+ */
+export function createSandboxPlannerContext(
+  adapter: SandboxAdapter,
+  sessionId: string,
+): ForgeAgentContext {
+  return {
+    __brand: "ForgeAgentContext",
+    sessionId,
+    projectId: null,
+    adapter,
+    forge: null as unknown as ForgeProvider,
+    repoOwner: "",
+    repoName: "",
+    branch: "main",
+    baseBranch: "main",
+  };
+}

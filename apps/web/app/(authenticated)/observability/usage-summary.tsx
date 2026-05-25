@@ -2,7 +2,7 @@
 
 import useSWR from "swr";
 import { Activity } from "lucide-react";
-import { EmptyState } from "@/components/primitives/empty-state";
+import { EmptyState } from "@/components/ui/empty-state";
 
 interface UsageBreakdown {
   key: string;

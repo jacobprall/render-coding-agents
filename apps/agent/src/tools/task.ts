@@ -5,8 +5,7 @@ import { z } from "zod";
 import type { ForgeAgentContext } from "../context/agent-context";
 import type { LLMProvider } from "../llm";
 import { agentLoop } from "../loop";
-import { zodToJsonSchema } from "../zod-to-json-schema";
-import type { AgentTool } from "../loop";
+import { toolConfigsToAgentTools } from "../tool-registry";
 import type { ObservabilityRecorder } from "../observability";
 import type { StreamEvent } from "../types";
 import { evt } from "../run-persistence";
@@ -38,7 +37,6 @@ export function taskTool(
   buildSubTools: () => Record<string, ToolConfig>,
   modelResolver: SubagentModelResolver,
   forgeContext: ForgeAgentContext,
-  parentSystemPromptSuffix?: string,
   parentSignals?: {
     signal?: AbortSignal;
     recorder?: ObservabilityRecorder;
@@ -56,23 +54,10 @@ export function taskTool(
       try {
         const { provider: subProvider, modelId: subModelId } = modelResolver.resolve(requestedModel);
 
-        const subToolConfigs = buildSubTools();
-        const subTools = new Map<string, AgentTool>();
-
-        for (const [name, cfg] of Object.entries(subToolConfigs)) {
-          subTools.set(name, {
-            definition: {
-              name,
-              description: cfg.description,
-              input_schema: zodToJsonSchema(cfg.inputSchema),
-            },
-            execute: (input) => cfg.execute(input as never, { context: forgeContext }),
-          });
-        }
+        const subTools = toolConfigsToAgentTools(buildSubTools(), forgeContext);
 
         const subSystem = [
           `You are a focused subagent completing a specific task.`,
-          parentSystemPromptSuffix ?? "",
           taskContext ?? "",
         ].filter(Boolean).join("\n\n");
 

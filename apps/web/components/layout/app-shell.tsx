@@ -15,7 +15,6 @@ import { MobileBottomNav, type MobileView } from "./mobile-bottom-nav";
 import { MobileSessionsView } from "./mobile-sessions-view";
 import { HomePanel } from "./home-panel";
 import { PwaInstallPrompt } from "@/components/providers/pwa-install-prompt";
-import { SessionsNotifier } from "@/components/providers/sessions-notifier";
 import type { HomePanelMode, LayoutState } from "@/hooks/use-layout-state";
 
 interface AppShellProps {
@@ -308,7 +307,6 @@ export function AppShell(props: AppShellProps) {
       ) : (
         <AppShellGrid {...props} layout={layout} rightPanelResize={rightPanelResize} />
       )}
-      <SessionsNotifier />
     </RightPanelProvider>
   );
 }

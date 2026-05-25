@@ -6,10 +6,22 @@ import type { AssistantPart } from "@/lib/ui";
 import { DEFAULT_MODEL_ID } from "@/lib/model-defaults";
 import { PrSummaryPanel } from "./pr-summary-panel";
 import { ReviewBar } from "./review-bar";
-import type { Message, LiveFileChange } from "./chat-panel";
+import type { LiveFileChange, Message } from "./use-agent-chat";
 import type { SessionTab } from "@/components/layout/session-tabs";
 import { notifyGitStatusRefresh } from "@/hooks/use-git-status";
 import { apiFetch } from "@/lib/api-fetch";
+import { Chat } from "@/components/chat";
+
+const FilesView = dynamic(
+  () => import("./files-view").then((m) => ({ default: m.FilesView })),
+  {
+    loading: () => (
+      <div className="flex h-full items-center justify-center text-sm text-text-tertiary">Loading files…</div>
+    ),
+  },
+);
+
+type ViewTab = "chat" | "files";
 
 function modelStorageKey(sessionId: string) {
   return `model:${sessionId}`;
@@ -22,26 +34,6 @@ function readStoredModelId(sessionId: string): string | null {
     return null;
   }
 }
-
-const ChatPanel = dynamic(
-  () => import("./chat-panel").then((m) => ({ default: m.ChatPanel })),
-  {
-    loading: () => (
-      <div className="flex h-full items-center justify-center text-sm text-text-tertiary">Loading chat…</div>
-    ),
-  },
-);
-
-const FilesView = dynamic(
-  () => import("./files-view").then((m) => ({ default: m.FilesView })),
-  {
-    loading: () => (
-      <div className="flex h-full items-center justify-center text-sm text-text-tertiary">Loading files…</div>
-    ),
-  },
-);
-
-type ViewTab = "chat" | "files";
 
 interface SessionInfo {
   id: string;
@@ -93,17 +85,13 @@ export function SessionWorkspace({
 
   useEffect(() => {
     const stored = readStoredModelId(session.id);
-    if (stored) {
-      setModelId(stored);
-    }
+    if (stored) setModelId(stored);
   }, [session.id]);
 
   useEffect(() => {
     try {
       localStorage.setItem(modelStorageKey(session.id), modelId);
-    } catch {
-      // ignore quota / private browsing
-    }
+    } catch { /* ignore */ }
   }, [session.id, modelId]);
 
   useEffect(() => {
@@ -206,6 +194,26 @@ export function SessionWorkspace({
 
   const fileCount = liveFileChanges.length;
 
+  const aboveInput =
+    liveFileChanges.length > 0 || commitToast ? (
+      <>
+        {liveFileChanges.length > 0 ? (
+          <ReviewBar
+            fileChanges={reviewFileChanges}
+            sessionId={session.id}
+            onCommit={() => void handleCommit()}
+            onReviewClick={handleReviewClick}
+            isCommitting={isCommitting}
+            commitMessage={commitToast ?? undefined}
+          />
+        ) : commitToast ? (
+          <div className="shrink-0 border-t border-stroke-subtle px-(--of-space-md) py-2 text-center text-[11px] text-accent-text">
+            {commitToast}
+          </div>
+        ) : null}
+      </>
+    ) : undefined;
+
   return (
     <div className="absolute inset-0 flex flex-col">
       <header className="shrink-0 border-b border-stroke-subtle">
@@ -244,44 +252,27 @@ export function SessionWorkspace({
 
       <div className="flex-1 overflow-hidden">
         <div className={activeView === "chat" ? "h-full" : "hidden"}>
-          <ChatPanel
+          <Chat.Root
             sessionId={session.id}
+            modelId={modelId}
+            onModelChange={setModelId}
             activeRunId={activeRunId}
             initialMessages={initialMessages as Message[]}
             initialTerminalReason={terminalReason}
-            modelId={modelId}
             activeSkills={session.activeSkills}
-            onModelChange={setModelId}
-            onFileChanges={handleFileChanges}
-            onViewFiles={handleViewFiles}
-            onFileSelect={handleFileSelect}
-            onTitleChange={handleTitleChange}
             autoStream={activeRunId != null && session.status === "running"}
             autoStreamRunId={activeRunId ?? undefined}
+            onFileChanges={handleFileChanges}
+            onTitleChange={handleTitleChange}
+            onViewFiles={handleViewFiles}
+            onFileSelect={handleFileSelect}
             onRegisterClearFileChanges={(clear) => {
               clearChatFileChangesRef.current = clear;
             }}
-            aboveInput={
-              liveFileChanges.length > 0 || commitToast ? (
-                <>
-                  {liveFileChanges.length > 0 ? (
-                    <ReviewBar
-                      fileChanges={reviewFileChanges}
-                      sessionId={session.id}
-                      onCommit={() => void handleCommit()}
-                      onReviewClick={handleReviewClick}
-                      isCommitting={isCommitting}
-                      commitMessage={commitToast ?? undefined}
-                    />
-                  ) : commitToast ? (
-                    <div className="shrink-0 border-t border-stroke-subtle px-(--of-space-md) py-2 text-center text-[11px] text-accent-text">
-                      {commitToast}
-                    </div>
-                  ) : null}
-                </>
-              ) : undefined
-            }
-          />
+          >
+            <Chat.Messages aboveInput={aboveInput} />
+            <Chat.Input />
+          </Chat.Root>
         </div>
         <div className={activeView === "files" ? "h-full" : "hidden"}>
           <FilesView

@@ -2,10 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { ChevronDown, Check } from "lucide-react";
-
-function cn(...classes: (string | undefined | null | false)[]) {
-  return classes.filter(Boolean).join(" ");
-}
+import { cn } from "@/lib/utils";
 
 export interface SelectOption {
   value: string;
@@ -13,7 +10,7 @@ export interface SelectOption {
   disabled?: boolean;
 }
 
-export interface SelectProps {
+export interface SelectNativeProps {
   options: SelectOption[];
   value?: string;
   defaultValue?: string;
@@ -26,7 +23,7 @@ export interface SelectProps {
   icon?: React.ReactNode;
 }
 
-export function Select({
+export function SelectNative({
   options,
   value: controlledValue,
   defaultValue,
@@ -37,7 +34,7 @@ export function Select({
   className,
   size = "md",
   icon,
-}: SelectProps) {
+}: SelectNativeProps) {
   const [internalValue, setInternalValue] = useState(defaultValue ?? "");
   const value = controlledValue !== undefined ? controlledValue : internalValue;
 
@@ -148,20 +145,20 @@ export function Select({
         onClick={() => !disabled && setOpen((p) => !p)}
         onKeyDown={handleKeyDown}
         className={cn(
-          "flex w-full items-center gap-2 border border-stroke-default bg-surface-2 text-left transition-colors duration-(--of-duration-instant)",
-          "focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent",
+          "flex w-full items-center gap-2 border border-input bg-muted text-left transition-colors",
+          "focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring",
           "disabled:cursor-not-allowed disabled:opacity-50",
-          open && "border-accent ring-1 ring-accent",
+          open && "border-ring ring-1 ring-ring",
           sizeClasses,
         )}
       >
-        {icon && <span className="shrink-0 text-text-tertiary">{icon}</span>}
-        <span className={cn("flex-1 truncate", isPlaceholder && "text-text-tertiary")}>
+        {icon && <span className="shrink-0 text-muted-foreground">{icon}</span>}
+        <span className={cn("flex-1 truncate", isPlaceholder && "text-muted-foreground")}>
           {displayLabel}
         </span>
         <ChevronDown
           className={cn(
-            "h-3 w-3 shrink-0 text-text-tertiary transition-transform duration-(--of-duration-instant)",
+            "h-3 w-3 shrink-0 text-muted-foreground transition-transform",
             open && "rotate-180",
           )}
         />
@@ -171,7 +168,7 @@ export function Select({
         <div
           ref={listRef}
           role="listbox"
-          className="absolute left-0 z-50 mt-1 max-h-60 w-full min-w-[160px] overflow-y-auto border border-stroke-subtle bg-surface-1 py-1 shadow-xl"
+          className="absolute left-0 z-50 mt-1 max-h-60 w-full min-w-[160px] overflow-y-auto border border-border bg-popover py-1 shadow-xl"
         >
           {placeholder && (
             <button
@@ -180,10 +177,10 @@ export function Select({
               aria-selected={value === ""}
               onClick={() => handleSelect("")}
               className={cn(
-                "flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors duration-(--of-duration-instant)",
+                "flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors",
                 value === ""
-                  ? "bg-accent/10 text-accent-text"
-                  : "text-text-tertiary hover:bg-surface-2",
+                  ? "bg-accent/10 text-accent-foreground"
+                  : "text-muted-foreground hover:bg-muted",
               )}
             >
               <span className="flex-1 truncate">{placeholder}</span>
@@ -200,12 +197,12 @@ export function Select({
               onClick={() => !option.disabled && handleSelect(option.value)}
               onMouseEnter={() => setFocusedIndex(idx)}
               className={cn(
-                "flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors duration-(--of-duration-instant)",
+                "flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors",
                 option.disabled && "cursor-not-allowed opacity-50",
-                value === option.value && "bg-accent/10 text-accent-text",
-                focusedIndex === idx && value !== option.value && "bg-surface-2",
-                value !== option.value && focusedIndex !== idx && "text-text-secondary",
-                !option.disabled && "hover:bg-surface-2",
+                value === option.value && "bg-accent/10 text-accent-foreground",
+                focusedIndex === idx && value !== option.value && "bg-muted",
+                value !== option.value && focusedIndex !== idx && "text-foreground",
+                !option.disabled && "hover:bg-muted",
               )}
             >
               <span className="flex-1 truncate">{option.label}</span>
@@ -217,3 +214,6 @@ export function Select({
     </div>
   );
 }
+
+export { SelectNative as Select };
+export type { SelectNativeProps as SelectProps };

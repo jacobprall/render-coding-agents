@@ -1,6 +1,6 @@
 ---
-name: Implementation
-description: Core coding and implementation loop (absorbed into base prompt)
+name: Implementation (deprecated)
+description: Superseded by base system prompt SESSION_LIFECYCLE — kept for slug compatibility only
 default: "false"
 ---
 

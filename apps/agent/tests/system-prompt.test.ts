@@ -2,20 +2,7 @@ import { describe, it, expect } from "bun:test";
 import { buildAgentSystemPrompt } from "../src/system-prompt";
 
 describe("buildAgentSystemPrompt", () => {
-  it("never injects resolved skill content into the prompt", () => {
-    const prompt = buildAgentSystemPrompt({
-      resolvedSkillContents: [
-        { slug: "deploy-render", content: "Deploy to Render steps." },
-        { slug: "next-best-practices", content: "Next.js guidance." },
-      ],
-    });
-
-    expect(prompt).not.toContain("# Skill: deploy-render");
-    expect(prompt).not.toContain("Deploy to Render steps.");
-    expect(prompt).not.toContain("Next.js guidance.");
-  });
-
-  it("renders skill index table without injecting bodies", () => {
+  it("does not inject skill bodies into the prompt (load_skill on demand)", () => {
     const prompt = buildAgentSystemPrompt({
       skillIndex: [
         {
@@ -25,9 +12,6 @@ describe("buildAgentSystemPrompt", () => {
           description: "Deploy apps to Render",
           defaultEnabled: true,
         },
-      ],
-      resolvedSkillContents: [
-        { slug: "deploy-render", content: "Full deploy skill body." },
       ],
     });
 

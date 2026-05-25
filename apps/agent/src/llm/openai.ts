@@ -1,4 +1,5 @@
-import type { LLMProvider, LLMResponse, LLMMessage, ContentBlock, ToolDefinition } from "./types";
+import type { LLMProvider, LLMResponse, LLMMessage, ContentBlock } from "./types";
+import { forEachSseDataLine } from "./sse";
 
 const API_URL = "https://api.openai.com/v1/chat/completions";
 const DEFAULT_MAX_TOKENS = 16384;
@@ -125,90 +126,61 @@ async function parseSSEStream(
   res: Response,
   onToken?: (token: string) => void,
 ): Promise<LLMResponse> {
-  const reader = res.body!.getReader();
-  const decoder = new TextDecoder();
-
   let text = "";
   const toolCalls = new Map<number, AccumulatedToolCall>();
   let finishReason = "stop";
   let promptTokens = 0;
   let completionTokens = 0;
   let modelId = "";
-  let buffer = "";
 
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+  await forEachSseDataLine(res, (chunk) => {
+    if (!modelId && chunk.model) {
+      modelId = chunk.model as string;
+    }
 
-      buffer += decoder.decode(value, { stream: true });
+    const choices = chunk.choices as Array<Record<string, unknown>> | undefined;
+    if (!choices?.length) {
+      const usage = chunk.usage as Record<string, number> | undefined;
+      if (usage) {
+        promptTokens = usage.prompt_tokens ?? 0;
+        completionTokens = usage.completion_tokens ?? 0;
+      }
+      return;
+    }
 
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
+    const choice = choices[0]!;
+    if (choice.finish_reason) {
+      finishReason = choice.finish_reason as string;
+    }
 
-      for (const line of lines) {
-        if (!line.startsWith("data: ")) continue;
-        const data = line.slice(6).trim();
-        if (data === "[DONE]") continue;
+    const delta = choice.delta as Record<string, unknown> | undefined;
+    if (!delta) return;
 
-        let chunk: Record<string, unknown>;
-        try {
-          chunk = JSON.parse(data);
-        } catch {
-          continue;
+    if (delta.content) {
+      const token = delta.content as string;
+      text += token;
+      onToken?.(token);
+    }
+
+    if (delta.tool_calls) {
+      for (const tc of delta.tool_calls as ToolCallDelta[]) {
+        let existing = toolCalls.get(tc.index);
+        if (!existing) {
+          existing = { id: tc.id ?? "", name: tc.function?.name ?? "", arguments: "" };
+          toolCalls.set(tc.index, existing);
         }
-
-        if (!modelId && chunk.model) {
-          modelId = chunk.model as string;
-        }
-
-        const choices = chunk.choices as Array<Record<string, unknown>> | undefined;
-        if (!choices?.length) {
-          const usage = chunk.usage as Record<string, number> | undefined;
-          if (usage) {
-            promptTokens = usage.prompt_tokens ?? 0;
-            completionTokens = usage.completion_tokens ?? 0;
-          }
-          continue;
-        }
-
-        const choice = choices[0]!;
-        if (choice.finish_reason) {
-          finishReason = choice.finish_reason as string;
-        }
-
-        const delta = choice.delta as Record<string, unknown> | undefined;
-        if (!delta) continue;
-
-        if (delta.content) {
-          const token = delta.content as string;
-          text += token;
-          onToken?.(token);
-        }
-
-        if (delta.tool_calls) {
-          for (const tc of delta.tool_calls as ToolCallDelta[]) {
-            let existing = toolCalls.get(tc.index);
-            if (!existing) {
-              existing = { id: tc.id ?? "", name: tc.function?.name ?? "", arguments: "" };
-              toolCalls.set(tc.index, existing);
-            }
-            if (tc.id) existing.id = tc.id;
-            if (tc.function?.name) existing.name = tc.function.name;
-            if (tc.function?.arguments) existing.arguments += tc.function.arguments;
-          }
-        }
-
-        if (chunk.usage) {
-          const usage = chunk.usage as Record<string, number>;
-          promptTokens = usage.prompt_tokens ?? promptTokens;
-          completionTokens = usage.completion_tokens ?? completionTokens;
-        }
+        if (tc.id) existing.id = tc.id;
+        if (tc.function?.name) existing.name = tc.function.name;
+        if (tc.function?.arguments) existing.arguments += tc.function.arguments;
       }
     }
-  } finally {
-    reader.releaseLock();
-  }
+
+    if (chunk.usage) {
+      const usage = chunk.usage as Record<string, number>;
+      promptTokens = usage.prompt_tokens ?? promptTokens;
+      completionTokens = usage.completion_tokens ?? completionTokens;
+    }
+  });
 
   if (finishReason === "length") {
     console.warn("[openai] Response truncated: max_tokens (finish_reason=length)");

@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { getSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import { getUserPreferences } from "@/lib/db/loaders";
-import { Disclosure } from "@/components/primitives/disclosure";
+import { Disclosure } from "@/components/ui/disclosure";
 import { PreferencesForm } from "./preferences-form";
 import { GitHubConnection } from "./github-connection";
 import { AccessTokensManager } from "./api-keys/access-tokens-manager";
