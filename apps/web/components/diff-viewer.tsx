@@ -397,7 +397,7 @@ function DiffFileAccordionItem({ file, index }: { file: DiffFile; index: number 
         </span>
       </button>
       {open ? (
-        <div className="overflow-x-auto overscroll-x-contain max-h-128 border-t border-stroke-subtle" style={{ WebkitOverflowScrolling: "touch" }}>
+        <div className="overflow-x-auto overscroll-x-contain max-h-128 border-t border-stroke-subtle" style={{ WebkitOverflowScrolling: "touch" as const }}>
           <table className="w-full border-collapse">
             <tbody>
               {file.hunks.length === 0 ? (

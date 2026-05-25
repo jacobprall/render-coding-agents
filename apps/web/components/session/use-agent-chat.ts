@@ -6,7 +6,6 @@ import {
   useEffect,
   useCallback,
   useMemo,
-  startTransition,
 } from "react";
 import { useEventSource } from "@/hooks/use-event-source";
 import { notifyFileTreeChange } from "@/hooks/use-file-tree";
@@ -190,9 +189,7 @@ export function useAgentChat({
         return;
       }
 
-      startTransition(() => {
-        dispatch({ type: "STREAM_EVENT", event: streamEvent });
-      });
+      dispatch({ type: "STREAM_EVENT", event: streamEvent });
     } catch (e) {
       if (process.env.NODE_ENV === "development") {
         console.warn("[SSE parse error]", e, rawData.slice(0, 200));
@@ -254,7 +251,6 @@ export function useAgentChat({
       };
       dispatch({ type: "ADD_USER_MESSAGE", message: userMessage });
       dispatch({ type: "CLEAR_ERROR" });
-      dispatch({ type: "START_STREAMING" });
 
       try {
         const body: Record<string, unknown> = { content: text };
@@ -281,9 +277,9 @@ export function useAgentChat({
           return;
         }
 
-        if (data.runId) {
-          dispatch({ type: "SET_ACTIVE_RUN_ID", runId: data.runId });
-        }
+        // Open SSE *after* POST completes with a known runId — avoids
+        // the no_active_run race that added 200-600ms of retry delay.
+        dispatch({ type: "START_STREAMING", runId: data.runId });
 
         if (data.isFirstMessage) {
           apiFetch<{ ok?: boolean; title?: string }>(

@@ -562,20 +562,15 @@ export class SessionService {
         .where(eq(sessions.id, sessionId)),
     ]);
 
-    // Build messages list and resolve skills, then enqueue the agent job
-    const rows = await this.db
-      .select({
-        role: chatMessages.role,
-        parts: chatMessages.parts,
-      })
-      .from(chatMessages)
-      .where(eq(chatMessages.chatId, chatRow.id))
-      .orderBy(asc(chatMessages.createdAt));
-
-    const messages = rows.map((m) => ({
-      role: m.role as "user" | "assistant",
-      content: m.parts,
-    }));
+    // For the first message we already know the full history — skip the query.
+    const messages: Array<{ role: "user" | "assistant"; content: unknown }> = isFirstMessage
+      ? [{ role: "user", content: [{ type: "text", text: content }] }]
+      : (await this.db
+          .select({ role: chatMessages.role, parts: chatMessages.parts })
+          .from(chatMessages)
+          .where(eq(chatMessages.chatId, chatRow.id))
+          .orderBy(asc(chatMessages.createdAt))
+        ).map((m) => ({ role: m.role as "user" | "assistant", content: m.parts }));
 
     const activeSkillRefs = mergeTurnSkillRefs(
       sessionRow.activeSkills as ActiveSkillRef[] | null,
@@ -600,12 +595,25 @@ export class SessionService {
           resolvedSecrets[`__SECRET__${key}`] = value;
         }
 
+        // Pre-render the project block so the worker doesn't re-query projects/projectRepos.
+        const projectBlockLines = ["# Project", "", `- **Name:** ${workspace.projectName ?? sessionRow.projectId}`];
+        if (workspace.projectInstructions) {
+          projectBlockLines.push("", "## Project Instructions", "", workspace.projectInstructions);
+        }
+        if (workspace.repos.length > 0) {
+          projectBlockLines.push("", "## Linked Repos");
+          for (const r of workspace.repos) {
+            projectBlockLines.push(`- ${r.repoPath}${r.isPrimary ? " (primary)" : ""}`);
+          }
+        }
+
         workspaceJobPayload = {
           workspaceId: sessionRow.projectId,
           resolvedEnv: mergedEnv,
           resolvedSecrets,
           resolvedSkills: mergedSkills,
           repos: workspace.repos,
+          projectBlock: projectBlockLines.join("\n"),
         };
       } catch {
         // Non-critical: proceed without workspace config

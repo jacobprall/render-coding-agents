@@ -65,6 +65,8 @@ export async function resolveWorkspaceConfig(
   );
 
   return {
+    projectName: project.name,
+    projectInstructions: project.instructions,
     environmentConfig,
     secretsConfig,
     computeDefaults: (project.computeDefaults as Record<string, unknown>) ?? {},

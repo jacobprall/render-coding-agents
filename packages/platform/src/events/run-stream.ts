@@ -32,12 +32,13 @@ export async function publishRunEvent(
 ): Promise<void> {
   const key = runEventStreamKey(runId);
   const streamId = await redis.xadd(key, "MAXLEN", "~", STREAM_MAXLEN, "*", STREAM_FIELD, payloadJson);
-  try {
-    const pubPayload = JSON.stringify({ _sid: streamId, ...JSON.parse(payloadJson) });
-    await redis.publish(`run:${runId}`, pubPayload);
-  } catch (err) {
+  // Fire-and-forget: PUBLISH is best-effort. If it fails, the SSE route
+  // catches up via XRANGE polling. Not awaiting saves ~2-5ms per token.
+  // Inject _sid without a full parse/stringify round-trip.
+  const pubPayload = `{"_sid":${JSON.stringify(streamId)},${payloadJson.slice(1)}`;
+  redis.publish(`run:${runId}`, pubPayload).catch((err) => {
     console.error("[run-stream] PUBLISH failed (XADD succeeded)", { runId, streamId, err });
-  }
+  });
 }
 
 export async function readRunEventHistory(

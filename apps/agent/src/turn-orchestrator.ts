@@ -366,7 +366,8 @@ async function runTurn(params: {
     });
     let systemPrompt = workspaceBlock ? `${basePrompt}\n\n${workspaceBlock}` : basePrompt;
 
-    const projectBlock = await buildProjectBlock(db, sessionRow?.projectId ?? null);
+    // Prefer pre-computed project block from job payload; fall back to DB query.
+    const projectBlock = job.projectBlock ?? await buildProjectBlock(db, sessionRow?.projectId ?? null);
     if (projectBlock) {
       systemPrompt = `${systemPrompt}\n\n${projectBlock}`;
     }

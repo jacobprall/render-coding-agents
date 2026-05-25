@@ -47,4 +47,6 @@ export interface AgentJob {
     forgeType: string | null;
     projectId: string | null;
   };
+  /** Pre-rendered project block for the system prompt (avoids worker DB queries). */
+  projectBlock?: string | null;
 }

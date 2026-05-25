@@ -59,6 +59,7 @@ export const AgentJobSchema = z.object({
     forgeType: z.string().nullable(),
     projectId: z.string().nullable(),
   }).optional(),
+  projectBlock: z.string().nullish(),
 });
 
 export type ValidatedAgentJob = z.infer<typeof AgentJobSchema>;

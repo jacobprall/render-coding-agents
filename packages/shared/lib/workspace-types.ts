@@ -34,6 +34,8 @@ export interface WorkspaceConfig {
 }
 
 export interface ResolvedWorkspaceConfig extends WorkspaceConfig {
+  projectName?: string
+  projectInstructions?: string | null
   repos: Array<{
     repoPath: string
     forgeType: "github" | "gitlab" | null
