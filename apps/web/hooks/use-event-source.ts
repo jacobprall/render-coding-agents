@@ -38,6 +38,7 @@ export function useEventSource({
   const esRef = useRef<EventSource | null>(null);
   const reconnectAttempts = useRef(0);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const intentionalCloseRef = useRef(false);
   const isMounted = useRef(true);
   const lastEventIdRef = useRef<string | null>(null);
   const onMessageRef = useRef(onMessage);
@@ -92,6 +93,11 @@ export function useEventSource({
     es.onerror = () => {
       if (!isMounted.current) return;
 
+      if (intentionalCloseRef.current) {
+        intentionalCloseRef.current = false;
+        return;
+      }
+
       if (es.readyState === EventSource.CLOSED) {
         setStatus("disconnected");
 
@@ -136,6 +142,7 @@ export function useEventSource({
   }, [url, enabled, connect, cleanup]);
 
   const close = useCallback(() => {
+    intentionalCloseRef.current = true;
     cleanup();
     setStatus("disconnected");
   }, [cleanup]);

@@ -303,7 +303,6 @@ describe("runAgentTurn idempotency", () => {
         workdir: "/workspace/sess-1",
         repoCount: 1,
       }),
-      spyOn(workspace, "cleanupWorktrees").mockResolvedValue(undefined),
       spyOn(providers, "getAdapter").mockResolvedValue({} as never),
       spyOn(providers, "getForgeProviderForSession").mockResolvedValue({} as never),
       spyOn(models, "getModel").mockReturnValue({ provider: {} as never, modelId: "test-model" }),
@@ -382,6 +381,5 @@ describe("runAgentTurn idempotency", () => {
     }
 
     expect(workspace.setupWorkspace).toHaveBeenCalled();
-    expect(workspace.cleanupWorktrees).toHaveBeenCalled();
   });
 });

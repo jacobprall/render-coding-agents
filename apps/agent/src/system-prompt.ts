@@ -34,6 +34,10 @@ Before starting work, briefly confirm your understanding of what the user wants.
 - If you hit a genuine blocker (failing tests you can't diagnose, missing context, design trade-offs), surface it to the user rather than spinning.
 - Don't narrate each step. Don't over-explain routine actions. Lead with the action or decision, not the reasoning.`;
 
+const OUTPUT_FORMAT = `# Output format
+
+Format replies in Markdown. Use **bold**, \`code\`, headings, and fenced code blocks where appropriate. Use bullet or numbered lists for multi-item enumerations — never bare lines. Keep formatting purposeful; don't add decoration for its own sake.`;
+
 const SESSION_LIFECYCLE = `# Session lifecycle
 
 A session typically moves through stages — but this is not a rigid pipeline. Use judgment about which stages apply. A one-line fix doesn't need a spec. A new feature might need all stages. Match effort to task size.
@@ -153,6 +157,7 @@ export function buildAgentSystemPrompt(opts: SystemPromptOpts): string {
   if (opts.isScratch) {
     parts.push(scratchIdentityBlock());
     parts.push(INTERACTION_STYLE);
+    parts.push(OUTPUT_FORMAT);
     parts.push(CODE_QUALITY);
     parts.push(ACTIONS_WITH_CARE);
     parts.push(SCRATCH_TOOLS);
@@ -160,6 +165,7 @@ export function buildAgentSystemPrompt(opts: SystemPromptOpts): string {
   } else {
     parts.push(identityBlock(forgeLabel));
     parts.push(INTERACTION_STYLE);
+    parts.push(OUTPUT_FORMAT);
     parts.push(SESSION_LIFECYCLE);
     parts.push(CODE_QUALITY);
     parts.push(ACTIONS_WITH_CARE);

@@ -130,6 +130,12 @@ export function appendStreamEvent(
     }
 
     case "step:started": {
+      // Only render a task UI part for events that carry a human-readable task
+      // description (e.g. the subagent `task` tool). Infrastructure events like
+      // workspace setup (`stepName: "mirror_check"`, etc.) intentionally have no
+      // `task` field and should not appear in the chat transcript.
+      const task = typeof p.task === "string" ? p.task : "";
+      if (!task) return parts;
       const taskId = (p.stepId ?? p.taskId) as string | undefined;
       if (taskId && parts.some((x) => x.type === "task" && x.taskId === taskId)) {
         return parts;
@@ -139,7 +145,7 @@ export function appendStreamEvent(
         ...parts,
         {
           type: "task",
-          task: (p.task ?? "") as string,
+          task,
           taskId,
           status: "running" as const,
           id,
@@ -149,8 +155,14 @@ export function appendStreamEvent(
 
     case "step:completed": {
       const taskId = (p.stepId ?? p.taskId) as string | undefined;
+      const taskDesc = typeof p.task === "string" ? p.task : undefined;
+      // Skip if there's no matching task part — avoids reviving workspace setup
+      // events that were filtered out by `step:started`.
+      if (!parts.some((x) => x.type === "task" && (taskId ? x.taskId === taskId : x.task === taskDesc))) {
+        return parts;
+      }
       return parts.map((x) =>
-        x.type === "task" && (taskId ? x.taskId === taskId : !x.taskId && x.task === (p.task as string))
+        x.type === "task" && (taskId ? x.taskId === taskId : !x.taskId && x.task === taskDesc)
           ? { ...x, status: "done" as const, result: typeof p.result === "string" ? p.result : undefined }
           : x,
       );
@@ -158,8 +170,12 @@ export function appendStreamEvent(
 
     case "step:failed": {
       const taskId = (p.stepId ?? p.taskId) as string | undefined;
+      const taskDesc = typeof p.task === "string" ? p.task : undefined;
+      if (!parts.some((x) => x.type === "task" && (taskId ? x.taskId === taskId : x.task === taskDesc))) {
+        return parts;
+      }
       return parts.map((x) =>
-        x.type === "task" && (taskId ? x.taskId === taskId : !x.taskId && x.task === (p.task as string))
+        x.type === "task" && (taskId ? x.taskId === taskId : !x.taskId && x.task === taskDesc)
           ? { ...x, status: "error" as const, error: (p.error ?? p.message) as string | undefined }
           : x,
       );

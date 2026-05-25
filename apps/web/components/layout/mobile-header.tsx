@@ -29,19 +29,25 @@ export function MobileHeader({
   }
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-card px-3">
+    <header
+      className="flex shrink-0 items-center gap-1 border-b border-border bg-card px-2"
+      style={{
+        minHeight: "calc(48px + var(--safe-area-top, 0px))",
+        paddingTop: "var(--safe-area-top, 0px)",
+      }}
+    >
       {showBack ? (
         <button
           type="button"
           onClick={handleBack}
-          className="flex h-8 w-8 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+          className="flex h-11 w-11 items-center justify-center text-muted-foreground transition-colors hover:text-foreground active:bg-surface-1"
           aria-label="Back"
         >
           <ArrowLeft className="size-5" />
         </button>
       ) : null}
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col px-1">
         <h1 className="truncate text-sm font-semibold text-foreground">
           {title}
         </h1>
@@ -51,7 +57,7 @@ export function MobileHeader({
       </div>
 
       {status === "streaming" ? (
-        <span className="inline-flex items-center gap-1 text-[11px] text-primary">
+        <span className="inline-flex shrink-0 items-center gap-1 px-2 text-[11px] text-primary">
           <span className="h-1.5 w-1.5 rounded-full bg-primary animate-[orb-float_1.4s_ease-in-out_infinite]" />
           Working
         </span>

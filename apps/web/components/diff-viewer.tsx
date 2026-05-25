@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
-import { FileEdit } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
+import { ChevronRight, FileEdit } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export interface DiffViewerProps {
   diff: string;
@@ -315,7 +316,7 @@ function renderHunkRows(
 ): ReactNode[] {
   const rows: React.ReactNode[] = [
     <tr key={`${keyPrefix}-h${hi}-hdr`} className="bg-surface-0">
-      <td colSpan={4} className="px-(--of-space-md) py-(--of-space-xs) text-[11px] text-text-tertiary border-t border-stroke-subtle first:border-t-0">
+      <td colSpan={4} className="px-2 py-(--of-space-xs) text-[11px] text-text-tertiary border-t border-stroke-subtle first:border-t-0 md:px-(--of-space-md)">
         {hunk.header}
       </td>
     </tr>,
@@ -324,16 +325,16 @@ function renderHunkRows(
   hunk.lines.forEach((line, li) => {
     rows.push(
       <tr key={`${keyPrefix}-h${hi}-l${li}`} className={lineRowBg(line.type)}>
-        <td className="w-10 py-px pr-1 pl-(--of-space-sm) text-right align-top select-none text-[11px] tabular-nums text-text-tertiary border-r border-stroke-subtle/60">
+        <td className="hidden w-10 py-px pr-1 pl-(--of-space-sm) text-right align-top select-none text-[11px] tabular-nums text-text-tertiary border-r border-stroke-subtle/60 md:table-cell">
           {line.oldLineNo !== undefined ? line.oldLineNo : ""}
         </td>
-        <td className="w-10 py-px pr-1 pl-1 text-right align-top select-none text-[11px] tabular-nums text-text-tertiary border-r border-stroke-subtle/60">
-          {line.newLineNo !== undefined ? line.newLineNo : ""}
+        <td className="w-8 py-px pr-1 pl-1 text-right align-top select-none text-[11px] tabular-nums text-text-tertiary border-r border-stroke-subtle/60 md:w-10">
+          {line.newLineNo ?? line.oldLineNo ?? ""}
         </td>
-        <td className="w-5 py-px px-1 text-center align-top select-none text-text-tertiary text-[11px] font-mono">
+        <td className="w-4 py-px px-0.5 text-center align-top select-none text-text-tertiary text-[11px] font-mono md:w-5 md:px-1">
           {signForLine(line.type)}
         </td>
-        <td className="px-(--of-space-sm) py-px whitespace-pre-wrap break-all align-top">
+        <td className="px-1 py-px whitespace-pre-wrap break-all align-top md:px-(--of-space-sm)">
           <span className={lineTextClass(line.type)}>{line.content}</span>
         </td>
       </tr>,
@@ -341,6 +342,79 @@ function renderHunkRows(
   });
 
   return rows;
+}
+
+function displayFilePath(file: DiffFile) {
+  const p = file.newPath || file.oldPath;
+  if (!p && file.oldPath !== file.newPath) {
+    if (file.oldPath) return file.oldPath;
+    if (file.newPath) return file.newPath;
+  }
+  return p || "(file)";
+}
+
+function countFileChanges(file: DiffFile) {
+  let add = 0;
+  let rem = 0;
+  for (const h of file.hunks) {
+    for (const l of h.lines) {
+      if (l.type === "add") add++;
+      else if (l.type === "remove") rem++;
+    }
+  }
+  return { add, rem };
+}
+
+function DiffFileAccordionItem({ file, index }: { file: DiffFile; index: number }) {
+  const [open, setOpen] = useState(false);
+  const { add, rem } = useMemo(() => countFileChanges(file), [file]);
+  const path = displayFilePath(file);
+  const filename = path.includes("/") ? path.slice(path.lastIndexOf("/") + 1) : path;
+  const dir = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+
+  return (
+    <div className="border border-stroke-subtle bg-surface-1 overflow-hidden text-[12px] font-mono md:text-[13px]">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex min-h-[44px] w-full items-center gap-2 px-3 py-2 text-left transition-colors active:bg-surface-2 md:px-(--of-space-md) md:py-(--of-space-xs)"
+      >
+        <ChevronRight
+          className={cn(
+            "size-3.5 shrink-0 text-text-tertiary transition-transform duration-150",
+            open && "rotate-90",
+          )}
+        />
+        <FileEdit className="size-3.5 shrink-0 text-text-tertiary" aria-hidden />
+        <span className="min-w-0 flex-1 truncate text-[11px] text-text-tertiary">
+          <span className="text-text-secondary">{filename}</span>
+          {dir ? <span className="text-text-tertiary"> {dir}</span> : null}
+        </span>
+        <span className="shrink-0 text-[10px] tabular-nums">
+          <span className="text-accent-text/70">+{add}</span>
+          <span className="text-text-tertiary mx-0.5">/</span>
+          <span className="text-danger/70">-{rem}</span>
+        </span>
+      </button>
+      {open ? (
+        <div className="overflow-x-auto overscroll-x-contain max-h-128 border-t border-stroke-subtle" style={{ WebkitOverflowScrolling: "touch" as unknown as string }}>
+          <table className="w-full border-collapse">
+            <tbody>
+              {file.hunks.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-3 py-(--of-space-sm) text-[11px] text-text-secondary md:px-(--of-space-md)">
+                    No textual hunks
+                  </td>
+                </tr>
+              ) : (
+                file.hunks.flatMap((hunk, hi) => renderHunkRows(hunk, hi, `${index}`))
+              )}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export function UnifiedDiffViewer({ diff, maxFiles, maxLines }: DiffViewerProps) {
@@ -366,42 +440,10 @@ export function UnifiedDiffViewer({ diff, maxFiles, maxLines }: DiffViewerProps)
     return <div className="text-xs text-text-tertiary p-4">No changes to display</div>;
   }
 
-  const displayPath = (file: DiffFile) => {
-    const p = file.newPath || file.oldPath;
-    if (!p && file.oldPath !== file.newPath) {
-      if (file.oldPath) return file.oldPath;
-      if (file.newPath) return file.newPath;
-    }
-    return p || "(file)";
-  };
-
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2 md:gap-3">
       {files.map((file, fi) => (
-        <div
-          key={fi}
-          className="border border-stroke-subtle bg-surface-1 overflow-hidden text-[13px] font-mono"
-        >
-          <div className="flex items-center gap-2 px-(--of-space-md) py-(--of-space-xs) border-b border-stroke-subtle bg-surface-1">
-            <FileEdit className="h-3.5 w-3.5 shrink-0 text-text-tertiary" aria-hidden />
-            <span className="text-[11px] text-text-tertiary truncate">{displayPath(file)}</span>
-          </div>
-          <div className="overflow-auto max-h-128">
-            <table className="w-full border-collapse">
-              <tbody>
-                {file.hunks.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="px-(--of-space-md) py-(--of-space-sm) text-[11px] text-text-secondary">
-                      No textual hunks
-                    </td>
-                  </tr>
-                ) : (
-                  file.hunks.flatMap((hunk, hi) => renderHunkRows(hunk, hi, `${fi}`))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <DiffFileAccordionItem key={fi} file={file} index={fi} />
       ))}
     </div>
   );
@@ -412,15 +454,15 @@ export function SingleFileDiffViewer({ diff, maxLines }: SingleFileDiffViewerPro
 
   if (hunks.length === 0) {
     return (
-      <div className="text-xs text-text-tertiary py-(--of-space-sm) px-(--of-space-md) border border-stroke-subtle bg-surface-1/50">
+      <div className="text-xs text-text-tertiary py-(--of-space-sm) px-3 border border-stroke-subtle bg-surface-1/50 md:px-(--of-space-md)">
         No diff content to display
       </div>
     );
   }
 
   return (
-    <div className="border border-stroke-subtle bg-surface-1 overflow-hidden text-[13px] font-mono">
-      <div className="overflow-auto max-h-128">
+    <div className="border border-stroke-subtle bg-surface-1 overflow-hidden text-[12px] font-mono md:text-[13px]">
+      <div className="overflow-x-auto overscroll-x-contain max-h-128" style={{ WebkitOverflowScrolling: "touch" as unknown as string }}>
         <table className="w-full border-collapse">
           <tbody>{hunks.flatMap((hunk, hi) => renderHunkRows(hunk, hi, "sf"))}</tbody>
         </table>

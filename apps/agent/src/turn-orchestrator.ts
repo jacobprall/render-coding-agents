@@ -18,7 +18,7 @@ import { publishEvent, evt, expireRunStream, mergeToolResults, updateRunStatus, 
 import { agentLoop } from "./loop";
 import { ObservabilityRecorder } from "./observability";
 import { runPlanner } from "./planner";
-import { setupWorkspace, cleanupWorktrees, repoNameFromPath } from "./workspace";
+import { setupWorkspace, repoNameFromPath } from "./workspace";
 import { createPrsForChangedRepos, persistSessionSummary } from "./pr-manager";
 
 const MAX_STEPS = parseInt(process.env.MAX_AGENT_STEPS ?? "100", 10);
@@ -717,8 +717,5 @@ export async function runAgentTurn(job: AgentJob, redis: Redis, platform: Platfo
     throw error;
   } finally {
     clearInterval(setupHeartbeat);
-    if (adapter) {
-      await cleanupWorktrees(job, adapter);
-    }
   }
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect, useMemo } from "react";
-import { Plus, FileUp, Code2, X } from "lucide-react";
+import { Plus, FileUp, Code2, X, Square, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ModelSelector } from "@/components/model-selector";
 import { SkillSlashMenu, type SkillOption } from "./skill-slash-menu";
@@ -141,7 +141,10 @@ export function ChatInput({
   }
 
   return (
-    <div className="shrink-0 border-t border-stroke-subtle px-(--of-space-md) py-(--of-space-md)" style={{ paddingBottom: "max(var(--of-space-md), var(--safe-area-bottom))" }}>
+    <div
+      className="shrink-0 border-t border-stroke-subtle px-(--of-space-md) py-(--of-space-md)"
+      style={{ paddingBottom: "max(var(--of-space-md), var(--safe-area-bottom))" }}
+    >
       <form onSubmit={handleSubmit} className="mx-auto max-w-4xl">
         {attachedSkill ? (
           <div className="mb-2 flex items-center gap-2">
@@ -160,7 +163,7 @@ export function ChatInput({
         ) : null}
         <div
           ref={inputAreaRef}
-          className="relative flex items-end gap-2 border border-stroke-default bg-surface-1 p-2 transition-colors duration-(--of-duration-instant) focus-within:border-accent/50 focus-within:ring-1 focus-within:ring-accent/25"
+          className="relative flex flex-col gap-1.5 border border-stroke-default bg-surface-1 p-2 transition-colors duration-(--of-duration-instant) focus-within:border-accent/50 focus-within:ring-1 focus-within:ring-accent/25"
         >
           {slashOpen ? (
             <SkillSlashMenu
@@ -171,40 +174,6 @@ export function ChatInput({
               onClose={() => setSlashOpen(false)}
             />
           ) : null}
-          <div ref={attachMenuRef} className="relative hidden shrink-0 md:block">
-            <button
-              type="button"
-              onClick={() => setAttachMenuOpen((open) => !open)}
-              className={cn(
-                "flex h-8 w-8 items-center justify-center rounded-full border border-stroke-subtle",
-                "text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary",
-                attachMenuOpen && "bg-surface-2 text-text-primary",
-              )}
-              aria-label="Add attachment"
-            >
-              <Plus className="size-4" />
-            </button>
-            {attachMenuOpen ? (
-              <div className="absolute bottom-full left-0 z-50 mb-2 min-w-[160px] overflow-hidden rounded-md border border-stroke-default bg-surface-1 py-1 shadow-xl">
-                <button
-                  type="button"
-                  onClick={() => setAttachMenuOpen(false)}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary"
-                >
-                  <FileUp className="size-3.5 shrink-0" />
-                  Attach file
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAttachMenuOpen(false)}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary"
-                >
-                  <Code2 className="size-3.5 shrink-0" />
-                  Reference code
-                </button>
-              </div>
-            ) : null}
-          </div>
 
           <textarea
             ref={textareaRef}
@@ -214,11 +183,47 @@ export function ChatInput({
             placeholder={activeSkills.length > 0 ? "Message the agent… (type / for skills)" : "Message the agent…"}
             aria-label="Send a message"
             rows={1}
-            className="max-h-48 flex-1 resize-none overflow-y-auto bg-transparent px-2 py-1.5 text-[15px] text-text-primary placeholder-text-tertiary outline-none"
+            className="max-h-48 w-full resize-none overflow-y-auto bg-transparent px-2 py-2 text-[15px] text-text-primary placeholder-text-tertiary outline-none"
           />
 
-          <div className="flex shrink-0 items-center gap-2">
-            <span className="hidden md:block">
+          <div className="flex items-center gap-2">
+            <div ref={attachMenuRef} className="relative shrink-0">
+              <button
+                type="button"
+                onClick={() => setAttachMenuOpen((open) => !open)}
+                className={cn(
+                  "flex h-10 w-10 items-center justify-center border border-stroke-subtle md:h-8 md:w-8",
+                  "text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary",
+                  attachMenuOpen && "bg-surface-2 text-text-primary",
+                )}
+                aria-label="Add attachment"
+                aria-expanded={attachMenuOpen}
+              >
+                <Plus className="size-4" />
+              </button>
+              {attachMenuOpen ? (
+                <div className="absolute bottom-full left-0 z-50 mb-2 min-w-[180px] overflow-hidden rounded-md border border-stroke-default bg-surface-1 py-1 shadow-xl">
+                  <button
+                    type="button"
+                    onClick={() => setAttachMenuOpen(false)}
+                    className="flex min-h-[44px] w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary"
+                  >
+                    <FileUp className="size-3.5 shrink-0" />
+                    Attach file
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAttachMenuOpen(false)}
+                    className="flex min-h-[44px] w-full items-center gap-2 px-3 py-2 text-left text-sm text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary"
+                  >
+                    <Code2 className="size-3.5 shrink-0" />
+                    Reference code
+                  </button>
+                </div>
+              ) : null}
+            </div>
+
+            <span className="min-w-0 flex-1">
               <ModelSelector
                 value={modelId}
                 onChange={onModelChange}
@@ -227,31 +232,33 @@ export function ChatInput({
                 dropUp
               />
             </span>
+
             {isStreaming ? (
               <button
                 type="button"
                 onClick={onStop}
-                className="flex items-center gap-1.5 bg-surface-3 px-3 py-1.5 text-sm font-medium text-text-secondary transition-colors duration-(--of-duration-instant) hover:bg-surface-2"
+                aria-label="Stop generation"
+                className={cn(
+                  "inline-flex shrink-0 items-center justify-center gap-1.5 bg-surface-3 text-sm font-medium text-text-secondary transition-colors duration-(--of-duration-instant) hover:bg-surface-2",
+                  "h-11 min-w-[44px] px-4 md:h-9 md:px-3",
+                )}
               >
-                <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
-                  <rect x="6" y="6" width="12" height="12" rx="0" />
-                </svg>
-                <span className="hidden md:inline">Stop</span>
+                <Square className="size-3.5" fill="currentColor" />
+                <span>Stop</span>
               </button>
             ) : (
               <button
                 type="submit"
                 disabled={!canSend()}
-                className="flex items-center gap-1.5 bg-primary px-3 py-1.5 text-sm font-medium text-white transition-colors duration-(--of-duration-instant) hover:bg-primary/60 disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Send message"
+                className={cn(
+                  "inline-flex shrink-0 items-center justify-center gap-1.5 bg-primary text-sm font-semibold text-white transition-colors duration-(--of-duration-instant) hover:bg-primary/60",
+                  "h-11 min-w-[44px] px-4 md:h-9 md:px-3",
+                  "disabled:cursor-not-allowed disabled:opacity-50",
+                )}
               >
-                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"
-                  />
-                </svg>
-                <span className="hidden md:inline">Send</span>
+                <Send className="size-3.5" />
+                <span>Send</span>
               </button>
             )}
           </div>

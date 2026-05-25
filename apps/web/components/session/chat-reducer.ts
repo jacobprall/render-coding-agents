@@ -28,6 +28,13 @@ export interface Message {
 
 export type ChatStatus = "idle" | "waitingForRun" | "streaming" | "done" | "error";
 
+export interface SetupPhase {
+  /** Friendly label for the current setup step (e.g. "Cloning repository"). */
+  label: string;
+  /** Raw step name from the event (e.g. "mirror_check"). */
+  stepName: string;
+}
+
 export interface ChatState {
   messages: Message[];
   streamingParts: AssistantPart[];
@@ -39,8 +46,29 @@ export interface ChatState {
   noRunRetries: number;
   stepLimitReached: boolean;
   terminalReason: string | null;
+  setupPhase: SetupPhase | null;
   _seqCounter: number;
 }
+
+const SETUP_STEP_LABELS: Record<string, string> = {
+  mirror_check: "Checking workspace mirror",
+  mirror_fetch: "Fetching latest commits",
+  worktree_create: "Preparing workspace",
+  fallback_clone: "Cloning repository",
+};
+
+function setupLabelFor(stepName: string | undefined): string {
+  if (!stepName) return "Setting up workspace";
+  return SETUP_STEP_LABELS[stepName] ?? "Setting up workspace";
+}
+
+const AGENT_ACTIVITY_EVENT_TYPES = new Set<string>([
+  "agent:message",
+  "agent:tool_call",
+  "agent:tool_result",
+  "agent:ask_user",
+  "agent:file_changed",
+]);
 
 export type ChatAction =
   | { type: "START_STREAMING"; runId?: string }
@@ -100,6 +128,7 @@ export function initialChatState(
     noRunRetries: 0,
     stepLimitReached: terminalReason === "step_limit",
     terminalReason,
+    setupPhase: null,
     _seqCounter: 0,
   };
 }
@@ -117,6 +146,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         noRunRetries: 0,
         stepLimitReached: false,
         terminalReason: null,
+        setupPhase: null,
         _seqCounter: 0,
       };
 
@@ -128,12 +158,13 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         status: "done",
         liveFileChanges: [],
         askUserPrompt: null,
+        setupPhase: null,
       };
     }
 
     case "SET_ERROR": {
       const flushed = flushStreamingToMessages(state.messages, state.streamingParts);
-      return { ...state, ...flushed, error: action.error, status: "error" };
+      return { ...state, ...flushed, error: action.error, status: "error", setupPhase: null };
     }
 
     case "CLEAR_ERROR":
@@ -150,6 +181,28 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return { ...state, askUserPrompt: action.prompt };
 
     case "NO_ACTIVE_RUN": {
+      // Ignore stale reconnects after a run has already finished.
+      if (state.status === "done" || state.status === "idle" || state.status === "error") {
+        return state;
+      }
+
+      // Reconnect landed after the run ended (or SSR had a stale activeRunId).
+      // Don't spin for 60s — treat as finished.
+      if (state.status === "streaming" && state.activeRunId) {
+        const flushed = flushStreamingToMessages(state.messages, state.streamingParts);
+        const hasNewContent =
+          flushed.messages.length > state.messages.length ||
+          state.streamingParts.length > 0;
+        return {
+          ...state,
+          ...flushed,
+          status: hasNewContent ? "done" : "idle",
+          activeRunId: null,
+          noRunRetries: 0,
+          setupPhase: null,
+        };
+      }
+
       const noRunRetries = state.noRunRetries + 1;
       if (noRunRetries >= MAX_NO_RUN_RETRIES) {
         const flushed = flushStreamingToMessages(state.messages, state.streamingParts);
@@ -199,6 +252,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
             askUserPrompt: null,
             stepLimitReached: isStepLimit,
             terminalReason,
+            setupPhase: null,
           };
         }
         return {
@@ -209,6 +263,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
           askUserPrompt: null,
           stepLimitReached: isStepLimit,
           terminalReason,
+          setupPhase: null,
         };
       }
 
@@ -237,6 +292,21 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         };
       }
 
+      // Track workspace-setup phase. Setup events use `stepId: "setup"` and
+      // emit a `stepName` (mirror_check, worktree_create, fallback_clone, ...).
+      // Once any real agent activity arrives (token, tool call, etc.), we
+      // consider setup complete and clear the indicator.
+      let setupPhase = state.setupPhase;
+      if (event.type === "step:started" && p.stepId === "setup") {
+        const stepName = typeof p.stepName === "string" ? p.stepName : "";
+        setupPhase = { label: setupLabelFor(stepName), stepName };
+      } else if (
+        AGENT_ACTIVITY_EVENT_TYPES.has(event.type) ||
+        (event.type === "step:started" && p.stepId !== "setup")
+      ) {
+        setupPhase = null;
+      }
+
       const seq = { current: state._seqCounter };
       const streamingParts = appendStreamEvent(state.streamingParts, event, seq);
 
@@ -247,6 +317,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         _seqCounter: seq.current,
         liveFileChanges,
         askUserPrompt,
+        setupPhase,
       };
     }
 

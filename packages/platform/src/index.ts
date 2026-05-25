@@ -81,6 +81,7 @@ export { resolveLlmApiKeys, type ResolvedLlmKeys } from "./auth/api-key-resolver
 
 // Services
 export { SessionService } from "./services/session";
+export { cleanupSessionSandbox } from "./services/session-sandbox-cleanup";
 export type {
   CreateSessionParams,
   SendMessageParams,

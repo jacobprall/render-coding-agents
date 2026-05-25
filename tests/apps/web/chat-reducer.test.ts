@@ -237,6 +237,35 @@ describe("chatReducer", () => {
       expect(next.status).toBe("error");
       expect(next.error).toContain("did not start");
     });
+
+    test("ignores when run already finished", () => {
+      const state = makeState({ status: "done", noRunRetries: 0 });
+      const next = chatReducer(state, { type: "NO_ACTIVE_RUN" });
+      expect(next).toEqual(state);
+    });
+
+    test("returns to idle when streaming with stale run id and no content", () => {
+      const state = makeState({
+        status: "streaming",
+        activeRunId: "run-stale",
+      });
+      const next = chatReducer(state, { type: "NO_ACTIVE_RUN" });
+      expect(next.status).toBe("idle");
+      expect(next.activeRunId).toBeNull();
+      expect(next.noRunRetries).toBe(0);
+    });
+
+    test("flushes streaming parts when reconnecting after a completed run", () => {
+      const state = makeState({
+        status: "streaming",
+        activeRunId: "run-1",
+        streamingParts: [{ type: "text", text: "hello", id: "text-0" }],
+      });
+      const next = chatReducer(state, { type: "NO_ACTIVE_RUN" });
+      expect(next.status).toBe("done");
+      expect(next.messages).toHaveLength(1);
+      expect(next.streamingParts).toEqual([]);
+    });
   });
 
   describe("ADD_USER_MESSAGE", () => {

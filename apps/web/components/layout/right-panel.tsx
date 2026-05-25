@@ -80,15 +80,23 @@ export function RightPanel({
           )}
           style={mobile ? undefined : { width }}
         >
-          <div className="flex shrink-0 items-center justify-between border-b border-stroke-subtle px-2 py-1.5">
+          <div
+            className={cn(
+              "flex shrink-0 items-center justify-between border-b border-stroke-subtle",
+              mobile ? "px-2 py-1" : "px-2 py-1.5",
+            )}
+          >
             <span className="text-[11px] font-medium text-text-tertiary">Explorer</span>
             <button
               type="button"
               onClick={handleClose}
-              className="rounded p-1 text-text-tertiary transition-colors hover:bg-surface-2 hover:text-text-primary"
-              title="Close panel"
+              aria-label="Close panel"
+              className={cn(
+                "flex items-center justify-center text-text-tertiary transition-colors hover:bg-surface-2 hover:text-text-primary",
+                mobile ? "h-11 w-11" : "h-7 w-7 rounded p-1",
+              )}
             >
-              <X className="size-3.5" />
+              <X className={mobile ? "size-5" : "size-3.5"} />
             </button>
           </div>
 

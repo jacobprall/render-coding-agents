@@ -256,7 +256,7 @@ export function SessionWorkspace({
             onViewFiles={handleViewFiles}
             onFileSelect={handleFileSelect}
             onTitleChange={handleTitleChange}
-            autoStream={activeRunId != null}
+            autoStream={activeRunId != null && session.status === "running"}
             autoStreamRunId={activeRunId ?? undefined}
             onRegisterClearFileChanges={(clear) => {
               clearChatFileChangesRef.current = clear;
@@ -311,7 +311,7 @@ function TabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors duration-(--of-duration-instant) ${
+      className={`flex min-h-[44px] items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors duration-(--of-duration-instant) ${
         active
           ? "border-b-2 border-accent text-text-primary"
           : "border-b-2 border-transparent text-text-tertiary hover:text-text-secondary"

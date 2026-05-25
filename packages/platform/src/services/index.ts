@@ -82,3 +82,4 @@ export type {
 } from "./invite";
 
 export * from "./workspace";
+export { cleanupSessionSandbox } from "./session-sandbox-cleanup";

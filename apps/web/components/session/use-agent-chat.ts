@@ -11,7 +11,7 @@ import {
 import { useEventSource } from "@/hooks/use-event-source";
 import { notifyFileTreeChange } from "@/hooks/use-file-tree";
 import { apiFetch } from "@/lib/api-fetch";
-import type { StreamEvent } from "@coding-agents/shared/client";
+import { isTerminalEvent, type StreamEvent } from "@coding-agents/shared/client";
 import {
   chatReducer,
   initialChatState,
@@ -20,12 +20,13 @@ import {
   type ChatStatus,
   type LiveFileChange,
   type AskUserPrompt,
+  type SetupPhase,
 } from "./chat-reducer";
 
 const MAX_SEEN_IDS = 5000;
 const NO_RUN_RETRY_DELAY_MS = 2000;
 
-export type { Message, LiveFileChange, AskUserPrompt, ChatStatus };
+export type { Message, LiveFileChange, AskUserPrompt, ChatStatus, SetupPhase };
 
 interface UseAgentChatOptions {
   sessionId: string;
@@ -47,6 +48,7 @@ export interface UseAgentChatReturn {
   activeRunId: string | null;
   terminalReason: string | null;
   stepLimitReached: boolean;
+  setupPhase: SetupPhase | null;
   sendMessage: (
     content: string,
     turnSkillRefs?: Array<{ source: string; slug: string }>,
@@ -77,6 +79,13 @@ export function useAgentChat({
 
   const seenIds = useRef(new Set<string>());
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stopSafetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const statusRef = useRef(state.status);
+  const noRunRetriesRef = useRef(state.noRunRetries);
+  const activeRunIdRef = useRef(state.activeRunId);
+  statusRef.current = state.status;
+  noRunRetriesRef.current = state.noRunRetries;
+  activeRunIdRef.current = state.activeRunId;
   const onFileChangesRef = useRef(onFileChanges);
   onFileChangesRef.current = onFileChanges;
   const onTitleChangeRef = useRef(onTitleChange);
@@ -131,13 +140,36 @@ export function useAgentChat({
 
       if (type === "no_active_run") {
         if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
-        startTransition(() => {
+
+        const currentStatus = statusRef.current;
+        if (
+          currentStatus === "done" ||
+          currentStatus === "idle" ||
+          currentStatus === "error"
+        ) {
+          esRef.current?.close();
+          return;
+        }
+
+        // Stale run or post-terminal reconnect — reducer will finish immediately.
+        if (currentStatus === "streaming" && activeRunIdRef.current) {
           dispatch({ type: "NO_ACTIVE_RUN" });
-        });
-        if (state.noRunRetries < MAX_NO_RUN_RETRIES) {
+          esRef.current?.close();
+          return;
+        }
+
+        const nextRetries = noRunRetriesRef.current + 1;
+        dispatch({ type: "NO_ACTIVE_RUN" });
+
+        if (
+          currentStatus === "waitingForRun" &&
+          nextRetries < MAX_NO_RUN_RETRIES
+        ) {
           retryTimerRef.current = setTimeout(() => {
             esRef.current?.reconnect();
           }, NO_RUN_RETRY_DELAY_MS);
+        } else {
+          esRef.current?.close();
         }
         return;
       }
@@ -151,6 +183,13 @@ export function useAgentChat({
         }
       }
 
+      if (isTerminalEvent(streamEvent)) {
+        if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+        dispatch({ type: "STREAM_EVENT", event: streamEvent });
+        esRef.current?.close();
+        return;
+      }
+
       startTransition(() => {
         dispatch({ type: "STREAM_EVENT", event: streamEvent });
       });
@@ -159,7 +198,7 @@ export function useAgentChat({
         console.warn("[SSE parse error]", e, rawData.slice(0, 200));
       }
     }
-  }, [evictSeenIds, state.noRunRetries]);
+  }, [evictSeenIds]);
 
   const es = useEventSource({
     url: streamUrl,
@@ -296,16 +335,16 @@ export function useAgentChat({
     } catch {
       // best effort
     }
-    const safetyTimeout = setTimeout(() => {
+    if (stopSafetyTimerRef.current) clearTimeout(stopSafetyTimerRef.current);
+    stopSafetyTimerRef.current = setTimeout(() => {
       dispatch({ type: "FINISH_STREAMING" });
     }, 10_000);
-    if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
-    retryTimerRef.current = safetyTimeout;
   }, [sessionId]);
 
   useEffect(() => {
     return () => {
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      if (stopSafetyTimerRef.current) clearTimeout(stopSafetyTimerRef.current);
     };
   }, []);
 
@@ -323,6 +362,7 @@ export function useAgentChat({
     activeRunId: state.activeRunId,
     terminalReason: state.terminalReason,
     stepLimitReached: state.stepLimitReached,
+    setupPhase: state.setupPhase,
     sendMessage,
     submitAskUserReply,
     stopStreaming,

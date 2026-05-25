@@ -5,71 +5,6 @@ import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { CodeBlock } from "./code-block";
 
-function qualifiesAsLooseListRun(lines: string[]): boolean {
-  if (lines.length < 3) return false;
-  if (
-    lines.some((l) =>
-      /^(#{1,6}\s|[-*+]\s|\d+\.\s|>|```|\s*\|)/.test(l.trimStart()),
-    )
-  ) {
-    return false;
-  }
-  if (lines.some((l) => l.length > 200)) return false;
-  const sentenceLike = lines.filter((l) => {
-    const t = l.trim();
-    return t.length > 48 && /[.!?]["'']?$/.test(t);
-  }).length;
-  if (sentenceLike > lines.length * 0.35) return false;
-  return true;
-}
-
-/**
- * Turn trailing “plain line” runs into GFM lists (see qualifiesAsLooseListRun).
- * Keeps earlier lines as normal prose so intro paragraphs are not bulleted.
- */
-function coerceLooseListParagraphs(source: string): string {
-  if (!source.includes("\n") || source.includes("```")) return source;
-
-  const parts = source.split(/(\n{2,})/);
-  const result: string[] = [];
-
-  for (const segment of parts) {
-    if (/^\n+$/.test(segment) || !segment.trim()) {
-      result.push(segment);
-      continue;
-    }
-    if (segment.includes("```")) {
-      result.push(segment);
-      continue;
-    }
-
-    const trimmed = segment.trim();
-    const lines = trimmed.split("\n").map((l) => l.trimEnd());
-    if (lines.length < 3) {
-      result.push(segment);
-      continue;
-    }
-
-    let bestStart = -1;
-    for (let start = 0; start <= lines.length - 3; start++) {
-      if (qualifiesAsLooseListRun(lines.slice(start))) bestStart = start;
-    }
-
-    if (bestStart >= 0) {
-      const head = lines.slice(0, bestStart);
-      const run = lines.slice(bestStart);
-      const bullets = run.map((l) => `- ${l.trim()}`).join("\n");
-      const merged = head.length > 0 ? `${head.join("\n")}\n\n${bullets}` : bullets;
-      result.push(merged);
-      continue;
-    }
-
-    result.push(segment);
-  }
-
-  return result.join("");
-}
-
 const markdownComponents: Components = {
   pre({ children: preChildren }) {
     return <>{preChildren}</>;
@@ -93,8 +28,6 @@ interface MarkdownProps {
 }
 
 export function Markdown({ children }: MarkdownProps) {
-  const normalized = coerceLooseListParagraphs(children);
-
   return (
     <div
       className="prose prose-sm prose-invert max-w-none min-w-0 wrap-break-word
@@ -121,7 +54,7 @@ export function Markdown({ children }: MarkdownProps) {
         remarkPlugins={[remarkGfm, remarkBreaks]}
         components={markdownComponents}
       >
-        {normalized}
+        {children}
       </ReactMarkdown>
     </div>
   );

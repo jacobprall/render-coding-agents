@@ -40,6 +40,7 @@ import {
   mergeSessionOverrides,
   decryptSecrets,
 } from "./workspace";
+import { cleanupSessionSandbox } from "./session-sandbox-cleanup";
 
 // ---------------------------------------------------------------------------
 // Re-exports from sub-modules (preserves the public API surface)
@@ -351,6 +352,8 @@ export class SessionService {
       .update(sessions)
       .set({ status: "archived", updatedAt: new Date() })
       .where(and(eq(sessions.id, sessionId), eq(sessions.userId, auth.userId)));
+
+    void cleanupSessionSandbox(sessionId);
   }
 
   // -------------------------------------------------------------------------

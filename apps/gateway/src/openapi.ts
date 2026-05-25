@@ -5,10 +5,10 @@ import type { GatewayEnv } from "./middleware/auth";
 const spec = {
   openapi: "3.1.0",
   info: {
-    title: "Render Open Forge Gateway API",
+    title: "Coding Agents Gateway API",
     version: "1.0.0",
     description:
-      "API gateway for the Render Open Forge platform — agent sessions, repositories, pull requests, organizations, and more.",
+      "API gateway for the Coding Agents platform — agent sessions, repositories, pull requests, organizations, and more.",
   },
   servers: [{ url: "/api", description: "Gateway API" }],
   tags: [

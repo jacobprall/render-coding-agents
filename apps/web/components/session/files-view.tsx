@@ -1,6 +1,9 @@
 "use client";
 
 import { useState, useMemo, useCallback, useEffect } from "react";
+import { ChevronLeft, ChevronRight, FileEdit } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-is-mobile";
 import type { LiveFileChange } from "./chat-panel";
 import { SingleFileDiffViewer } from "@/components/diff-viewer";
 import { FileExplorer } from "@/components/session/file-explorer";
@@ -116,10 +119,12 @@ function ChangesView({
   totalRemoved: number;
   selectedMeta: LiveFileChange | undefined;
 }) {
+  const isMobile = useIsMobile();
+
   if (fileChanges.length === 0) {
     return (
       <div className="flex h-full items-center justify-center">
-        <div className="text-center">
+        <div className="text-center px-4">
           <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-surface-2/50">
             <svg className="h-5 w-5 text-text-tertiary" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
@@ -131,6 +136,19 @@ function ChangesView({
           </p>
         </div>
       </div>
+    );
+  }
+
+  if (isMobile) {
+    return (
+      <MobileChangesView
+        fileChanges={fileChanges}
+        selectedFile={selectedFile}
+        onSelectFile={onSelectFile}
+        totalAdded={totalAdded}
+        totalRemoved={totalRemoved}
+        selectedMeta={selectedMeta}
+      />
     );
   }
 
@@ -223,6 +241,112 @@ function ChangesView({
   );
 }
 
+function MobileChangesView({
+  fileChanges,
+  selectedFile,
+  onSelectFile,
+  totalAdded,
+  totalRemoved,
+  selectedMeta,
+}: {
+  fileChanges: LiveFileChange[];
+  selectedFile: string | null;
+  onSelectFile: (path: string | null) => void;
+  totalAdded: number;
+  totalRemoved: number;
+  selectedMeta: LiveFileChange | undefined;
+}) {
+  if (selectedFile && selectedMeta) {
+    const filename = selectedFile.split("/").pop() ?? selectedFile;
+    return (
+      <div className="flex h-full flex-col overflow-hidden">
+        <div className="flex shrink-0 items-center gap-2 border-b border-stroke-subtle px-3 py-2">
+          <button
+            type="button"
+            onClick={() => onSelectFile(null)}
+            className="flex h-9 w-9 items-center justify-center text-text-tertiary active:bg-surface-1"
+            aria-label="Back to file list"
+          >
+            <ChevronLeft className="size-5" />
+          </button>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-mono text-text-secondary">{filename}</p>
+            <span className="text-[10px] font-mono tabular-nums">
+              <span className="text-accent-text/70">+{selectedMeta.additions}</span>
+              <span className="text-text-tertiary mx-0.5">/</span>
+              <span className="text-danger/70">-{selectedMeta.deletions}</span>
+            </span>
+          </div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3" style={{ WebkitOverflowScrolling: "touch" }}>
+          {selectedMeta.unifiedDiffPreview ? (
+            <SingleFileDiffViewer diff={selectedMeta.unifiedDiffPreview} />
+          ) : (
+            <div className="border border-stroke-subtle bg-surface-1/50 p-6 text-center">
+              <p className="text-xs text-text-tertiary">
+                No diff preview available. File was modified with{" "}
+                {`${selectedMeta.additions} additions and ${selectedMeta.deletions} deletions`}.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="flex shrink-0 items-center justify-between border-b border-stroke-subtle/50 px-3 py-2">
+        <span className="text-[11px] font-medium text-text-tertiary">
+          {fileChanges.length} file{fileChanges.length !== 1 ? "s" : ""} changed
+        </span>
+        <span className="text-[11px] font-mono tabular-nums">
+          <span className="text-accent-text/70">+{totalAdded}</span>
+          <span className="text-text-tertiary mx-0.5">/</span>
+          <span className="text-danger/70">-{totalRemoved}</span>
+        </span>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: "touch" }}>
+        <div className="divide-y divide-stroke-subtle">
+          {fileChanges.map((file) => {
+            const filename = file.path.split("/").pop() ?? file.path;
+            const dir = file.path.includes("/")
+              ? file.path.slice(0, file.path.lastIndexOf("/"))
+              : "";
+
+            return (
+              <button
+                key={file.path}
+                type="button"
+                onClick={() => onSelectFile(file.path)}
+                className="flex min-h-[48px] w-full items-center gap-3 px-3 py-2.5 text-left transition-colors active:bg-surface-1"
+              >
+                <FileEdit className="size-4 shrink-0 text-text-tertiary" />
+                <div className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-mono text-text-secondary">
+                    {filename}
+                  </span>
+                  {dir ? (
+                    <span className="block truncate text-[11px] font-mono text-text-tertiary">
+                      {dir}
+                    </span>
+                  ) : null}
+                </div>
+                <span className="shrink-0 text-[11px] font-mono tabular-nums">
+                  <span className="text-accent-text/60">+{file.additions}</span>
+                  {" "}
+                  <span className="text-danger/60">-{file.deletions}</span>
+                </span>
+                <ChevronRight className="size-4 shrink-0 text-text-tertiary" />
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SubTabButton({
   active,
   onClick,
@@ -238,11 +362,12 @@ function SubTabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium transition-colors duration-(--of-duration-instant) ${
+      className={cn(
+        "flex min-h-[44px] items-center gap-1.5 px-3 py-2 text-[11px] font-medium transition-colors duration-(--of-duration-instant)",
         active
           ? "border-b-2 border-accent text-text-primary"
-          : "border-b-2 border-transparent text-text-tertiary hover:text-text-secondary"
-      }`}
+          : "border-b-2 border-transparent text-text-tertiary hover:text-text-secondary",
+      )}
     >
       {children}
       {badge !== undefined ? (

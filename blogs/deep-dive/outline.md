@@ -1,65 +1,108 @@
-# Technical Deep Dive working title: "How to build your own coding agent platform"
+# Technical Deep Dive — working title: "How to build your own coding agent platform"
 
 ## Introduction
-The next generation of software will be written in large part by AI. Platforms like Cursor and Devin let you rent agents on their fully managed infrastructure. They are turn-key solutions, but come with some downsides:
-- **Cost.** You're paying a premium on top of every token you read/write  
-- **Opacity.** Black box inner workings makes debugging and optimizing a challenge  
-- **Lock-in.** Your workflows live on someone else's platform. No escape hatch if pricing changes, features get deprecated, or the service goes down.
+The next generation of software will be written in large part by AI. Platforms like Cursor and Devin let you rent agents to generate code on their fully managed infrastructure. They are turn-key solutions, but they come with some downsides:
 
-So, we built a 1-click deployable fully-featured coding agent platform. With ```coding-agents```, you get:
+- **Cost.** You pay a premium on top of every token in and out.
+- **Opacity.** Black-box internals make debugging and optimizing a challenge.
+- **Lock-in.** Your workflows live on someone else's platform. No escape hatch if pricing changes, features are deprecated, or the service goes down.
 
-- Scalable, fault-tolerant, long-running coding agents  
-- Modern streaming UX  
-- Automations, integrations, and observability built-in
+So we built a 1-click deployable, fully-featured coding agent platform. With `coding-agents`, you get:
 
-The platform is deployable via blueprint to Render, or via Docker anywhere.
+- Scalable, fault-tolerant, long-running coding agents
+- A modern streaming chat UX
+- Automations, integrations, and observability built in
 
-Today, I'll break down the architecture and implementation of coding-agents. The patterns and principles we discuss are applicable to many kinds of distributed, multi-service, and agentic applications.
+The platform deploys via Blueprint to Render, or via Docker anywhere.
+
+Today I'll break down the architecture and implementation. The patterns are applicable to many kinds of distributed, multi-service, and agentic applications.
 
 ## Goals and Constraints
 
+### Deployment Scope: One Team, Self-Hosted
+
+This is the most important constraint, and it shapes everything below. `coding-agents` is designed for **a single team to deploy for themselves** — your engineering org, your CI, your codebase. It is **not** a multi-tenant SaaS platform meant to host arbitrary users' untrusted code.
+
+That assumption buys us a lot:
+
+- **Logical isolation** between sessions instead of per-session VMs or microVMs.
+- **Shared infrastructure** (one sandbox service, one Redis, one Postgres) instead of per-tenant stacks.
+- **Simple auth** — users in your org, not the public internet.
+- **No quota / billing / rate-limit plumbing** beyond what's needed to keep one team's costs sane.
+
+The trade is **blast radius**: a compromised agent session can affect other sessions on the same host. For a trusted team that's acceptable; for hosting strangers' code it isn't. We call out the line throughout. The architecture is built to upgrade to stronger isolation when the requirement appears (see "Future: Per-Session Isolation").
+
 ### Agent Capabilities
-- **Autonomous, long-running agents** — Agents that can run for minutes to hours without supervision, surviving transient failures and resuming from checkpoints.
-- **Fully featured** — Skills, tool calling, sub-agents, file operations, shell access — the full palette a coding agent needs to ship real work.
-- **Token efficiency** — Aggressive context management to keep costs low and context windows effective.
+- **Autonomous, long-running agents** that can run for minutes to hours without supervision, survive transient failures, and resume from checkpoints.
+- **Fully featured** — skills, tool calling, sub-agents, file operations, shell access — the full palette a coding agent needs to ship real work.
+- **Token-efficient** — aggressive context management to keep costs low and context windows effective.
 
 ### Architectural Constraints
-- **Isolated and secure** — Each agent session runs in a sandboxed environment. Untrusted code execution cannot escape its boundary.
-- **Fully observable** — Every agent action, tool call, and state transition is traceable end-to-end via OpenTelemetry.
-- **Fault-tolerant and scalable** — The system must recover from crashes without losing agent state. Many agents should be able to run concurrently across many workers.
+- **Isolated *enough*** — each session is namespaced and path-confined within a shared sandbox service. Strong enough for a trusted team; not a substitute for VM-level isolation.
+- **Fully observable** — every agent action, tool call, and state transition is traceable end-to-end, with optional OTLP export to any backend.
+- **Fault-tolerant and scalable** — the system recovers from crashes without losing agent state. Many agents run concurrently across many workers.
 
 ### Developer Experience Goals
-- **Modern streaming UX** — Real-time token streaming with sub-second perceived latency; the chat experience should be instant.
-- **Pluggable architecture / no lock-in** — Swap LLM providers, tool implementations, or hosting platforms without rewriting core logic. Everything runs in containers.
-- **1-click deploy on Render** — A single Blueprint deploy should stand up the full platform (web, API, workers, Redis, Postgres) with zero manual configuration.
+- **Modern streaming UX** — real-time token streaming, sub-second perceived latency.
+- **Pluggable / no lock-in** — swap LLM providers, tool implementations, or hosting platforms without rewriting the core. Everything runs in containers.
+- **1-click infra on Render** — a single Blueprint stands up web, API, workers, Redis, and Postgres. (You still bring your own LLM keys and OAuth credentials.)
 
 ## Architecture Overview
 
-[Diagram: Frontend ↔ API (SSE) ↔ Redis (Streams + Pub/Sub) ↔ Worker ↔ Sandbox, with Postgres beneath API and Worker]
+[Diagram: Frontend ↔ Gateway (SSE) ↔ Redis (Streams + Pub/Sub) ↔ Worker ↔ Sandbox, with Postgres beneath Gateway and Worker]
 
-Brief orientation paragraph:
-- Stateless API layer serves the UI and SSE connections
-- Redis is the nervous system: job queue + event bus
-- Workers run the agent loop, delegating execution to a shared sandbox
-- Postgres stores durable state (sessions, messages, runs) and observability events
-- The frontend subscribes via SSE, backed by Redis pub/sub for low-latency push
+Five services, one job each:
+
+- **Web (Next.js).** Renders the chat UI, consumes SSE, posts steering events back via REST.
+- **Gateway (Hono).** Stateless HTTP layer. Owns auth, the SSE endpoint, and the inbound webhook handlers.
+- **Worker (Bun + Node).** Pulls jobs off Redis Streams and runs the agent loop. Horizontally scalable; each worker caps itself at `MAX_CONCURRENT_RUNS`.
+- **Sandbox (Bun HTTP).** A shared execution environment. One service, many sessions, namespaced by directory.
+- **Redis.** The nervous system. Job queue (`Streams + consumer groups`), event bus (`Pub/Sub`), ephemeral coordination keys (abort flags, steering queues, heartbeats).
+- **Postgres.** Durable everything: sessions, chats, messages, runs, observability events. The source of truth when Redis is just the wire.
+
+Two flows worth holding in your head as you read:
+
+1. **A user sends a message.** Gateway writes the chat row to Postgres, `XADD`s a job onto `agent:jobs:stream`, returns 202. A worker picks up the job, runs `agentLoop`, emits events to Redis (XADD + PUBLISH). The web client's SSE subscription receives those events live and renders them.
+2. **A worker crashes mid-run.** The heartbeat stops. Another worker's stale-run reaper notices, marks the run `failed (worker_lost)`, and the user gets a clean terminal frame. Steps already persisted are still there. The user retries with a follow-up; the new turn loads from Postgres and continues.
 
 ---
 
 ## The Sandbox Model
 
 ### The Design Choice: Shared Container, Logical Isolation
-- One sandbox service, many sessions — isolation via `/workspace/{sessionId}` namespacing
-- Contrast with per-session VMs (Vercel open-agents, E2B) — why we chose this
-- Tradeoffs: faster provisioning, lower cost, but weaker blast radius
+
+One sandbox service handles every session. Isolation is logical, not physical:
+
+- Each session gets a directory at `/workspace/{sessionId}`.
+- Every filesystem operation runs through a path validator that confines access to that directory (with symlink hardening).
+- All sessions share one Linux user, one PID namespace, one network namespace.
+
+Contrast with Vercel's `open-agents` or E2B, which spin up a fresh VM or microVM per session. Those give you VM-grade isolation at the cost of seconds of cold start, dramatically higher per-session cost, and an extra control plane to operate. For a single team running its own agents against its own code, that trade is bad.
+
+#### Threat Model: What Logical Isolation Does and Doesn't Buy You
+
+Be honest about what's protected:
+
+| Attack                                       | Protected? | Why                                                                |
+| -------------------------------------------- | ---------- | ------------------------------------------------------------------ |
+| Session A reads session B's files            | Yes        | Path validator + symlink check on every file op.                   |
+| Session A reads its own repo's secrets       | N/A        | Out of scope — it's the user's repo and the user's agent.          |
+| Session A `kill`s session B's processes      | **No**     | Shared PID namespace; same UID.                                    |
+| Session A exhausts host CPU / RAM / disk     | **No**     | No cgroup quotas in the current implementation.                    |
+| Session A hits session B's localhost ports   | **No**     | Shared network namespace.                                          |
+| Session A exfiltrates LLM API keys           | Partial    | Keys live in the agent process, not the sandbox; `__SECRET__` env values are redacted from tool output before they re-enter the LLM context. |
+| TOCTOU between path validate and file open   | Partial    | A post-op `assertRealPathWithinSessionWorkspace` re-checks after the operation; not a full mitigation. |
+
+This is appropriate for **a trusted team running their own code**. It is **not** suitable for hosting untrusted third-party code. If your threat model requires that, swap to per-session containers (see below).
 
 ### How It Works
-- Sandbox is a Bun HTTP server exposing exec, file I/O, git, glob/grep over REST
-- Worker routes requests via `X-Session-Id` header
-- Path traversal protection + symlink hardening
-- Bearer token auth between worker and sandbox
 
-Path security is the critical piece — every file operation validates the resolved path stays within the session boundary, with symlink dereferencing to prevent escape:
+- Bun HTTP server exposing `exec`, file I/O, git, glob, and grep over REST.
+- Worker routes every request with an `X-Session-Id` header.
+- Bearer token auth between worker and sandbox (this protects the sandbox API from outside callers; it does *not* protect sessions from each other).
+- Path validator on every filesystem op.
+
+Path security is the critical piece. Every file operation resolves the path, checks logical containment, and dereferences symlinks before allowing the op:
 
 ```typescript
 export function validatePath(sessionId: string, filePath: string): string {
@@ -67,14 +110,12 @@ export function validatePath(sessionId: string, filePath: string): string {
   const normalized = filePath.replace(/^\/+/, "");
   const resolved = resolve(join(sessionWs, normalized));
 
-  // Check logical containment
   const underRoot =
     resolved === sessionWs || resolved.startsWith(sessionWs + sep);
   if (!underRoot) {
     throw new Error(`Path traversal attempt detected: ${filePath}`);
   }
 
-  // Check real path (symlink hardening)
   if (existsSync(resolved)) {
     const realRoot = realpathSync(sessionWs);
     const realPath = realpathSync(resolved);
@@ -87,128 +128,162 @@ export function validatePath(sessionId: string, filePath: string): string {
 }
 ```
 
-### Session Lifecycle
-- `provision()` doesn't spin up infra — it returns an HTTP adapter to the shared service
-- Workspace setup: clone repos or create git worktrees from bare mirrors
-- Teardown: filesystem cleanup, no container lifecycle overhead
+For TOCTOU-sensitive ops the handler calls `assertRealPathWithinSessionWorkspace` again after the syscall, so a symlink swapped in between validate and open is caught before the response is returned.
 
-The sandbox provider is a singleton HTTP client — provisioning is instant:
+### Session Lifecycle
+
+- `provision()` doesn't spin up infra. It returns an HTTP adapter pointing at the shared service.
+- Workspace setup: clone repos directly, or fan out git worktrees from a shared bare mirror (the bare mirror is the unsung hero of fast multi-repo agent startup — `git clone --reference` for free).
+- Teardown is `rm -rf /workspace/{sessionId}`. No container lifecycle overhead.
+
+The provider itself is a cached HTTP client with a 10-minute TTL and a self-heal on failure — if a `provision` throws (stale connection, DNS blip), we rebuild and retry once:
 
 ```typescript
 let _sandboxProvider: SandboxProvider | null = null;
+let _sandboxProviderCreatedAt = 0;
+const SANDBOX_PROVIDER_MAX_AGE_MS = 10 * 60 * 1000;
 
 function getSandboxProvider(): SandboxProvider {
-  if (_sandboxProvider && Date.now() - _sandboxProviderCreatedAt < 10 * 60_000) {
+  const now = Date.now();
+  if (_sandboxProvider && now - _sandboxProviderCreatedAt < SANDBOX_PROVIDER_MAX_AGE_MS) {
     return _sandboxProvider;
   }
-  const host = process.env.SANDBOX_SERVICE_HOST;
-  _sandboxProvider = new SharedHttpSandboxProvider(host, secret, sessionAuth);
+  _sandboxProvider = buildSharedHttpProvider();  // reads SANDBOX_SERVICE_HOST, secrets, session auth
+  _sandboxProviderCreatedAt = now;
   return _sandboxProvider;
 }
 
 export async function getAdapter(sessionId: string): Promise<SandboxAdapter> {
-  const provider = getSandboxProvider();
-  return await provider.provision(sessionId);  // No infra spun up — just returns an HTTP adapter
-}
-```
-
-### Scaling on Render
-- Sandbox = Docker web service with 20GB persistent disk
-- Workers scale independently (concurrency semaphore, MAX_CONCURRENT_RUNS=10)
-- Blueprint wires it all together: one `render.yaml` stands up the full topology
-
-The worker uses an in-process semaphore with Redis Streams consumer groups for at-least-once delivery:
-
-```typescript
-const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT_RUNS ?? "10", 10);
-const WORKER_ID = `worker-${process.pid}-${Date.now()}`;
-const STALE_PENDING_MS = 10 * 60_000;
-
-let active = 0;
-let shuttingDown = false;
-
-// Graceful shutdown: drain active runs before exiting
-for (const sig of ["SIGTERM", "SIGINT"] as const) {
-  process.on(sig, () => {
-    console.info(`[worker] Received ${sig}, draining ${active} active run(s)…`);
-    shuttingDown = true;
-  });
-}
-
-// Heartbeat: other workers know we're alive
-async function heartbeat(redis: Redis): Promise<void> {
-  while (!shuttingDown) {
-    await redis.set(
-      `worker:heartbeat:${WORKER_ID}`,
-      JSON.stringify({ active, pid: process.pid, ts: Date.now() }),
-      "EX", 30,
-    );
-    await new Promise((r) => setTimeout(r, 24_000));
+  try {
+    return await getSandboxProvider().provision(sessionId);
+  } catch {
+    _sandboxProvider = null;            // force rebuild on next call
+    _sandboxProviderCreatedAt = 0;
+    return getSandboxProvider().provision(sessionId);
   }
 }
 ```
 
+### Scaling on Render
+
+- Sandbox: Docker web service with a persistent disk (default 20 GB, shared across all sessions — quota enforcement is a TODO).
+- Workers scale independently. Each worker caps itself at `MAX_CONCURRENT_RUNS` (default 10) via the simplest possible "semaphore" — a counter checked in the read loop:
+
+```typescript
+while (true) {
+  if (shuttingDown && active === 0) break;
+  if (shuttingDown) { await sleep(100); continue; }
+  if (active >= MAX_CONCURRENT) { await sleep(100); continue; }
+
+  const entry = await readOneJob(redis, WORKER_ID, BLOCK_READ_MS);
+  if (!entry) continue;
+
+  active++;
+  void processJob(redis, entry.streamId, entry.job, platform)
+    .finally(() => { active--; });
+}
+```
+
+Three additional loops run in parallel: a heartbeat (so other workers know we're alive), a `reclaimStalePending` loop that grabs jobs from dead workers via Redis Streams' `XAUTOCLAIM`, and a stale-run reaper that finalizes runs whose heartbeats stopped. Together they make worker crashes a non-event — a new worker picks up where the old one died.
+
+Blueprint wires it all together — one `render.yaml` stands up web, gateway, worker, sandbox, Redis, and Postgres.
+
 ### Future: Per-Session Isolation
-- When/why you'd upgrade to per-session containers
-- The adapter pattern makes this a swap — `SharedHttpSandboxProvider` → `IsolatedProvider`
+
+When you outgrow logical isolation — hosting third-party code, regulatory pressure, untrusted automations — the adapter pattern makes the upgrade a swap. `SharedHttpSandboxProvider` becomes `FirecrackerProvider` (or gVisor, or per-session containers via the Render API). The worker doesn't know the difference. The cost goes up; the cold start goes up; the blast radius shrinks to a single VM.
+
+That's a deliberate "do this when you need to" path, not a "do this from day one" requirement.
 
 ---
 
 ## Data Model and Persistence Strategy
 
 ### Why Not Pure Event Sourcing?
-- Agent sessions *feel* append-only, but chat UI needs random access to messages
-- Pure ES requires replay for reads — overkill when you need "show me message 5"
-- Chose a hybrid: durable CRUD tables + append-only observability log + ephemeral Redis streams
+
+Agent sessions *look* like the textbook event-sourcing use case: append-only stream of facts, deterministic projections, perfect audit log. We considered it and rejected it. The honest reasons:
+
+- **Operational simplicity.** Snapshots, projections, schema migrations on event payloads — ES is a whole infrastructure to operate. We wanted to ship an agent platform, not an ES platform.
+- **The chat UI needs random access.** "Render message 47 with its tool calls expanded" is a SELECT, not a replay.
+- **The LLM context is itself a derivation.** It's already a projection of the message log into a provider-specific shape. Storing the projection alongside the source means we don't recompute it on every turn.
+
+So the platform uses a hybrid: durable CRUD for things you read, append-only for things you observe, ephemeral Redis for things in flight.
 
 ### The Core Schema
-- `sessions` — workspace binding, phase, skills, git stats
-- `chats` → `chat_messages` — durable chat with dual representations:
-  - `parts` (UI rendering)
-  - `model_messages` (LLM context for next turn)
-- `agent_runs` — lifecycle state machine (queued → running → completed/failed/aborted)
-- `agent_events` — append-only audit log (llm_request, tool_call, sandbox_exec, error)
+
+- `sessions` — workspace binding, lifecycle phase, active skills, git stats.
+- `chats` → `chat_messages` — durable chat history. **Each message stores two representations**, by design:
+  - `parts` — the rich UI rendering (text blocks, tool-call cards, plan widgets, code diffs).
+  - `model_messages` — the canonical LLM-shaped messages used to build context for the next turn.
+- `agent_runs` — one row per turn, with the lifecycle state machine attached.
+- `agent_events` — append-only span log for everything observable.
+
+#### Why two representations per message?
+
+This is the highest-bug-density area of any chat-with-tools app, and it's worth being explicit about the choice. We could store one shape and derive the other; we chose to store both, with one write path and one canonical source.
+
+- The agent loop is the single writer for both. After every step, both `parts` and `model_messages` are upserted together, keyed by `(chatId, sequence)`.
+- The UI never reads `model_messages`. The next-turn builder never reads `parts`.
+- Compaction (replacing stale tool results with pointers) mutates `model_messages` only — it must not change what the user already saw rendered in `parts`.
+
+Storing both makes the UI snappy (one read, no transformation) and makes context construction explicit (no "is this an assistant text block or a tool result?" disambiguation at request time). The cost is that the writer has one job: produce both shapes from the same step output, atomically.
 
 ### The Run State Machine
-- Centralized transitions in `state-machine.ts`
-- Heartbeat-based liveness detection (stale > 5 min = reapable)
-- Terminal reasons tracked for debugging
 
-### Incremental Persistence During the Loop
-- Assistant messages upserted after each step (not just at turn end)
-- Crash recovery: replay from last persisted message, not from event log
-- This is the key difference from ES — state is written eagerly, not derived from events
+Runs move through a small state space, with all transitions centralized:
+
+```
+queued ──► running ──► completed
+              │   ├──► failed
+              │   └──► aborted (user_stop | timeout | worker_lost)
+              └──► (heartbeat stale > 5min) ──► failed (worker_lost)
+```
+
+The stale-run reaper (see Workers, above) is what makes `worker_lost` automatic — no human in the loop, no stuck "running" rows. Every terminal state stores a `terminalReason` so the UI and observability layer can tell the user *why* their run ended.
+
+### Incremental Persistence
+
+After every step, the assistant message is upserted to `chat_messages`. Keyed by `(chatId, sequence)` — the same step always writes to the same row.
+
+This is the architectural difference from event sourcing: state is written eagerly, not derived from a log. If the worker crashes at step 15, steps 1–14 are already durable. The user sends a follow-up; the new turn loads the messages from Postgres and continues. No replay, no reconciliation.
+
+In-flight tool calls (e.g., a `bash` that was running when the worker died) are reconciled at run finalization: the run is marked `failed` with `terminalReason = worker_lost`, the assistant message persists with whatever partial state exists, and the next turn starts fresh.
 
 ### The Observability Layer (Append-Only)
-- `agent_events` with parent-child links forms a span tree
-- NOT used to reconstruct state — used for analytics, cost tracking, debugging
-- 30-day retention with monthly partitions
-- Events capped at 10,000 per run
+
+`agent_events` is a separate beast. It's never used to reconstruct state — only for analytics, cost tracking, and debugging:
+
+- Span tree built from `parentEventId`: `llm_request → tool_call → sandbox_exec`.
+- Capped at 10,000 events per run (drop after that; warn at 80%).
+- Range-partitioned by month; the retention job drops whole partitions older than 30 days.
+- Token counts and estimated USD cost live in `metadata` JSONB for direct aggregation.
+
+The 30-day rolling window is a real trade. Historical cost trends past 30 days have to come from somewhere — we punt to a rollup table when you need it, but it's not built today. Mark it on your roadmap if you intend to track quarter-over-quarter spend.
 
 ### Tradeoffs
-- **Pro:** Simple reads, no replay overhead, familiar CRUD for most queries
-- **Pro:** Observability layer gives full audit trail without polluting the domain model
-- **Con:** Two representations of "what happened" (messages vs events) — must stay in sync
-- **Con:** No time-travel replay (can't rewind to step 3 and re-run)
+
+- **Pro:** Simple reads, no replay, familiar CRUD for most queries.
+- **Pro:** Observability is fully separable — drop the table, the agent still works.
+- **Con:** Two representations of "what happened" (messages vs events) that must stay in sync conceptually. The discipline is: messages are the source of truth for state, events are the source of truth for *why*.
+- **Con:** No time-travel replay. You can't rewind to step 3 and re-run with a different model.
 
 ---
 
 ## Streaming Architecture: Redis Streams + SSE
 
 ### The Problem
-- LLM tokens arrive one at a time; tool outputs are async and interleaved
-- Frontend needs sub-second rendering with reconnect resilience
-- Multiple clients may watch the same session simultaneously
 
-### Redis as the Nervous System (Two Streams, One Pub/Sub)
-1. **Job queue** — `agent:jobs:stream` with consumer group `agent-workers` (at-least-once delivery)
-2. **Event stream** — `run:{runId}:events` (capped at ~2000 entries, 24h TTL) for replay
-3. **Pub/Sub** — `run:{runId}` channel for instant push (no replay, no persistence)
+- LLM tokens arrive one at a time; tool outputs are async and interleaved.
+- The frontend needs sub-second rendering and reconnect resilience.
+- Multiple clients may watch the same session at once (the user has two tabs open).
+- The agent can outlive the connection — start the run on desktop, finish it on phone.
 
-### The Dual-Write Pattern
-- Worker publishes: `XADD` to stream (durable) + `PUBLISH` to channel (instant)
-- Stream ID embedded in pub/sub payload as `_sid` for dedup
-- If PUBLISH fails, XADD already succeeded — clients catch up on reconnect
+### Redis as the Nervous System — Two Streams + One Pub/Sub
+
+1. **Job queue** — `agent:jobs:stream` with a consumer group `agent-workers`. At-least-once delivery, dead-letter on max retries.
+2. **Event stream** — `run:{runId}:events`, capped at ~2000 entries with a 24h TTL. This is the replay buffer for reconnecting clients.
+3. **Pub/Sub** — `run:{runId}` channel for push. Zero persistence; if you weren't subscribed you missed it.
+
+The worker dual-writes every event: `XADD` for durability, `PUBLISH` for push.
 
 ```typescript
 export async function publishRunEvent(
@@ -218,10 +293,8 @@ export async function publishRunEvent(
 ): Promise<void> {
   const key = `run:${runId}:events`;
 
-  // 1. Durable write — capped stream (~2000 entries)
   const streamId = await redis.xadd(key, "MAXLEN", "~", "2000", "*", "e", payloadJson);
 
-  // 2. Instant push — embed stream ID for dedup on reconnect
   try {
     const pubPayload = JSON.stringify({ _sid: streamId, ...JSON.parse(payloadJson) });
     await redis.publish(`run:${runId}`, pubPayload);
@@ -232,68 +305,94 @@ export async function publishRunEvent(
 }
 ```
 
-### SSE Endpoint Design
-1. Client connects: `GET /api/sessions/{id}/stream`
-2. **Backfill**: `XRANGE` from `0` (or `Last-Event-ID`) — replay missed events
-3. **Subscribe**: Redis pub/sub on `run:{runId}` — live events
-4. **Emit**: SSE frames with `id:` (stream ID) and `data:` (JSON envelope)
-5. **Close**: on terminal event (`session:completed|failed|aborted`)
-6. **Synthetic terminal**: if run already finished but stream missed it
+The stream ID is embedded in the pub/sub payload as `_sid`. That single field is what makes reconnect-with-deduplication tractable.
 
-The SSE endpoint handles the tricky race between history replay and live subscription:
+### What Happens When the Stream Cap is Exceeded
+
+The 2000-entry cap is a real ceiling. A long-running session that emits 5000 events loses the oldest 3000 from `XRANGE`. Clients reconnecting with `Last-Event-ID = <evicted-id>` cannot resync from Redis alone.
+
+The platform handles this with a layered fallback:
+
+- **Live clients** see everything via pub/sub. The cap only matters on reconnect.
+- **Recent reconnects** (within the 2000-event window) replay from Redis Streams.
+- **Cold loads or deep reconnects** hydrate from Postgres. The `chat_messages` table holds the canonical history; the stream is only an acceleration layer. Page-load goes through `chat_messages`, not `XRANGE`.
+
+The contract is: Redis is the live nervous system, Postgres is the ground truth. The stream cap doesn't lose data — it loses fast-reconnect ergonomics for very long sessions.
+
+### SSE Endpoint Design
+
+The endpoint does five things in order, and the order matters.
+
+1. Subscribe to pub/sub *first*, buffering messages into memory.
+2. Replay history from Redis Streams (or from `Last-Event-ID`).
+3. Flush the buffer, deduplicating any entry whose stream ID we already replayed.
+4. Swap the buffering handler for a live writer — and unsubscribe the original.
+5. Close on terminal event or client disconnect.
+
+The subscribe-first-then-replay ordering is what closes the race window where a pub/sub event arrives after we read history but before we go live.
 
 ```typescript
-export async function GET(req: NextRequest, { params }) {
-  const lastEventId = req.headers.get("Last-Event-ID");
-  const runId = chatRow.activeRunId;
+streamRoutes.get("/sessions/:id", async (c) => {
+  // ... auth and lookup elided ...
 
-  // Buffer pub/sub messages while we replay history
+  // Step 1 — subscribe FIRST, buffering everything
   const pubsubBuffer: { sid: string | null; payload: string }[] = [];
-  const sub = await subscribeToRun(runId, (message) => {
-    pubsubBuffer.push({ sid: parsed._sid, payload: message });
+  let draining = false;
+  let sub = await subscribeToRun(runId, (message) => {
+    if (draining) return;
+    pubsubBuffer.push({ sid: parseSid(message), payload: message });
   });
 
-  // Replay history (all events, or after Last-Event-ID for reconnects)
+  // Step 2 — read history (from Last-Event-ID, or beginning)
   const historyEntries = lastEventId
-    ? await readRunEventEntriesAfterId(cmd, runId, lastEventId)
-    : await readRunEventHistoryDetailed(cmd, runId);
+    ? (await readRunEventEntriesAfterId(cmd, runId, lastEventId)).entries
+    : (await readRunEventHistoryDetailed(cmd, runId)).entries;
+  const lastHistoryId = historyEntries.at(-1)?.id ?? lastEventId;
 
-  // Emit history, then drain buffer (dedup by stream ID), then go live
-  const stream = new ReadableStream({
-    async start(controller) {
-      for (const entry of historyEntries) {
-        write(entry.id, entry.payload);           // Replay
-      }
-      for (const buffered of pubsubBuffer) {
-        if (buffered.sid <= lastHistoryId) continue; // Dedup
-        write(buffered.sid, buffered.payload);    // Buffered live events
-      }
-      // Switch to real-time pub/sub
-      await subscribeToRun(runId, (message) => {
-        write(sid, message);
-        if (isTerminal(message)) controller.close();
-      });
-    },
-  });
+  return streamSSE(c, async (stream) => {
+    // Step 3 — replay
+    for (const entry of historyEntries) {
+      await stream.writeSSE({ id: entry.id, data: entry.payload });
+    }
 
-  return new Response(stream, {
-    headers: { "Content-Type": "text/event-stream" },
+    // Step 4 — drain buffered pub/sub, deduping against history
+    draining = true;
+    for (const buf of pubsubBuffer) {
+      if (buf.sid && lastHistoryId && buf.sid <= lastHistoryId) continue;
+      await stream.writeSSE({ id: buf.sid ?? undefined, data: buf.payload });
+    }
+
+    // Step 5 — swap to live writer, unsubscribe the buffering handler
+    const liveSub = await subscribeToRun(runId, (message) => {
+      stream.writeSSE({ id: parseSid(message), data: message }).catch(() => {});
+      if (isTerminal(message)) cleanup();
+    });
+    await sub.unsubscribe();
+    sub = liveSub;
+
+    // ... keep-alive ping + abort plumbing ...
   });
-}
+});
 ```
 
+A few details that matter:
+
+- **Why two `subscribeToRun` calls and not one?** The buffering callback needs to be a different function than the live writer (one pushes to an array, one writes to the response). The handoff happens with the `draining` flag plus explicit `unsubscribe` of the original — no leak.
+- **Why does `buf.sid <= lastHistoryId` work?** Redis stream IDs are `<ms>-<seq>` strings that sort lexicographically the same way they sort temporally, because the millisecond component is monotonic. The string comparison is correct and intentional.
+- **Synthetic terminal frame.** If the run already finished and no terminal event is in the stream (because it was evicted), the endpoint checks `run:{runId}:status`, fabricates a terminal frame, and closes. The client sees a clean end instead of hanging.
+- **Shared subscriber.** Multiple watchers of the same run share one Redis subscription. The gateway maintains a fan-out map keyed by channel.
+
 ### Why SSE Over WebSockets
-- Unidirectional is sufficient (user input goes through REST, not the stream)
-- HTTP/2 multiplexing, built-in browser reconnect, simpler infrastructure
-- `Last-Event-ID` gives free resumption semantics
+
+The right argument isn't "unidirectional is sufficient" — steering events do flow upstream. The right argument is asymmetry: downstream is high-frequency tokens that need free reconnect and `Last-Event-ID` resumption; upstream is rare, idempotent steering commands that fit naturally as REST POSTs. SSE + REST gives us the right tool for each direction; WebSockets would force a custom resume protocol on top of a bidirectional channel we don't need.
 
 ### Event Envelope (v2)
-- Shape: `{ v: 2, type, ts, requestId?, payload }`
-- Types: `agent:message`, `agent:tool_call`, `agent:tool_result`, `agent:heartbeat`, `session:completed`, etc.
 
-### Steering: Bidirectional Communication Over Pub/Sub
+`{ v: 2, type, ts, requestId?, payload }`. Types include `agent:message`, `agent:tool_call`, `agent:tool_result`, `agent:heartbeat`, `user:message`, `user:interrupt`, `session:completed | failed | aborted`. The `v` prefix exists so we can ship v3 next year without breaking old clients in the middle of a run.
 
-User inputs while the agent is running (stop, inject message) flow through a separate Redis channel:
+### Steering: User Input Mid-Run
+
+When the user types "actually, also fix the tests" while the agent is running, that input goes through a separate channel:
 
 ```typescript
 export async function publishSteeringEvent(
@@ -302,62 +401,37 @@ export async function publishSteeringEvent(
   event: { type: string; content?: string; reason?: string },
 ): Promise<void> {
   const payload = JSON.stringify({ ...event, ts: new Date().toISOString() });
-  await redis.publish(`run:${runId}:steering`, payload);
-  // Also persist to a list (agent polls between steps)
+
   await redis.rpush(`run:${runId}:steering:queue`, payload);
   await redis.expire(`run:${runId}:steering:queue`, 3600);
+
+  // Also publish for any future "instant notify" subscribers
+  // (currently unused by the agent — see note below)
+  await redis.publish(`run:${runId}:steering`, payload);
 }
 ```
 
+The agent drains the list between steps. The pub/sub call is intentionally future-facing — no consumer subscribes to it today. The design leaves a hook for an "agent is woken immediately mid-tool" mode without changing the publisher contract.
+
+The current model is: steering is processed at step boundaries; `user:interrupt` flows through the abort controller for immediate stop during a tool call.
+
 ### Frontend Consumption
-- `useEventSource` hook with auto-reconnect (backoff, max 5 attempts)
-- Events reduced through `chatReducer` — incremental UI updates
-- Token streaming: partial message chunks rendered as they arrive
+
+- `useEventSource` hook with exponential-backoff reconnect (max 5 attempts).
+- Events are reduced through `chatReducer` — incremental UI updates, never a full re-render.
+- Token streaming: partial assistant message chunks are appended in place; tool-call cards collapse and expand as their `tool_use` and `tool_result` events arrive.
 
 ---
 
-## Observability
+## The Agent Loop
 
-### Why It's Non-Negotiable for Agents
-- Non-deterministic, multi-step, minutes-long runs
-- "Why did the agent do X?" is unanswerable from logs alone
-- Cost tracking requires per-request token accounting
-
-### The Lightweight OTel Approach
-- No `@opentelemetry/*` SDK dependency — custom OTLP exporter
-- Why: full SDK is heavy, auto-instrumentation noisy for agent workloads
-- Custom `ObservabilityRecorder` gives precise control over what's traced
-
-### Span Model
-- One trace per run (trace ID = run ID)
-- Parent-child spans: LLM request → tool calls → sandbox exec
-- Attributes: `session.id`, `tool.name`, `model`, `token.count`, `duration`
-- Batched flush (500ms) to Postgres + optional OTLP endpoint
-
-### What Gets Recorded
-- Every LLM request (model, tokens in/out, latency, cost)
-- Every tool call (name, args summary, result size, duration)
-- Every sandbox exec (command, exit code, duration)
-- Errors with full context
-
-### Guardrails
-- Event cap per run (10,000)
-- Metadata size truncation (4KB)
-- Credential redaction before storage
-- Retention: 30-day rolling partitions
-
-### Vendor Neutrality
-- OTLP/HTTP JSON export to any backend (Jaeger, Datadog, Honeycomb)
-- Postgres observability tables serve as built-in backend for the dashboard
-- Ties back to "no lock-in" constraint
-
-
+This is the heart of the system. Everything else exists to keep this loop running, observable, and recoverable.
 
 ### The Core Loop: Simple by Design
-- The inner loop is ~300 lines. Deliberately minimal. No plugin system, no middleware chain — just an LLM call, tool execution, and message accumulation.
-- Why: Complexity in the loop is invisible complexity. Every abstraction here costs you debuggability. When the agent does something wrong at step 47, you need to trace exactly what happened. Keep it flat.
 
-Here's the actual loop — stripped of error handling for clarity:
+The inner loop is ~300 lines. Deliberately minimal — no plugin system, no middleware chain, no event emitter pattern. Just an LLM call, tool execution, message accumulation, repeat. Complexity in this loop is invisible complexity: when the agent does something surprising at step 47, you need to trace exactly what happened, and every abstraction here costs you debuggability.
+
+The shape, stripped to the essentials:
 
 ```typescript
 export async function agentLoop(params: {
@@ -539,19 +613,19 @@ const SUBAGENT_DEFAULT_MODEL = process.env.SUBAGENT_DEFAULT_MODEL ?? "anthropic/
 ### Resilience Patterns
 
 #### Retry with Exponential Backoff
-- LLM calls are retried up to 3 times for transient errors (429, 5xx, network failures).
-- Backoff: 1s → 4s → 16s. Not jittered (single-worker, no thundering herd concern at this scale).
+
+LLM calls are retried up to 3 times for transient errors (429, 5xx, network failures). Backoff is `1s → 4s` before the final attempt (which throws without delay).
 
 ```typescript
 const LLM_MAX_RETRIES = 3;
-const LLM_RETRY_BACKOFF = [1000, 4000, 16000];
+const LLM_RETRY_BACKOFF = [1000, 4000];   // 3 attempts, 2 backoffs
 
 function isTransientLlmError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const msg = err.message.toLowerCase();
   return (
     msg.includes("429") || msg.includes("rate limit") || msg.includes("overloaded") ||
-    msg.includes("500") || msg.includes("502") || msg.includes("503") ||
+    msg.includes("500") || msg.includes("502") || msg.includes("503") || msg.includes("529") ||
     msg.includes("network") || msg.includes("econnreset") || msg.includes("timeout")
   );
 }
@@ -561,22 +635,29 @@ async function chatWithRetry(provider: LLMProvider, chatParams): Promise<LLMResp
     try {
       return await provider.chat(chatParams);
     } catch (err) {
-      if (!isTransientLlmError(err) || attempt === LLM_MAX_RETRIES - 1) throw err;
+      if (!isTransientLlmError(err) || attempt === LLM_MAX_RETRIES - 1 || chatParams.signal?.aborted) {
+        throw err;
+      }
       await new Promise((r) => setTimeout(r, LLM_RETRY_BACKOFF[attempt]));
     }
   }
 }
 ```
 
+A note on jitter: at `MAX_CONCURRENT_RUNS=10`, ten in-flight runs hitting Anthropic during a regional 529 will retry in lockstep. Jitter is cheap and on the list of things to add — call it out as a known limitation. If you're tuning this for higher concurrency, add jitter and consider provider fallback.
+
 #### Empty Response Handling
 - LLMs sometimes return empty responses (no text, no tool calls). Rather than failing, retry up to 2 times silently.
 - If still empty after retries, terminate gracefully with reason `empty_response`.
 
 #### Abort and Timeout
-- Two abort mechanisms merged into a single `AbortController`:
-  1. **User-initiated**: Redis key `run:{runId}:abort` polled every 500ms
-  2. **Turn timeout**: fires after 10 minutes
-- Both propagate through the same signal — tools respect `signal.aborted` and bail cleanly.
+
+Two abort mechanisms merged into a single `AbortController`:
+
+1. **User-initiated stop** — Redis key `run:{runId}:abort`, polled every 500ms.
+2. **Turn timeout** — fires after 10 minutes (configurable).
+
+Both propagate through the same signal. Tools respect `signal.aborted` and bail cleanly. The abort poll loop is a deliberate trade — 2 RPS per concurrent run against Redis is cheap relative to the per-step latency. A subscription would be tighter but adds another connection per run; we may move there as concurrency scales.
 
 ```typescript
 export function createMergedAbortController(
@@ -586,19 +667,19 @@ export function createMergedAbortController(
 ): { controller: AbortController; cleanup: () => void } {
   const controller = new AbortController();
 
-  // Timeout abort
   const timeout = setTimeout(() => {
     if (!controller.signal.aborted) {
       controller.abort(new DOMException("Turn timeout", "TimeoutError"));
     }
   }, timeoutMs);
 
-  // User-initiated abort (polled from Redis)
   const pollInterval = setInterval(async () => {
-    const val = await events.getKey(`run:${runId}:abort`);
-    if (val === "1" && !controller.signal.aborted) {
-      controller.abort(new DOMException("User stopped", "AbortError"));
-    }
+    try {
+      const val = await events.getKey(`run:${runId}:abort`);
+      if (val === "1" && !controller.signal.aborted) {
+        controller.abort(new DOMException("User stopped", "AbortError"));
+      }
+    } catch {}
   }, 500);
 
   return { controller, cleanup: () => { clearTimeout(timeout); clearInterval(pollInterval); } };
@@ -606,81 +687,66 @@ export function createMergedAbortController(
 ```
 
 #### Incremental Persistence
-- After every step, the assistant message is upserted to Postgres. If the worker crashes at step 15, steps 1–14 are already persisted.
-- The user can send a follow-up message and the agent continues from the last persisted state — no replay needed.
+
+Already covered in §Data Model. Worth restating because it's load-bearing for resilience: every step upserts the assistant message to Postgres, so a crash at step 15 keeps steps 1–14 intact. The next turn loads from `chat_messages` and continues. No replay, no reconciliation.
 
 ### Steering: Human-in-the-Loop Mid-Run
-- Between steps, the loop checks for "steering events" — user messages injected while the agent is running.
-- Types: `user:message` (inject context), `user:interrupt` (stop the run)
-- Consumed from a Redis list via `consumeSteering()`.
-- This enables "hey, actually also fix the tests" without waiting for the turn to complete.
 
-The check happens at the bottom of each loop iteration:
+The agent isn't a black box you wait on. Between steps the loop checks a Redis list for "steering events" — messages the user injected while the agent is working.
+
+- `user:message` → appended to the message history; the agent sees it on the next LLM call.
+- `user:interrupt` → terminates the run with reason `abort`.
+
+`user:interrupt` *also* gets written to `run:{runId}:abort`, so the merged abort controller stops in-flight tool calls within ~500ms even if the agent is mid-`bash`. The list-poll path handles step boundaries; the abort-key path handles immediate stop. Same signal, two latencies.
 
 ```typescript
-// Inside agentLoop, after tool execution and onStep:
-if (onSteeringCheck) {
-  const steering = await onSteeringCheck();
-  for (const msg of steering.messages) {
-    if (msg.type === "user:interrupt") {
-      terminationReason = "abort";
-      break;
-    }
-    if (msg.type === "user:message" && msg.content) {
-      allMessages.push({ role: "user", content: msg.content });
-    }
+// Inside agentLoop, after each step's tool execution:
+const steering = await onSteeringCheck();
+for (const msg of steering.messages) {
+  if (msg.type === "user:interrupt") {
+    terminationReason = "abort";
+    break;
+  }
+  if (msg.type === "user:message" && msg.content) {
+    allMessages.push({ role: "user", content: msg.content });
   }
 }
 ```
 
-The steering queue is a Redis list that the frontend pushes to and the agent drains atomically:
-
-```typescript
-export async function consumeSteeringEvents(redis: Redis, runId: string) {
-  const key = `run:${runId}:steering:queue`;
-  const items = await redis.lrange(key, 0, -1);
-  if (items.length > 0) await redis.del(key);  // Atomic drain
-  return items.map((item) => JSON.parse(item));
-}
-```
+The queue is drained atomically — `LRANGE` then `DEL` — so concurrent steers never get lost or processed twice.
 
 ### Token Economics
-- Every step logs: input tokens, output tokens, cache creation, cache read.
-- Cache-aware: Anthropic's prompt caching means repeated system prompts and early messages are cheap after the first call.
-- Step limit (default 100) prevents runaway cost — but most turns complete in 5-15 steps.
-- Sub-agents use cheaper models by default (Haiku) for routine work.
+
+- Every step logs input, output, cache-creation, and cache-read tokens.
+- Anthropic prompt caching is on by default: the system prompt and early messages cost ~0 after the first call.
+- Step limit (default 100) prevents runaway cost. Most turns finish in 5–15 steps.
+- Sub-agents default to a cheaper model (Haiku) for routine work — the parent can escalate when needed.
+- A typical "implement a small feature across 3 files" turn lands around **$0.10–$0.30** with Sonnet + Haiku sub-agents and warm prompt cache. Greenfield "build me X" turns scale linearly with output volume.
+
+There is no per-run USD ceiling today — only a step ceiling. If you care about absolute cost bounds for production deployments, add one.
 
 ### What We'd Do Differently
-- **Parallel tool execution**: Currently sequential. Independent tool calls (read_file + grep) could run concurrently. We haven't needed it yet because the LLM call dominates latency, but at scale it matters.
-- **Smarter compaction**: Current strategy is purely positional (age-based). Could be semantic — compact results the model hasn't referenced recently.
-- **Streaming tool results**: Some tools (bash, build) produce incremental output. Today we wait for completion. Streaming them would improve UX for long builds.
 
---- Notes
-
-Tool compaction with lazy retrieval — this is a novel pattern most readers won't have seen. The get_tool_result tool that lets the agent "page in" old context is elegant and worth a code snippet.
-
-Merged abort controller — combining user-stop and timeout into one signal is a pattern people struggle with. Worth showing the 15-line implementation.
-
-Steering mid-run — the ability to inject messages while the agent is working is unusual and powerful. Most agent frameworks don't support this.
-
-Incremental persistence — the "crash at step 15, recover steps 1–14" story is a strong reliability narrative that ties back to the fault-tolerance constraint.
-
-Sub-agent model selection — letting the agent choose to delegate to a cheaper model for routine work is a cost optimization that's practical and interesting.
-
----
+- **Parallel tool execution.** Today sequential. Independent calls (`read_file` + `glob` + `grep`) could run concurrently. At ~200ms each that's real latency.
+- **Smarter compaction.** Current strategy is purely positional (age-based). A semantic strategy — compact what the model hasn't referenced — would be more accurate.
+- **Streaming tool results.** Tools like `bash` and build commands produce incremental output. Today we wait for completion. Streaming would shave seconds off long builds in the UI.
+- **Provider fallback.** A persistent Anthropic outage past the retry budget fails the run. Falling back to OpenAI or Gemini is a small `modelResolver` extension.
+- **Per-run cost ceilings.** Step caps protect against runaway loops but not runaway tokens.
 
 ## Automations and Integrations
 
+> **Status note.** The GitHub-event path described here ships today via the `InboundRouter`. The generalized automation engine — cron triggers, multi-source adapters, the `automations` entity, BugBot as a configurable template — is **designed but not yet implemented**. The architecture section below is the spec we're building against; the "What's Built Today" subsection at the end is what's actually live.
+
 ### The Vision: Agents That Fire Themselves
 
-So far, everything we've discussed requires a human to start a session. But the real power of coding agents comes when they run autonomously — triggered by events in your workflow:
+Everything above requires a human to start a session. The real leverage of coding agents shows up when they run autonomously — triggered by events in your workflow:
 
-- A PR is opened → an agent reviews the code and posts comments (BugBot)
-- A cron job fires daily → an agent audits dependencies for vulnerabilities
-- A Linear issue is assigned to "agent-bot" → an agent implements the feature
+- A PR is opened → an agent reviews the code and posts inline comments (BugBot)
+- A cron tick at 9am Monday → an agent audits dependencies for new vulnerabilities
+- A Linear issue is assigned to `agent-bot` → an agent implements the feature
 - A Slack message mentions "@agent fix the flaky test" → an agent investigates and pushes a fix
 
-The automation engine binds **triggers** to **agent configurations** — creating an entity that says "when X happens, spawn an agent with prompt Y, tools Z, targeting repos R."
+The automation engine binds **triggers** to **agent configurations** — "when X happens, spawn an agent with prompt Y, tools Z, targeting repos R."
 
 ### Architecture: Extending the Event Pipeline
 
@@ -771,35 +837,37 @@ automations: {
 
 ### Deduplication and Coalescing
 
-Rapid-fire events are a real problem. 50 pushes to a PR in 2 minutes shouldn't spawn 50 agent sessions. The engine handles this with:
+Rapid-fire events are a real problem. 50 pushes to a PR in 2 minutes shouldn't spawn 50 agent sessions. The engine handles this two ways:
 
-- **Coalesce window** (configurable per automation, default 60s)
-- **Dedup key**: `automation:{id}:{repo}:{pr_number}` stored in Redis with TTL = coalesce window
-- When a new event arrives within the window: cancel the pending/running session, start a fresh one with the latest context
+- **Coalesce window** (configurable per automation, default 60s) collapses bursts.
+- **Dedup key by content.** For PR events the key includes the latest commit SHA. If a session is already in flight for the same SHA, the new event is a no-op. If the SHA has advanced, the prior session is cancelled and a fresh one starts with the latest context — so commits landing between abort and restart aren't lost.
 
 ### BugBot: The Flagship Automation
 
-BugBot is a pre-built automation template that validates the entire system:
-1. Triggers on PR opened/updated
-2. Runs code review using a specialized prompt + `.cursor/BUGBOT.md` rules
-3. Posts inline PR comments with findings
-4. Optionally spawns a follow-up agent to push autofix commits
+BugBot is a pre-built automation template that validates the engine end-to-end:
 
-It's not special — it's just an automation with a well-tuned prompt. Any user can build something similar.
+1. Triggers on PR opened / synchronize.
+2. Loads the PR diff + repo's `.cursor/BUGBOT.md` review rubric.
+3. Runs a specialized review prompt with a constrained tool set (`read_file`, `glob`, `grep`, `post_pr_comment`).
+4. Posts inline PR comments with findings, optionally spawning a follow-up "autofix" subagent.
+
+It's "just" an automation with a focused prompt and a focused tool set. Anyone can build something similar — that's the point of the template.
 
 ### The Adapter Pattern: Adding New Event Sources
 
-Adding a new trigger source (e.g., Jira, PagerDuty, custom webhook) requires:
-1. A **normalizer** function: `rawEvent → InboundEvent` (canonical format)
-2. A **trigger condition schema**: what fields can be filtered on
-3. A **webhook endpoint** in the gateway
+Adding a new trigger source (Jira, PagerDuty, custom webhook) takes three things:
 
-No changes to the router, matcher, dispatcher, or agent execution. This is the "pluggable architecture" constraint paying off.
+1. A **normalizer**: `rawEvent → InboundEvent` (canonical format).
+2. A **trigger condition schema**: what fields can be filtered on.
+3. A **webhook endpoint** in the gateway with signature verification.
 
-### What's Not Built Yet
+No changes to the router, matcher, dispatcher, or agent execution path. This is what "pluggable architecture" buys you.
 
-This section describes the designed architecture. The scheduler, matcher, and adapter layer are spec'd but not implemented. The existing InboundRouter handles GitHub events today; the automation entity and multi-source triggers are next.
+### What's Built Today
 
+Just so the line is clear: the GitHub webhook handler that routes PR events into the agent runs in production. The generalized scheduler, matcher, multi-source adapters, and `automations` entity are designed (this section is the design doc) and are the next chunk of work.
+
+---
 
 ## Observability
 
@@ -945,10 +1013,11 @@ export const agentEvents = pgTable("agent_events", {
 ```
 
 Key design choices:
-- **`parentEventId`** creates a tree structure (mimics span parent/child) — enables drill-down from LLM request → tool calls → sandbox execs
-- **`seriesId`** normalizes the session+eventType pair out of every row (reduces index bloat)
-- **`metadata` as JSONB** — flexible schema per event type. LLM requests store token counts and model ID; tool calls store tool name and duration; errors store stack traces.
-- **Monthly partitions** — `agent_events` is range-partitioned by `created_at`. The retention job drops entire partitions older than 30 days rather than row-by-row deletes.
+
+- **`parentEventId`** creates a tree structure mimicking span parent/child — enables drill-down from LLM request → tool calls → sandbox execs.
+- **`seriesId`** points into a small `event_series` table that normalizes the `(sessionId, eventType)` pair out of every row. Most queries filter by series, so this dramatically reduces index size on the large append-only table.
+- **`metadata` as JSONB.** Flexible schema per event type — LLM requests store token counts and model IDs, tool calls store tool name and duration, errors store stack traces. The cost is that aggregations over JSONB fields (`metadata->'tokens'->>'input'`) scan and parse per row; typed columns become worth it at high volume.
+- **Monthly partitions.** `agent_events` is range-partitioned by `created_at`. The retention job drops entire partitions older than 30 days, which is orders of magnitude faster than row-by-row deletes.
 
 ### Guardrails: Preventing Observability From Becoming a Liability
 
@@ -1040,35 +1109,32 @@ OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer xxx,X-Scope-OrgID=my-org
 Set them and spans flow automatically. Don't set them and you still get the Postgres-backed dashboard. Zero coupling.
 
 ### What We'd Do Differently
-- **Sampling for high-volume deployments** — Currently every event is recorded. At scale, you'd want head-based sampling for the OTLP export while keeping Postgres at full fidelity for cost tracking.
-- **Structured logs correlation** — Console logs aren't correlated to trace IDs. Wiring `traceId` into structured logs would complete the picture.
-- **Metrics pipeline** — We export traces but not OTel metrics. Histograms of LLM latencies, counters of tool errors, gauges of concurrent runs — these would be valuable for alerting.
 
-Cross cutting concerns: UX, DX, reliability, stability, inspectability, pluggability, extensibility, maintainability. 
+- **Tail-based sampling for high-volume deployments.** Today every event is recorded. At scale you'd sample for OTLP export while keeping Postgres at full fidelity (so cost tracking stays accurate). Tail-based, not head-based — head-based drops errors statistically, which is exactly backwards for an agent platform.
+- **Structured-log correlation.** Console logs aren't tied to trace IDs. Wiring `traceId` and `runId` into structured logs would unify the picture.
+- **Metrics pipeline.** We export spans but not OTel metrics. Histograms of LLM latency, counters of tool errors, gauges of concurrent runs — all valuable for alerting.
+- **Typed columns for token counts.** `(metadata->'tokens'->>'input')::int` works at today's scale; at 10M+ events you'd want a materialized view or generated columns to keep aggregations sub-second.
 
+---
 
+## Closing the Loop on the Cross-Cutting Themes
 
+The intro made three promises against the Cursor/Devin model: **cost, opacity, and lock-in**. Worth tying each back to a concrete piece of the architecture before we close:
 
+- **Cost.** Tool-result compaction with lazy retrieval, cheaper sub-agent models by default, prompt caching on by default, per-step token logging. The result is sub-dollar typical turns and full visibility into where every token went.
+- **Opacity.** One trace per run, span tree from LLM request down to sandbox `exec`, Postgres-backed dashboard out of the box, OTLP export to your existing backend if you have one. "Why did the agent do X at step 23?" is a query, not a guess.
+- **Lock-in.** Containers everywhere. Render Blueprint for 1-click, Docker for anywhere else. LLM provider abstraction. OTLP export to any backend. Postgres + Redis are the only stateful dependencies. The platform is yours; the data is yours; the workflows are yours.
 
+A fourth theme emerged in the build that wasn't in the intro: **operability**. Heartbeats, stale-run reapers, dead-letter queues, incremental persistence, graceful drain on shutdown, synthetic terminal frames for hung streams. Long-running agents will crash; the platform makes crashes a non-event.
 
+## What's Next
 
+The big rocks on the roadmap:
 
+1. **Generalized automation engine** — the design in §Automations, end-to-end.
+2. **Parallel tool execution** — the single highest-leverage latency win.
+3. **Provider fallback** — Anthropic → OpenAI → Gemini on persistent outage.
+4. **Per-run cost ceilings** — alongside the existing step ceiling.
+5. **Per-session isolation as opt-in** — for teams that grow beyond the single-team assumption.
 
-
--- Old notes 
-Early thoughts. Will want an annoucnement blog post and a technical deep dive. 
-
-Announcement blog post working title: "1-click deploy an open source coding agent platform" (Own coding agents on your infrastructure)
-- Position open source release as demonstrating modern architectures for streaming, long-lived agentic workloads
-- Emphasize 1-click deploy, low TCO, and no lock-in / completely pluggable and hostable anywhere with containers
-- Emphasize Render's strenghts for long runnin agents against serverless offerings, dissect `open-agents` from Vercel in a positive but realist tone. Lead to Technical Deep Dive ->
-
-
-- Building an Agent Loop (EDA, Context/Token management (ex tool compaction), subagents)
-- Modern streaming architecture on Redis Streams (SSE, UX)
-- Event sourcing on Postgres 
-- Dynamic infrastructure provisioning and the Sandbox model
-- Automation engine
-- Other items:
-  - O11y, OTel
-  - 
+If you want to follow along or run this yourself, the repo is open. The Blueprint is one click; the architecture above is what you get.

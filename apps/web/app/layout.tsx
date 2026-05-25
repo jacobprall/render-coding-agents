@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { RouteProgress } from "@/components/layout/route-progress";
 import { AuthSessionProvider } from "@/components/providers/auth-session-provider";
+import { ServiceWorkerRegistration } from "@/components/providers/service-worker-registration";
 import "./globals.css";
 
 const inter = Inter({
@@ -21,6 +22,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   viewportFit: "cover",
+  themeColor: "#0a0a0d",
 };
 
 export const metadata: Metadata = {
@@ -29,6 +31,13 @@ export const metadata: Metadata = {
     template: "%s | Coding Agents",
   },
   description: "Self-hosted agentic forge",
+  manifest: "/manifest.json",
+  applicationName: "Coding Agents",
+  appleWebApp: {
+    capable: true,
+    title: "Agents",
+    statusBarStyle: "black-translucent",
+  },
 };
 
 export default function RootLayout({
@@ -44,6 +53,7 @@ export default function RootLayout({
     >
       <body className="min-h-screen bg-background font-sans text-foreground antialiased">
         <RouteProgress />
+        <ServiceWorkerRegistration />
         <AuthSessionProvider>{children}</AuthSessionProvider>
       </body>
     </html>

@@ -71,4 +71,11 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).toContain("# Project instructions");
     expect(prompt).toContain("Always run tests before committing.");
   });
+
+  it("includes output format guidance", () => {
+    const prompt = buildAgentSystemPrompt({});
+
+    expect(prompt).toContain("# Output format");
+    expect(prompt).toContain("Format replies in Markdown");
+  });
 });

@@ -3,8 +3,10 @@
 import { FileText } from "lucide-react";
 import type { AssistantFileAttachmentPart } from "@/lib/ui";
 import type { Message } from "../chat-reducer";
-import { AssistantParts } from "./assistant-parts";
+import { AssistantParts, AssistantMessageShell } from "./assistant-parts";
 import { cn } from "@/lib/utils";
+
+export { AssistantMessageShell };
 
 function formatTimestamp(createdAt?: string | null) {
   if (!createdAt) return null;
@@ -83,6 +85,7 @@ export function MessageBubble({
     (p): p is AssistantFileAttachmentPart => p.type === "file_attachment",
   );
 
+
   if (isUser) {
     return (
       <div className="flex flex-col items-end gap-1 [content-visibility:auto]">
@@ -119,10 +122,11 @@ export function MessageBubble({
   }
 
   return (
-    <div className="flex flex-col gap-1 [content-visibility:auto]">
-      <div className="rounded-lg bg-[hsl(220,8%,13%)] px-4 py-2.5">
-        <AssistantParts parts={message.parts} createdAt={message.createdAt} onFileSelect={onFileSelect} />
-      </div>
+    <div className="flex flex-col items-start gap-1 [content-visibility:auto]">
+      <AssistantParts parts={message.parts} onFileSelect={onFileSelect} />
+      {timestamp ? (
+        <span className="ml-1 text-[11px] text-text-tertiary">{timestamp}</span>
+      ) : null}
     </div>
   );
 }

@@ -12,9 +12,10 @@ import { PanelResizer } from "./panel-resizer";
 import { useSessionTabsSync } from "./use-session-tabs-sync";
 import { RightPanelProvider, useRightPanel } from "./right-panel-context";
 import { MobileBottomNav, type MobileView } from "./mobile-bottom-nav";
-import { MobileHeader } from "./mobile-header";
 import { MobileSessionsView } from "./mobile-sessions-view";
 import { HomePanel } from "./home-panel";
+import { PwaInstallPrompt } from "@/components/providers/pwa-install-prompt";
+import { SessionsNotifier } from "@/components/providers/sessions-notifier";
 import type { HomePanelMode, LayoutState } from "@/hooks/use-layout-state";
 
 interface AppShellProps {
@@ -109,6 +110,7 @@ function MobileShell({ user, children }: AppShellProps) {
         onViewChange={handleViewChange}
         hasSession={!!sessionId}
       />
+      <PwaInstallPrompt />
     </div>
   );
 }
@@ -306,6 +308,7 @@ export function AppShell(props: AppShellProps) {
       ) : (
         <AppShellGrid {...props} layout={layout} rightPanelResize={rightPanelResize} />
       )}
+      <SessionsNotifier />
     </RightPanelProvider>
   );
 }

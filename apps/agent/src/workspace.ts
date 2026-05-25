@@ -119,6 +119,28 @@ async function ensureRepoCloned(db: PlatformDb, job: AgentJob, adapter: SandboxA
   void scheduleBackgroundMirrorCreation(adapter, job, session.repoPath, authenticatedUrl);
 }
 
+async function sessionWorkspaceHasFiles(adapter: SandboxAdapter, sessionId: string): Promise<boolean> {
+  const globResult = await adapter.glob(sessionId, "*").catch(() => ({ files: [] as string[] }));
+  return globResult.files.length > 0;
+}
+
+/** Keep mirrors fresh between turns without blocking the agent or showing setup UI. */
+function refreshMirrorsInBackground(
+  adapter: SandboxAdapter,
+  job: AgentJob,
+  repos: NonNullable<AgentJob["repos"]>,
+): void {
+  const workspaceId = job.workspaceId ?? job.sessionId;
+  for (const repo of repos) {
+    void adapter.fetchMirror(job.sessionId, workspaceId, repo.repoPath).catch((err) => {
+      console.warn(
+        `[mirror] background fetch failed for ${repo.repoPath}:`,
+        err instanceof Error ? err.message : err,
+      );
+    });
+  }
+}
+
 async function repoDirReady(adapter: SandboxAdapter, sessionId: string, repoName: string): Promise<boolean> {
   const result = await adapter
     .exec(sessionId, `test -e repos/${shellEscape(repoName)}/.git && echo ready`)
@@ -204,10 +226,18 @@ export async function setupWorkspace(params: {
   const sessionId = job.sessionId;
 
   if (!job.repos?.length) {
-    await publishEvent(events, job.runId, evt("step:started", { stepName: "mirror_check", stepId: "setup" }), job.requestId);
-    const cloneStart = Date.now();
-    await ensureRepoCloned(db, job, adapter);
-    await publishEvent(events, job.runId, evt("step:completed", { stepName: "mirror_check", stepId: "setup", durationMs: Date.now() - cloneStart }), job.requestId);
+    const needsSetup = !(await sessionWorkspaceHasFiles(adapter, sessionId));
+    if (needsSetup) {
+      await publishEvent(events, job.runId, evt("step:started", { stepName: "mirror_check", stepId: "setup" }), job.requestId);
+      const cloneStart = Date.now();
+      await ensureRepoCloned(db, job, adapter);
+      await publishEvent(
+        events,
+        job.runId,
+        evt("step:completed", { stepName: "mirror_check", stepId: "setup", durationMs: Date.now() - cloneStart }),
+        job.requestId,
+      );
+    }
     return { workdir: `/workspace/${sessionId}`, repoCount: 1 };
   }
 
@@ -219,7 +249,9 @@ export async function setupWorkspace(params: {
   const allReady = await Promise.all(
     repos.map((repo) => repoDirReady(adapter, sessionId, repoNameFromPath(repo.repoPath))),
   );
-  if (!allReady.every(Boolean)) {
+  if (allReady.every(Boolean)) {
+    refreshMirrorsInBackground(adapter, job, repos);
+  } else {
     for (const repo of repos) {
       const repoName = repoNameFromPath(repo.repoPath);
       if (await repoDirReady(adapter, sessionId, repoName)) continue;
@@ -285,6 +317,10 @@ export async function setupWorkspace(params: {
   };
 }
 
+/**
+ * Remove per-repo git worktrees for a session. Prefer `cleanupSessionSandbox` on archive/delete
+ * (removes the whole workspace). Kept for targeted teardown if needed.
+ */
 export async function cleanupWorktrees(job: AgentJob, adapter: SandboxAdapter): Promise<void> {
   if (!job.repos?.length) return;
   for (const repo of job.repos) {

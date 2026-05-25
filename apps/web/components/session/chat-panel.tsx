@@ -137,7 +137,11 @@ export function ChatPanel({
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden">
-      <div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto px-(--of-space-md) py-(--of-space-xl)">
+      <div
+        ref={scrollContainerRef}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-(--of-space-md) py-(--of-space-xl)"
+        style={{ WebkitOverflowScrolling: "touch" }}
+      >
         <div className="mx-auto max-w-4xl flex flex-col gap-(--of-space-lg)">
           <MessageArea
             messages={chat.messages}
@@ -152,6 +156,7 @@ export function ChatPanel({
             terminalReason={chat.terminalReason}
             stepLimitReached={chat.stepLimitReached}
             onContinue={handleContinue}
+            setupPhase={chat.setupPhase}
           />
           <div ref={scrollSentinelRef} className="h-px w-full shrink-0" aria-hidden />
         </div>
@@ -163,8 +168,8 @@ export function ChatPanel({
           onClick={scrollToBottom}
           aria-label="Scroll to latest messages"
           className={cn(
-            "absolute bottom-[calc(var(--chat-input-offset,5.5rem))] left-1/2 z-10 -translate-x-1/2",
-            "inline-flex items-center gap-1.5 border border-stroke-subtle bg-surface-1 px-3 py-1.5",
+            "absolute bottom-[calc(var(--chat-input-offset,6rem))] left-1/2 z-10 -translate-x-1/2",
+            "inline-flex min-h-[40px] items-center gap-1.5 border border-stroke-subtle bg-surface-1 px-3.5 py-2",
             "text-xs font-medium text-text-secondary shadow-md transition-colors hover:bg-surface-2 hover:text-text-primary",
           )}
         >

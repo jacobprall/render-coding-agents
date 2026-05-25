@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import type { AssistantPart } from "@/lib/ui";
-import type { Message, LiveFileChange } from "../chat-reducer";
+import type { Message, LiveFileChange, SetupPhase } from "../chat-reducer";
 import { AskUserCard } from "../ask-user-card";
 import { AssistantParts } from "./assistant-parts";
 import { MessageBubble } from "./message-bubble";
+
 
 function formatWorkDuration(ms: number): string {
   const totalSeconds = Math.max(1, Math.round(ms / 1000));
@@ -76,6 +77,7 @@ export function MessageArea({
   terminalReason,
   stepLimitReached,
   onContinue,
+  setupPhase,
 }: {
   messages: Message[];
   streamingParts: AssistantPart[];
@@ -89,6 +91,7 @@ export function MessageArea({
   terminalReason?: string | null;
   stepLimitReached?: boolean;
   onContinue?: () => void;
+  setupPhase?: SetupPhase | null;
 }) {
   const [filesPanelOpen, setFilesPanelOpen] = useState(true);
 
@@ -179,14 +182,8 @@ export function MessageArea({
       ) : (
         <div role="log" aria-live="polite" aria-relevant="additions" className="flex flex-col gap-(--of-space-lg)">
           {messages.map((msg, index) => {
-            const previous = index > 0 ? messages[index - 1] : undefined;
-            const durationMs = deriveWorkDurationMs(msg, previous);
-
             return (
               <div key={msg.id} className="content-auto-message">
-                {msg.role === "assistant" && durationMs != null ? (
-                  <WorkDurationMarker durationMs={durationMs} />
-                ) : null}
                 <MessageBubble message={msg} onFileSelect={onFileSelect} />
               </div>
             );
@@ -195,12 +192,25 @@ export function MessageArea({
       )}
 
       {streamingParts.length > 0 ? (
-        <div className="[content-visibility:auto]">
+        <div className="flex flex-col items-start [content-visibility:auto]">
           <AssistantParts parts={streamingParts} streaming={isStreaming} onFileSelect={onFileSelect} />
         </div>
       ) : null}
 
-      {isStreaming && streamingParts.length === 0 ? (
+      {isStreaming && setupPhase ? (
+        <div className="flex items-center gap-2.5 text-xs text-text-tertiary">
+          <svg
+            className="h-3 w-3 animate-spin text-accent"
+            fill="none"
+            viewBox="0 0 24 24"
+            aria-hidden
+          >
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          <span>{setupPhase.label}…</span>
+        </div>
+      ) : isStreaming && streamingParts.length === 0 ? (
         <div className="flex items-center gap-2.5 text-xs text-text-tertiary">
           <span className="inline-flex items-center gap-1">
             <span className="h-1.5 w-1.5 rounded-full bg-accent animate-[orb-float_1.4s_ease-in-out_infinite]" />
