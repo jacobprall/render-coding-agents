@@ -129,8 +129,7 @@ export function SessionsNotifier() {
           tag: `session:${s.id}`,
           icon: "/icons/icon-192.svg",
           data: { url: `/sessions/${s.id}` },
-          renotify: false,
-        });
+        } as NotificationOptions);
         notification.onclick = () => {
           try {
             window.focus();
